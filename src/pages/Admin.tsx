@@ -27,6 +27,7 @@ import {
   ServerCog,
   Settings,
   Shield,
+  Layers,
   Trash2,
   Users,
 } from "lucide-react";

@@ -254,9 +254,9 @@ export default function FAQ() {
                       <div key={update.id} className="rounded-lg border border-border/80 bg-muted/30 p-4 text-sm">
                         <p className="font-medium text-foreground">{update.title}</p>
                         <p className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
-                          {new Date(update.published_at).toLocaleDateString()}
+                          {new Date(update.published_date).toLocaleDateString()}
                         </p>
-                        <p className="mt-2 text-muted-foreground">{update.summary}</p>
+                        <p className="mt-2 text-muted-foreground">{update.description}</p>
                       </div>
                     ))}
                   </div>

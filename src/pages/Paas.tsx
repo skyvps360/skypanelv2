@@ -48,7 +48,7 @@ const initialDeployForm: DeployForm = {
 
 export default function Paas() {
   const { token } = useAuth();
-  const { setBreadcrumbOverrides } = useBreadcrumb();
+  const { setDynamicOverride, removeDynamicOverride } = useBreadcrumb();
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
   const [deployments, setDeployments] = useState<any[]>([]);
   const [deployForm, setDeployForm] = useState<DeployForm>(initialDeployForm);
@@ -56,11 +56,9 @@ export default function Paas() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setBreadcrumbOverrides({
-      "/paas": { label: "PaaS" },
-    });
-    return () => setBreadcrumbOverrides({});
-  }, [setBreadcrumbOverrides]);
+    setDynamicOverride("/paas", "PaaS");
+    return () => removeDynamicOverride("/paas");
+  }, [setDynamicOverride, removeDynamicOverride]);
 
   const loadData = async () => {
     if (!token) return;
