@@ -28,6 +28,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useContactConfig } from "@/hooks/useContactConfig";
+import { FALLBACK_CONTACT_EMAIL, FALLBACK_CONTACT_PHONE, getEmailDetails, getPhoneDetails } from "@/lib/contact";
 
 interface PublicLayoutProps {
   children: React.ReactNode;
@@ -92,6 +94,14 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 export default function PublicLayout({ children }: PublicLayoutProps) {
   const location = useLocation();
+  const { contactConfig } = useContactConfig();
+  const emailMethod = contactConfig.methods.email?.is_active ? contactConfig.methods.email : null;
+  const phoneMethod = contactConfig.methods.phone?.is_active ? contactConfig.methods.phone : null;
+  const emailDetails = getEmailDetails(emailMethod ?? undefined);
+  const phoneDetails = getPhoneDetails(phoneMethod ?? undefined);
+  const displayEmail = emailDetails.address || FALLBACK_CONTACT_EMAIL;
+  const displayPhone = phoneDetails.number || FALLBACK_CONTACT_PHONE;
+  const contactStatus = phoneDetails.availability || emailDetails.responseTime || "Live chat 24/7";
 
   const activeHash = useMemo(() => location.hash, [location.hash]);
 
@@ -293,15 +303,17 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
               <div className="space-y-3 text-sm text-muted-foreground">
                 <p className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-primary" />
-                  +1 (800) 555-0199
+                  {displayPhone}
                 </p>
                 <p className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-primary" />
-                  hello@skypanel.cloud
+                  <a href={`mailto:${displayEmail}`} className="hover:text-foreground">
+                    {displayEmail}
+                  </a>
                 </p>
                 <p className="flex items-center gap-2">
                   <MessageCircle className="h-4 w-4 text-primary" />
-                  Live chat 24/7
+                  {contactStatus}
                 </p>
               </div>
               <Badge variant="outline" className="gap-2 text-xs">

@@ -39,6 +39,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { apiClient } from "@/lib/api";
 
 interface OverviewResponse {
   clusters: any[];
@@ -128,27 +129,12 @@ export function PaasControlPanel() {
   const [newRegion, setNewRegion] = useState("");
   const [regionSaving, setRegionSaving] = useState(false);
 
-  const authorizedFetch = async (url: string, options?: RequestInit) => {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: token ? `Bearer ${token}` : "",
-        ...(options?.headers ?? {}),
-      },
-    });
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-    return response.json();
-  };
-
   const loadOverview = async () => {
     if (!token) return;
     try {
       setLoading(true);
-      const data = await authorizedFetch("/api/admin/paas/overview");
-      setOverview(data.overview as OverviewResponse);
+      const data = await apiClient.get<{ overview: OverviewResponse | null }>("/admin/paas/overview");
+      setOverview((data.overview ?? null) as OverviewResponse | null);
     } catch (error) {
       console.error(error);
       toast.error("Failed to load PaaS overview");
@@ -251,9 +237,8 @@ export function PaasControlPanel() {
       const payload = Object.entries(regionSelections)
         .map(([region, isEnabled]) => ({ region: region.trim(), isEnabled }))
         .filter((entry) => entry.region.length > 0);
-      await authorizedFetch(`/api/admin/paas/templates/${regionEditorTemplate.id}/regions`, {
-        method: "POST",
-        body: JSON.stringify({ regions: payload }),
+      await apiClient.post(`/admin/paas/templates/${regionEditorTemplate.id}/regions`, {
+        regions: payload,
       });
       toast.success("Template regions updated");
       setRegionDialogOpen(false);
@@ -288,12 +273,9 @@ export function PaasControlPanel() {
 
   const handleClusterSubmit = async () => {
     try {
-      await authorizedFetch("/api/admin/paas/clusters", {
-        method: "POST",
-        body: JSON.stringify({
-          ...clusterForm,
-          slug: clusterForm.slug.trim().toLowerCase(),
-        }),
+      await apiClient.post("/admin/paas/clusters", {
+        ...clusterForm,
+        slug: clusterForm.slug.trim().toLowerCase(),
       });
       toast.success("Cluster created");
       setClusterForm(initialClusterForm);
@@ -307,12 +289,9 @@ export function PaasControlPanel() {
 
   const handlePlanSubmit = async () => {
     try {
-      await authorizedFetch("/api/admin/paas/plans", {
-        method: "POST",
-        body: JSON.stringify({
-          ...planForm,
-          slug: planForm.slug.trim().toLowerCase(),
-        }),
+      await apiClient.post("/admin/paas/plans", {
+        ...planForm,
+        slug: planForm.slug.trim().toLowerCase(),
       });
       toast.success("Plan created");
       setPlanForm(initialPlanForm);
@@ -326,14 +305,11 @@ export function PaasControlPanel() {
 
   const handleTemplateSubmit = async () => {
     try {
-      await authorizedFetch("/api/admin/paas/templates", {
-        method: "POST",
-        body: JSON.stringify({
-          ...templateForm,
-          slug: templateForm.slug.trim().toLowerCase(),
-          defaultPlanId: templateForm.defaultPlanId || null,
-          imageId: templateForm.imageId || null,
-        }),
+      await apiClient.post("/admin/paas/templates", {
+        ...templateForm,
+        slug: templateForm.slug.trim().toLowerCase(),
+        defaultPlanId: templateForm.defaultPlanId || null,
+        imageId: templateForm.imageId || null,
       });
       toast.success("Template created");
       setTemplateForm(initialTemplateForm);

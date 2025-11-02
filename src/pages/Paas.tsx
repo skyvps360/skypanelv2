@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { apiClient } from "@/lib/api";
 
 interface CatalogResponse {
   templates: any[];
@@ -61,31 +62,16 @@ export default function Paas() {
     return () => setBreadcrumbOverrides({});
   }, [setBreadcrumbOverrides]);
 
-  const authenticatedFetch = async (url: string, options?: RequestInit) => {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: token ? `Bearer ${token}` : "",
-        ...(options?.headers ?? {}),
-      },
-    });
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-    return response.json();
-  };
-
   const loadData = async () => {
     if (!token) return;
     try {
       setLoading(true);
       const [catalogResponse, deploymentsResponse] = await Promise.all([
-        authenticatedFetch("/api/paas/catalog"),
-        authenticatedFetch("/api/paas/deployments"),
+        apiClient.get<{ catalog: CatalogResponse | null }>("/paas/catalog"),
+        apiClient.get<DeploymentResponse>("/paas/deployments"),
       ]);
-      setCatalog(catalogResponse.catalog as CatalogResponse);
-      setDeployments((deploymentsResponse as DeploymentResponse).deployments);
+      setCatalog((catalogResponse.catalog ?? null) as CatalogResponse | null);
+      setDeployments(Array.isArray(deploymentsResponse.deployments) ? deploymentsResponse.deployments : []);
     } catch (error) {
       console.error(error);
       toast.error("Failed to load PaaS data");
@@ -112,17 +98,12 @@ export default function Paas() {
     }
     try {
       setDeploying(true);
-      await authenticatedFetch("/api/paas/deployments", {
-        method: "POST",
-        body: JSON.stringify({
-          templateId: deployForm.templateId,
-          planId: deployForm.planId,
-          clusterId: deployForm.clusterId,
-          name: deployForm.name,
-          metadata: { description: deployForm.description },
-          hourlyRate:
-            catalog?.plans.find((plan) => plan.id === deployForm.planId)?.price_hourly ?? 0,
-        }),
+      await apiClient.post("/paas/deployments", {
+        templateId: deployForm.templateId,
+        planId: deployForm.planId,
+        clusterId: deployForm.clusterId,
+        name: deployForm.name,
+        metadata: { description: deployForm.description },
       });
       toast.success("Deployment started");
       setDeployForm(initialDeployForm);

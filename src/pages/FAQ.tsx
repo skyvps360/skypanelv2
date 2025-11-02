@@ -24,6 +24,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BRAND_NAME } from "@/lib/brand";
 import { apiClient } from "@/lib/api";
+import { useContactConfig } from "@/hooks/useContactConfig";
+import { FALLBACK_CONTACT_EMAIL, getEmailDetails } from "@/lib/contact";
 import type {
   FAQCategoriesResponse,
   FAQCategoryWithItems,
@@ -57,6 +59,10 @@ export default function FAQ() {
   const [updates, setUpdates] = useState<FAQUpdate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { contactConfig } = useContactConfig();
+  const emailMethod = contactConfig.methods.email?.is_active ? contactConfig.methods.email : null;
+  const emailDetails = getEmailDetails(emailMethod ?? undefined);
+  const contactEmail = emailDetails.address || FALLBACK_CONTACT_EMAIL;
 
   useEffect(() => {
     const fetchFAQData = async () => {
@@ -284,8 +290,8 @@ export default function FAQ() {
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <p>
                   Prefer a human? Email us at {" "}
-                  <a href="mailto:support@skypanel.cloud" className="font-medium text-primary">
-                    support@skypanel.cloud
+                  <a href={`mailto:${contactEmail}`} className="font-medium text-primary">
+                    {contactEmail}
                   </a>
                   .
                 </p>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Clock, Loader2, MapPin, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -26,32 +26,11 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import type {
-  ContactConfig,
-  EmailConfig,
-  TicketConfig,
-  PhoneConfig,
-  OfficeConfig,
-} from "@/types/contact";
 import { BRAND_NAME } from "@/lib/brand";
-
-const DEFAULT_CATEGORIES = [
-  { id: "1", label: "General inquiry", value: "general", display_order: 0, is_active: true, created_at: "", updated_at: "" },
-  { id: "2", label: "Pricing & sales", value: "sales", display_order: 1, is_active: true, created_at: "", updated_at: "" },
-  { id: "3", label: "Technical support", value: "support", display_order: 2, is_active: true, created_at: "", updated_at: "" },
-  { id: "4", label: "Billing", value: "billing", display_order: 3, is_active: true, created_at: "", updated_at: "" },
-  { id: "5", label: "Partnership", value: "partnership", display_order: 4, is_active: true, created_at: "", updated_at: "" },
-  { id: "6", label: "Other", value: "other", display_order: 5, is_active: true, created_at: "", updated_at: "" },
-];
-
-const DEFAULT_AVAILABILITY = [
-  { id: "1", day_of_week: "Weekdays", is_open: true, hours_text: "9:00 AM – 6:00 PM EST", display_order: 0, created_at: "", updated_at: "" },
-  { id: "2", day_of_week: "Saturday", is_open: true, hours_text: "10:00 AM – 4:00 PM EST", display_order: 1, created_at: "", updated_at: "" },
-  { id: "3", day_of_week: "Sunday", is_open: false, hours_text: "Closed", display_order: 2, created_at: "", updated_at: "" },
-];
-
-const DEFAULT_EMERGENCY_TEXT =
-  "Available 24/7 for customers with enterprise SLAs. Call the hotline in your runbook for immediate response.";
+import { buildApiUrl } from "@/lib/api";
+import { useContactConfig } from "@/hooks/useContactConfig";
+import type { OfficeConfig, TicketConfig } from "@/types/contact";
+import { getEmailDetails, getPhoneDetails } from "@/lib/contact";
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -62,40 +41,13 @@ export default function Contact() {
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [contactConfig, setContactConfig] = useState<ContactConfig | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchContactConfig = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch("/api/contact/config");
-        if (!response.ok) {
-          throw new Error("Failed to load contact configuration");
-        }
-        const data: ContactConfig = await response.json();
-        setContactConfig(data);
-      } catch (err) {
-        console.error("Error fetching contact config:", err);
-        setContactConfig({
-          categories: DEFAULT_CATEGORIES,
-          methods: {},
-          availability: DEFAULT_AVAILABILITY,
-          emergency_support_text: DEFAULT_EMERGENCY_TEXT,
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void fetchContactConfig();
-  }, []);
+  const { contactConfig, isLoading } = useContactConfig();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/contact", {
+      const res = await fetch(buildApiUrl("/contact"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -124,25 +76,43 @@ export default function Contact() {
     setFormData((prev) => ({ ...prev, [event.target.name]: event.target.value }));
   };
 
-  const categories =
-    contactConfig?.categories
+  const categories = useMemo(() => {
+    return contactConfig.categories
       .filter((category) => category.is_active)
-      .sort((a, b) => a.display_order - b.display_order) || DEFAULT_CATEGORIES;
+      .slice()
+      .sort((a, b) => a.display_order - b.display_order);
+  }, [contactConfig]);
 
-  const emailMethod =
-    contactConfig?.methods.email?.is_active ? contactConfig.methods.email : null;
-  const ticketMethod =
-    contactConfig?.methods.ticket?.is_active ? contactConfig.methods.ticket : null;
-  const phoneMethod =
-    contactConfig?.methods.phone?.is_active ? contactConfig.methods.phone : null;
-  const officeMethod =
-    contactConfig?.methods.office?.is_active ? contactConfig.methods.office : null;
+  const emailMethod = useMemo(() => {
+    const method = contactConfig.methods.email;
+    return method && method.is_active ? method : null;
+  }, [contactConfig]);
 
-  const availability =
-    contactConfig?.availability.sort((a, b) => a.display_order - b.display_order) ||
-    DEFAULT_AVAILABILITY;
-  const emergencyText =
-    contactConfig?.emergency_support_text || DEFAULT_EMERGENCY_TEXT;
+  const ticketMethod = useMemo(() => {
+    const method = contactConfig.methods.ticket;
+    return method && method.is_active ? method : null;
+  }, [contactConfig]);
+
+  const phoneMethod = useMemo(() => {
+    const method = contactConfig.methods.phone;
+    return method && method.is_active ? method : null;
+  }, [contactConfig]);
+
+  const officeMethod = useMemo(() => {
+    const method = contactConfig.methods.office;
+    return method && method.is_active ? method : null;
+  }, [contactConfig]);
+
+  const availability = useMemo(() => {
+    return contactConfig.availability
+      .slice()
+      .sort((a, b) => a.display_order - b.display_order);
+  }, [contactConfig]);
+
+  const emergencyText = contactConfig.emergency_support_text;
+
+  const emailDetails = getEmailDetails(emailMethod ?? undefined);
+  const phoneDetails = getPhoneDetails(phoneMethod ?? undefined);
 
   if (isLoading) {
     return (
@@ -179,20 +149,20 @@ export default function Contact() {
             {emailMethod ? (
               <Card className="border border-border/80 bg-card/80 shadow-sm">
                 <CardHeader>
-                  <CardTitle>{emailMethod.title}</CardTitle>
-                  {emailMethod.description ? (
-                    <CardDescription>{emailMethod.description}</CardDescription>
+                  <CardTitle>{emailDetails.title || "Email"}</CardTitle>
+                  {emailDetails.description ? (
+                    <CardDescription>{emailDetails.description}</CardDescription>
                   ) : null}
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <a
-                    href={`mailto:${(emailMethod.config as EmailConfig).email_address}`}
+                    href={`mailto:${emailDetails.address}`}
                     className="font-medium text-primary"
                   >
-                    {(emailMethod.config as EmailConfig).email_address}
+                    {emailDetails.address}
                   </a>
                   <p className="text-xs text-muted-foreground">
-                    {(emailMethod.config as EmailConfig).response_time}
+                    {emailDetails.responseTime || "We typically respond within one business hour."}
                   </p>
                 </CardContent>
               </Card>
@@ -215,14 +185,11 @@ export default function Contact() {
                       </p>
                       <ul className="space-y-2 text-xs">
                         {(ticketMethod.config as TicketConfig).priority_queues.map((queue, index) => (
-                          <li key={index} className="flex items-start gap-2">
+                          <li key={`${queue.label}-${index}`} className="flex items-start gap-2">
                             <Badge variant="outline" className="mt-0.5">
-                              {queue.level}
+                              {queue.label}
                             </Badge>
                             <div>
-                              <p className="font-medium text-foreground">
-                                {queue.description}
-                              </p>
                               <p className="text-muted-foreground">
                                 Response in {queue.response_time}
                               </p>
@@ -251,10 +218,9 @@ export default function Contact() {
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm text-muted-foreground">
                   <p className="text-base font-semibold text-foreground">
-                    {(phoneMethod.config as PhoneConfig).phone_number}
+                    {phoneDetails.number}
                   </p>
-                  <p>{(phoneMethod.config as PhoneConfig).availability}</p>
-                  <p>{(phoneMethod.config as PhoneConfig).notes}</p>
+                  <p>{phoneDetails.availability || "Available during posted hours"}</p>
                 </CardContent>
               </Card>
             ) : null}
@@ -272,13 +238,27 @@ export default function Contact() {
                     <MapPin className="mt-1 h-4 w-4 text-primary" />
                     <div>
                       <p className="font-medium text-foreground">
-                        {(officeMethod.config as OfficeConfig).address}
+                        {[
+                          (officeMethod.config as OfficeConfig).address_line1,
+                          (officeMethod.config as OfficeConfig).address_line2,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
                       </p>
-                      <p>{(officeMethod.config as OfficeConfig).hours}</p>
+                      <p>
+                        {[
+                          (officeMethod.config as OfficeConfig).city,
+                          (officeMethod.config as OfficeConfig).state,
+                          (officeMethod.config as OfficeConfig).postal_code,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                      <p>{(officeMethod.config as OfficeConfig).country}</p>
                     </div>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-xs">
-                    {(officeMethod.config as OfficeConfig).notes}
+                    {(officeMethod.config as OfficeConfig).appointment_required}
                   </div>
                 </CardContent>
               </Card>
@@ -366,7 +346,9 @@ export default function Contact() {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                   <p>
-                    We reply within 1 hour during SLA windows. Outside of hours we’ll respond as soon as we’re back online.
+                    {emailDetails.responseTime
+                      ? `We reply within ${emailDetails.responseTime}.`
+                      : "We reply quickly during SLA windows and follow up as soon as we’re back online."}
                   </p>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? (
