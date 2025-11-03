@@ -206,8 +206,8 @@ export const DeployServiceModal: React.FC<DeployServiceModalProps> = ({
   
   const [templateFormData, setTemplateFormData] = useState<TemplateServiceFormData>({
     serviceName: '',
-    templateId: '',
-    configuration: {},
+    templateName: '',
+    templateConfig: {},
   });
 
   const steps = [
@@ -238,8 +238,8 @@ export const DeployServiceModal: React.FC<DeployServiceModalProps> = ({
       });
       setTemplateFormData({
         serviceName: '',
-        templateId: '',
-        configuration: {},
+        templateName: '',
+        templateConfig: {},
       });
     }
   }, [isOpen]);
@@ -313,7 +313,7 @@ export const DeployServiceModal: React.FC<DeployServiceModalProps> = ({
       } else if (deploymentType === 'database') {
         return databaseFormData.serviceName && databaseFormData.databaseType;
       } else if (deploymentType === 'template') {
-        return templateFormData.serviceName && templateFormData.templateId;
+        return templateFormData.serviceName && templateFormData.templateName;
       }
     } else if (step === 'review') {
       return quotaCheck?.allowed;
@@ -591,15 +591,15 @@ export const DeployServiceModal: React.FC<DeployServiceModalProps> = ({
             <div>
               <Label htmlFor="template">Template</Label>
               <Select
-                value={templateFormData.templateId}
-                onValueChange={(value) => setTemplateFormData(prev => ({ ...prev, templateId: value }))}
+                value={templateFormData.templateName}
+                onValueChange={(value) => setTemplateFormData(prev => ({ ...prev, templateName: value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a template" />
                 </SelectTrigger>
                 <SelectContent>
                   {templates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
+                    <SelectItem key={template.id} value={template.templateName}>
                       <div>
                         <div className="font-medium">{template.displayName}</div>
                         <div className="text-xs text-muted-foreground">{template.description}</div>
@@ -693,7 +693,7 @@ export const DeployServiceModal: React.FC<DeployServiceModalProps> = ({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Template:</span>
                 <span className="font-medium">
-                  {templates.find(t => t.id === templateFormData.templateId)?.displayName}
+                  {templates.find(t => t.templateName === templateFormData.templateName)?.displayName}
                 </span>
               </div>
             </>

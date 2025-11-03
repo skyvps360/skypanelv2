@@ -15,7 +15,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -24,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import type { ContainerTemplate, ResourceUsage } from '@/types/containers';
+import type { ContainerTemplate, ResourceUsage, TemplateService } from '@/types/containers';
 
 interface TemplateSelectorProps {
   templates: ContainerTemplate[];
@@ -44,7 +43,8 @@ interface TemplateCardProps {
 }
 
 const getCategoryIcon = (category: string) => {
-  switch (category.toLowerCase()) {
+  const normalized = category?.toLowerCase?.() ?? '';
+  switch (normalized) {
     case 'web':
     case 'frontend':
       return <Globe className="h-5 w-5" />;
@@ -59,7 +59,8 @@ const getCategoryIcon = (category: string) => {
 };
 
 const getCategoryColor = (category: string) => {
-  switch (category.toLowerCase()) {
+  const normalized = category?.toLowerCase?.() ?? '';
+  switch (normalized) {
     case 'web':
     case 'frontend':
       return 'bg-blue-100 text-blue-600';
@@ -77,36 +78,111 @@ const getCategoryColor = (category: string) => {
   }
 };
 
-const getResourceRequirements = (template: ContainerTemplate) => {
-  // Extract resource requirements from template schema
-  // This is a simplified version - in reality, you'd parse the template schema
-  const services = template.templateSchema?.services || [];
-  
+const DEFAULT_RESOURCE_GUESSES: Record<string, { cpu: number; memory: number; storage: number }> = {
+  app: { cpu: 0.5, memory: 1, storage: 5 },
+  frontend: { cpu: 0.4, memory: 0.75, storage: 3 },
+  postgres: { cpu: 0.5, memory: 1, storage: 10 },
+  mysql: { cpu: 0.4, memory: 0.75, storage: 10 },
+  mariadb: { cpu: 0.4, memory: 0.75, storage: 10 },
+  mongo: { cpu: 0.4, memory: 0.75, storage: 8 },
+  redis: { cpu: 0.2, memory: 0.5, storage: 2 },
+  wordpress: { cpu: 0.5, memory: 1, storage: 10 },
+  default: { cpu: 0.25, memory: 0.5, storage: 4 },
+};
+
+const toNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const normalizeMemoryGb = (value: unknown): number | null => {
+  const numeric = toNumber(value);
+  if (numeric == null) {
+    return null;
+  }
+
+  // Easypanel resource values are typically expressed in MB. When the value
+  // looks like a larger whole number, convert it to GB for display purposes.
+  if (numeric > 64) {
+    return numeric / 1024;
+  }
+
+  return numeric;
+};
+
+const normalizeStorageGb = (value: unknown): number | null => {
+  const numeric = toNumber(value);
+  if (numeric == null) {
+    return null;
+  }
+
+  if (numeric > 64) {
+    return numeric / 1024;
+  }
+
+  return numeric;
+};
+
+const extractServiceResources = (service: TemplateService) => {
+  const defaults = DEFAULT_RESOURCE_GUESSES[service.type?.toLowerCase?.() ?? ''] ?? DEFAULT_RESOURCE_GUESSES.default;
+  const config = service.configuration ?? service.data ?? {};
+  const resources = config.resources ?? config.resource ?? {};
+
+  const cpu =
+    toNumber(resources.cpuLimit ?? resources.cpu ?? config.cpuLimit ?? config.cpu) ??
+    defaults.cpu;
+
+  const memory =
+    normalizeMemoryGb(resources.memoryLimit ?? resources.memory ?? config.memoryLimit ?? config.memory) ??
+    defaults.memory;
+
+  const storage =
+    normalizeStorageGb(resources.storageLimit ?? resources.storage ?? config.storageLimit ?? config.storage) ??
+    defaults.storage;
+
+  return { cpu, memory, storage };
+};
+
+export const estimateTemplateResources = (template: ContainerTemplate): ResourceUsage => {
+  const services = Array.isArray(template.templateSchema?.services)
+    ? template.templateSchema!.services
+    : [];
+
+  if (services.length === 0) {
+    const defaults = DEFAULT_RESOURCE_GUESSES.default;
+    return {
+      cpuCores: defaults.cpu,
+      memoryGb: defaults.memory,
+      storageGb: defaults.storage,
+      containerCount: 1,
+    };
+  }
+
   let totalCpu = 0;
   let totalMemory = 0;
   let totalStorage = 0;
-  
-  services.forEach(service => {
-    // Default resource estimates based on service type
-    if (service.type === 'app') {
-      totalCpu += 0.5;
-      totalMemory += 1;
-      totalStorage += 5;
-    } else if (service.type === 'postgres' || service.type === 'mysql') {
-      totalCpu += 0.25;
-      totalMemory += 0.5;
-      totalStorage += 10;
-    } else if (service.type === 'redis') {
-      totalCpu += 0.1;
-      totalMemory += 0.25;
-      totalStorage += 1;
-    }
+
+  services.forEach((service) => {
+    const { cpu, memory, storage } = extractServiceResources(service);
+    totalCpu += cpu;
+    totalMemory += memory;
+    totalStorage += storage;
   });
-  
+
   return {
     cpuCores: Math.max(totalCpu, 0.1),
-    memoryGb: Math.max(totalMemory, 0.25),
-    storageGb: Math.max(totalStorage, 1),
+    memoryGb: Math.max(totalMemory, 0.1),
+    storageGb: Math.max(totalStorage, 0.5),
     containerCount: services.length,
   };
 };
@@ -118,10 +194,15 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   canDeploy,
   resourceWarning,
 }) => {
-  const requirements = getResourceRequirements(template);
-  
+  const requirements = estimateTemplateResources(template);
+  const services = Array.isArray(template.templateSchema?.services)
+    ? template.templateSchema!.services
+    : [];
+  const categoryLabel = template.category?.trim() || 'General';
+  const description = template.description?.trim() || 'Template details coming soon.';
+
   return (
-    <Card 
+    <Card
       className={cn(
         "cursor-pointer transition-all hover:shadow-md",
         selected && "ring-2 ring-primary",
@@ -132,19 +213,19 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className={cn("p-2 rounded-lg", getCategoryColor(template.category))}>
-              {getCategoryIcon(template.category)}
+            <div className={cn("p-2 rounded-lg", getCategoryColor(categoryLabel))}>
+              {getCategoryIcon(categoryLabel)}
             </div>
             <div className="flex-1">
               <CardTitle className="text-lg font-semibold">
                 {template.displayName}
               </CardTitle>
               <Badge variant="outline" className="mt-1 text-xs capitalize">
-                {template.category}
+                {categoryLabel}
               </Badge>
             </div>
           </div>
-          
+
           {selected && (
             <CheckCircle className="h-5 w-5 text-primary" />
           )}
@@ -154,10 +235,10 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
           )}
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground line-clamp-2">
-          {template.description}
+          {description}
         </p>
         
         {/* Resource Requirements */}
@@ -193,20 +274,20 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
         )}
         
         {/* Services included */}
-        {template.templateSchema?.services && template.templateSchema.services.length > 0 && (
+        {services.length > 0 && (
           <div className="space-y-2">
             <div className="text-xs font-medium text-muted-foreground">
               Includes
             </div>
             <div className="flex flex-wrap gap-1">
-              {template.templateSchema.services.slice(0, 3).map((service, index) => (
+              {services.slice(0, 3).map((service, index) => (
                 <Badge key={index} variant="secondary" className="text-xs capitalize">
-                  {service.type}
+                  {service.name || service.type}
                 </Badge>
               ))}
-              {template.templateSchema.services.length > 3 && (
+              {services.length > 3 && (
                 <Badge variant="secondary" className="text-xs">
-                  +{template.templateSchema.services.length - 3} more
+                  +{services.length - 3} more
                 </Badge>
               )}
             </div>
@@ -230,26 +311,67 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
 
   // Get unique categories
   const categories = useMemo(() => {
-    const cats = Array.from(new Set(templates.map(t => t.category)));
-    return cats.sort();
+    const set = new Set<string>();
+    templates.forEach((template) => {
+      const categoryLabel = template.category?.trim();
+      if (categoryLabel && categoryLabel.length > 0) {
+        set.add(categoryLabel);
+      } else {
+        set.add('General');
+      }
+    });
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [templates]);
 
   // Filter templates
   const filteredTemplates = useMemo(() => {
-    return templates.filter(template => {
-      const matchesSearch = template.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           template.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory;
-      
-      return matchesSearch && matchesCategory;
+    const query = searchQuery.trim().toLowerCase();
+
+    return templates.filter((template) => {
+      const categoryLabel = template.category?.trim() || 'General';
+      const matchesCategory = selectedCategory === 'all' || categoryLabel === selectedCategory;
+
+      if (!matchesCategory) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const searchableValues = [
+        template.displayName,
+        template.templateName,
+        template.description,
+        categoryLabel,
+      ]
+        .filter(Boolean)
+        .map((value) => value!.toLowerCase());
+
+      return searchableValues.some((value) => value.includes(query));
     });
   }, [templates, searchQuery, selectedCategory]);
+
+  const selectedTemplateDetails = useMemo(() => {
+    if (!selectedTemplate) {
+      return null;
+    }
+
+    return {
+      categoryLabel: selectedTemplate.category?.trim() || 'General',
+      description: selectedTemplate.description?.trim() || 'Template details coming soon.',
+      services: Array.isArray(selectedTemplate.templateSchema?.services)
+        ? selectedTemplate.templateSchema!.services
+        : [],
+    };
+  }, [selectedTemplate]);
 
   // Check if template can be deployed based on quotas
   const checkCanDeploy = (template: ContainerTemplate) => {
     if (!currentUsage || !quota) return { canDeploy: true, warning: '' };
     
-    const requirements = getResourceRequirements(template);
+    const requirements = estimateTemplateResources(template);
     const warnings: string[] = [];
     
     if (currentUsage.cpuCores + requirements.cpuCores > quota.cpuCores) {
@@ -370,7 +492,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
       )}
       
       {/* Selected template details */}
-      {selectedTemplate && (
+      {selectedTemplate && selectedTemplateDetails && (
         <Card className="border-primary">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -380,28 +502,28 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3 mb-4">
-              <div className={cn("p-2 rounded-lg", getCategoryColor(selectedTemplate.category))}>
-                {getCategoryIcon(selectedTemplate.category)}
+              <div className={cn("p-2 rounded-lg", getCategoryColor(selectedTemplateDetails.categoryLabel))}>
+                {getCategoryIcon(selectedTemplateDetails.categoryLabel)}
               </div>
               <div>
                 <div className="font-semibold">{selectedTemplate.displayName}</div>
                 <Badge variant="outline" className="text-xs capitalize">
-                  {selectedTemplate.category}
+                  {selectedTemplateDetails.categoryLabel}
                 </Badge>
               </div>
             </div>
-            
+
             <p className="text-sm text-muted-foreground mb-4">
-              {selectedTemplate.description}
+              {selectedTemplateDetails.description}
             </p>
-            
-            {selectedTemplate.templateSchema?.services && (
+
+            {selectedTemplateDetails.services.length > 0 && (
               <div>
                 <div className="text-sm font-medium mb-2">Services included:</div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedTemplate.templateSchema.services.map((service, index) => (
+                  {selectedTemplateDetails.services.map((service, index) => (
                     <Badge key={index} variant="secondary" className="text-xs capitalize">
-                      {service.type}
+                      {service.name || service.type}
                     </Badge>
                   ))}
                 </div>

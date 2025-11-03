@@ -219,12 +219,16 @@ export interface ServiceError {
 // ============================================================================
 
 export interface TemplateSchema {
-  services: TemplateService[];
+  services?: TemplateService[];
+  [key: string]: any;
 }
 
 export interface TemplateService {
+  name?: string;
   type: string;
-  data: Record<string, any>;
+  configuration?: Record<string, any>;
+  data?: Record<string, any>;
+  [key: string]: any;
 }
 
 // ============================================================================
@@ -371,8 +375,8 @@ export interface DeployDatabaseServiceRequest {
 
 export interface DeployTemplateServiceRequest {
   serviceName: string;
-  templateId: string;
-  configuration: Record<string, any>;
+  templateName: string;
+  templateConfig?: Record<string, any>;
 }
 
 export interface UpdateServiceEnvRequest {
@@ -526,8 +530,8 @@ export interface DatabaseServiceFormData {
 
 export interface TemplateServiceFormData {
   serviceName: string;
-  templateId: string;
-  configuration: Record<string, any>;
+  templateName: string;
+  templateConfig?: Record<string, any>;
 }
 
 // ============================================================================

@@ -159,6 +159,23 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               title: "Containers",
               url: "/containers",
               isActive: isContainersActive,
+              items: [
+                {
+                  title: "Dashboard",
+                  url: "/containers",
+                  isActive: pathname === "/containers",
+                },
+                {
+                  title: "Templates",
+                  url: "/containers/templates",
+                  isActive: pathname === "/containers/templates",
+                },
+                {
+                  title: "Plans",
+                  url: "/containers/plans",
+                  isActive: pathname === "/containers/plans",
+                },
+              ],
             },
           ],
         },
