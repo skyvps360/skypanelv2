@@ -31,32 +31,28 @@ const featureHighlights = [
     description:
       'Deploy powerful VPS instances with instant provisioning and guaranteed resources. Get root access, SSH console, and full control over your server environment.',
     icon: Server,
-    bullets: ['Instant deployment in 45 seconds', 'Full root access', 'Web-based SSH console'],
-    accent: 'from-sky-500/20 via-transparent to-transparent'
+    bullets: ['Instant deployment in 45 seconds', 'Full root access', 'Web-based SSH console']
   },
   {
     title: 'Container Applications',
     description:
       'Deploy containerized applications with one-click templates. Run WordPress, databases, and custom applications with managed scaling and monitoring.',
     icon: Layers,
-    bullets: ['One-click app deployment', 'Popular application templates', 'Managed scaling'],
-    accent: 'from-emerald-500/20 via-transparent to-transparent'
+    bullets: ['One-click app deployment', 'Popular application templates', 'Managed scaling']
   },
   {
     title: 'Secure Access',
     description:
       'Access your servers directly through our web interface with secure SSH console. Manage files, run commands, and monitor your applications.',
     icon: Globe,
-    bullets: ['Web-based SSH console', 'Secure connections', 'Real-time terminal access'],
-    accent: 'from-purple-500/20 via-transparent to-transparent'
+    bullets: ['Web-based SSH console', 'Secure connections', 'Real-time terminal access']
   },
   {
     title: 'Flexible Billing',
     description:
       'Pay-as-you-go billing with prepaid wallet system. Add funds via PayPal and track your usage with detailed billing reports and invoices.',
     icon: Wallet,
-    bullets: ['PayPal integration', 'Hourly billing', 'Detailed usage reports'],
-    accent: 'from-amber-500/20 via-transparent to-transparent'
+    bullets: ['PayPal integration', 'Hourly billing', 'Detailed usage reports']
   }
 ];
 
@@ -253,9 +249,9 @@ export default function Home() {
             {featureHighlights.map((feature) => (
               <Card
                 key={feature.title}
-                className="relative overflow-hidden border border-border/60 bg-background/70 backdrop-blur transition hover:border-primary/50"
+                className="relative overflow-hidden border border-border/60 bg-card backdrop-blur transition hover:border-primary/50"
               >
-                <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${feature.accent}`} />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent" />
                 <CardContent className="relative space-y-4 p-8">
                   <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <feature.icon className="h-5 w-5" />

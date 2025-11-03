@@ -1,86 +1,75 @@
-# Technology Stack & Build System
+# Technology Stack
 
-## Frontend Stack
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite 6 with React plugin and TypeScript paths
-- **Styling**: Tailwind CSS 3 with custom design system
-- **UI Components**: Radix UI primitives with shadcn/ui patterns
-- **State Management**: Zustand for global state, TanStack Query v5 for server state
-- **Routing**: React Router v7
-- **Forms**: React Hook Form with Zod validation
-- **Animations**: Framer Motion, Tailwind CSS animations
-- **Icons**: Lucide React
-- **Notifications**: React Hot Toast, Sonner
+## Frontend
+- **React 18** with TypeScript and Vite for fast development and builds
+- **Tailwind CSS** for styling with shadcn/ui component library
+- **TanStack Query v5** for server state management and caching
+- **Zustand** for client-side state management
+- **React Router v7** for navigation and routing
+- **Framer Motion** for animations and transitions
 
-## Backend Stack
-- **Runtime**: Node.js 20+ with ESM modules
-- **Framework**: Express.js with TypeScript
-- **Database**: PostgreSQL 12+ with custom migration system
-- **Caching**: Redis 6+ with ioredis client
-- **Authentication**: JWT with bcryptjs for password hashing
-- **File Upload**: Multer
-- **Email**: Nodemailer with SMTP2GO integration
-- **WebSockets**: ws library for SSH console bridge
-- **Queue System**: Bull with Redis backend
-- **Security**: Helmet, CORS, express-rate-limit
-- **Validation**: express-validator, Zod
+## Backend
+- **Node.js 20+** with Express.js in ESM mode
+- **TypeScript** for type safety across the entire stack
+- **PostgreSQL** for primary database with migrations in `migrations/`
+- **Redis** for caching and session management
+- **Bull** queues for background job processing
 
-## Development Tools
-- **Package Manager**: npm
-- **TypeScript**: v5.8+ with strict mode disabled for flexibility
-- **Linting**: ESLint 9 with TypeScript ESLint
-- **Testing**: Vitest with jsdom, React Testing Library, Supertest
-- **Process Management**: PM2 for production, Nodemon for development
-- **Concurrency**: concurrently for running multiple dev processes
+## Key Libraries & Integrations
+- **PayPal REST SDK** for payment processing
+- **Linode/Akamai API** and **DigitalOcean API** for VPS provisioning
+- **Easypanel API** for optional container services
+- **ssh2** for WebSocket-based SSH console access
+- **Nodemailer** with SMTP2GO for email notifications
+- **jsonwebtoken** for JWT authentication
+- **bcryptjs** for password hashing
 
-## Common Commands
+## Build System & Development
 
-### Development
+### Common Commands
 ```bash
-npm run dev              # Start both frontend and backend in development
-npm run client:dev       # Start only Vite frontend (port 5173)
-npm run server:dev       # Start only Express backend (port 3001)
-npm run kill-ports       # Kill processes on ports 3001 and 5173
-```
+# Development
+npm run dev              # Start both frontend and backend
+npm run client:dev       # Frontend only (Vite dev server)
+npm run server:dev       # Backend only (Nodemon)
+npm run kill-ports       # Free ports 3001 and 5173
 
-### Building & Testing
-```bash
+# Building & Testing
 npm run build           # TypeScript check + Vite build
-npm run check           # TypeScript type checking only
-npm run lint            # ESLint code quality check
-npm test                # Run Vitest test suite once
-npm run test:watch      # Run Vitest in watch mode
-```
+npm run test            # Run Vitest test suite
+npm run test:watch      # Watch mode for tests
+npm run lint            # ESLint validation
+npm run check           # TypeScript type checking
 
-### Database Management
-```bash
-node scripts/run-migration.js                    # Apply all pending migrations
-node scripts/apply-single-migration.js <file>    # Apply specific migration
-node scripts/reset-database.js --confirm         # Reset database (destructive)
-node scripts/db:fresh                           # Reset + migrate
-```
-
-### Production Deployment
-```bash
-npm run start           # Production server (build + start)
-npm run pm2:start       # Start with PM2 process manager
+# Production
+npm run start           # Production server + preview
+npm run pm2:start       # PM2 process management
 npm run pm2:reload      # Reload PM2 processes
-npm run pm2:stop        # Stop and delete PM2 processes
+npm run pm2:stop        # Stop PM2 processes
+
+# Database & Utilities
+node scripts/run-migration.js                    # Apply pending migrations
+node scripts/generate-ssh-secret.js              # Generate encryption keys
+node scripts/create-test-admin.js                # Create admin user
+node scripts/test-connection.js                  # Test database connection
 ```
 
-### Utility Scripts
-```bash
-node scripts/generate-ssh-secret.js             # Generate SSH encryption secret
-node scripts/create-test-admin.js               # Create admin user
-node scripts/test-connection.js                 # Test database connection
-node scripts/test-smtp.js                       # Test email configuration
-node scripts/test-hourly-billing.js             # Test billing workflow
-```
+### Development Setup
+1. **Prerequisites**: Node.js 20+, PostgreSQL 12+, Redis 6+
+2. **Environment**: Copy `.env.example` to `.env` and configure
+3. **Database**: Run migrations with `node scripts/run-migration.js`
+4. **Development**: Use `npm run dev` for concurrent frontend/backend
 
-## Architecture Patterns
-- **Modular Express**: Routes, middleware, and services are separated into dedicated modules
-- **Service Layer**: Business logic abstracted into service classes (BillingService, etc.)
-- **Database Abstraction**: Custom query/transaction helpers in `api/lib/database.ts`
-- **Provider Abstraction**: Unified interfaces for Linode/DigitalOcean APIs
-- **Real-time Updates**: PostgreSQL LISTEN/NOTIFY → Server-Sent Events → React Query
-- **Configuration**: Environment-driven config with validation and dynamic proxy
+### Architecture Patterns
+- **Service Layer**: Business logic in `api/services/`
+- **Route Handlers**: Express routes in `api/routes/`
+- **Database Access**: Centralized through `api/lib/database.ts`
+- **Configuration**: Environment-based config in `api/config/`
+- **Middleware**: Rate limiting, auth, and CORS in `api/middleware/`
+
+### Code Style & Conventions
+- **ESM modules** throughout (`.js` extensions in imports)
+- **TypeScript strict mode** disabled for flexibility
+- **Functional components** with hooks in React
+- **Async/await** preferred over promises
+- **Error handling** with try/catch and proper HTTP status codes

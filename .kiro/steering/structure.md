@@ -1,136 +1,107 @@
-# Project Structure & Organization
+# Project Structure
 
 ## Root Directory Layout
 
 ```
+skypanelv2/
 ├── api/                    # Express.js backend application
 ├── src/                    # React frontend application
 ├── migrations/             # Database schema migrations
-├── scripts/                # Utility and maintenance scripts
+├── scripts/                # Utility scripts for operations
 ├── public/                 # Static assets (favicon, logos)
-├── repo-docs/              # Feature documentation and API references
-├── .kiro/                  # Kiro IDE configuration and steering
-├── .github/                # GitHub workflows and templates
-└── node_modules/           # Dependencies (managed by npm)
+├── repo-docs/              # Feature documentation and guides
+├── dist/                   # Built frontend assets (generated)
+└── node_modules/           # Dependencies (generated)
 ```
 
 ## Backend Structure (`api/`)
 
 ```
 api/
-├── app.ts                  # Express app configuration and middleware setup
-├── server.ts               # Server entry point with SSH bridge and billing scheduler
+├── app.ts                  # Main Express application setup
+├── server.ts               # Server startup and process management
 ├── index.ts                # Vercel serverless entry point
-├── config/                 # Configuration management and validation
-├── lib/                    # Database helpers and utilities
-├── middleware/             # Express middleware (auth, rate limiting, etc.)
-├── routes/                 # API route handlers organized by feature
-├── services/               # Business logic and external integrations
-└── __tests__/              # Backend test files
+├── config/                 # Configuration management
+├── lib/                    # Database and utility libraries
+├── middleware/             # Express middleware (auth, rate limiting)
+├── routes/                 # API route handlers
+└── services/               # Business logic and external integrations
 ```
 
 ### Key Backend Patterns
-- **Routes**: Feature-based organization (`auth.js`, `vps.js`, `billing.js`)
-- **Services**: Business logic abstraction (`BillingService`, `NotificationService`)
-- **Middleware**: Reusable request processing (`rateLimiting.ts`, `auth.ts`)
-- **Config**: Environment-driven configuration with validation
+- **Routes**: RESTful API endpoints organized by feature (`/api/vps`, `/api/billing`)
+- **Services**: Business logic abstraction for external APIs and complex operations
+- **Middleware**: Reusable request processing (authentication, rate limiting, CORS)
+- **Database**: Centralized query interface with transaction support
 
 ## Frontend Structure (`src/`)
 
 ```
 src/
-├── App.tsx                 # Main app component with routing
-├── main.tsx                # React app entry point
+├── App.tsx                 # Main application component and routing
+├── main.tsx                # React application entry point
 ├── index.css               # Global styles and Tailwind imports
 ├── components/             # Reusable UI components
-│   ├── ui/                 # Base UI primitives (shadcn/ui style)
-│   ├── admin/              # Admin-specific components
-│   └── [feature]/          # Feature-specific components
-├── contexts/               # React contexts (Auth, Theme, Impersonation)
+├── contexts/               # React context providers (auth, theme)
 ├── hooks/                  # Custom React hooks
-├── lib/                    # Frontend utilities and API client
-├── pages/                  # Route components
-├── services/               # Frontend service layer
-├── theme/                  # Theme configuration and utilities
+├── lib/                    # Utilities and API client
+├── pages/                  # Route components and page layouts
+├── services/               # Frontend API service wrappers
+├── theme/                  # Theme configuration and styling
 └── types/                  # TypeScript type definitions
 ```
 
-### Frontend Organization Principles
-- **Pages**: One component per route in `pages/`
-- **Components**: Organized by feature or as reusable UI primitives
-- **Contexts**: Global state management for auth, theme, impersonation
-- **Services**: API interaction layer with error handling
-- **Types**: Shared TypeScript interfaces and types
+### Frontend Organization
+- **Pages**: Route-level components in `pages/` (Dashboard, VPS, Billing, Admin)
+- **Components**: Shared UI components following shadcn/ui patterns
+- **Contexts**: Global state management (AuthContext, ThemeContext, ImpersonationContext)
+- **Services**: API communication wrappers with error handling
+- **Hooks**: Custom React hooks for data fetching and state management
 
 ## Database & Scripts
 
 ### Migrations (`migrations/`)
-- Sequential SQL files with descriptive names
-- Applied via `scripts/run-migration.js`
-- Version-controlled schema changes
+- **Sequential SQL files**: `001_initial_schema.sql`, `002_add_feature.sql`
+- **Applied via scripts**: Use `node scripts/run-migration.js` for deployment
+- **Version tracking**: Database tracks applied migrations automatically
 
 ### Utility Scripts (`scripts/`)
-- **Database**: Migration runners, reset utilities, connection tests
-- **Admin**: User management, password updates, role promotion
-- **Testing**: SMTP tests, billing workflow validation
-- **Security**: SSH secret generation, encryption utilities
+- **Database operations**: Migration runners, connection testing, data seeding
+- **Admin utilities**: User promotion, password updates, admin creation
+- **Billing tools**: Hourly billing tests, container billing processing
+- **Communication**: SMTP testing, notification debugging
+- **Development**: SSH key generation, database reset utilities
 
 ## Configuration Files
 
 ### Build & Development
-- `package.json` - Dependencies and npm scripts
-- `vite.config.ts` - Frontend build configuration with proxy setup
-- `tsconfig.json` - TypeScript configuration with path mapping
-- `tailwind.config.js` - Tailwind CSS customization
-- `eslint.config.js` - Code quality and style rules
+- **`package.json`**: Dependencies, scripts, and project metadata
+- **`vite.config.ts`**: Frontend build configuration with proxy setup
+- **`tsconfig.json`**: TypeScript configuration for both frontend and backend
+- **`tailwind.config.js`**: Styling configuration with custom theme
+- **`components.json`**: shadcn/ui component library configuration
 
 ### Environment & Deployment
-- `.env` - Environment variables (not committed)
-- `.env.example` - Environment template
-- `vercel.json` - Vercel deployment configuration
-- `ecosystem.config.cjs` - PM2 process management
-- `nodemon.json` - Development server configuration
+- **`.env.example`**: Template for environment variables
+- **`vercel.json`**: Vercel deployment configuration
+- **`ecosystem.config.cjs`**: PM2 process management configuration
+- **`nodemon.json`**: Development server configuration
 
-## Naming Conventions
+## Key Architectural Principles
 
-### Files & Directories
-- **Components**: PascalCase (`UserProfile.tsx`)
-- **Pages**: PascalCase (`Dashboard.tsx`)
-- **Utilities**: camelCase (`apiClient.ts`)
-- **Services**: camelCase with Service suffix (`billingService.ts`)
-- **Types**: camelCase (`userTypes.ts`)
+### Separation of Concerns
+- **Frontend**: Pure React SPA with no server-side rendering
+- **Backend**: Stateless API server with JWT authentication
+- **Database**: PostgreSQL with explicit migrations and transaction support
 
-### API Routes
-- RESTful conventions: `/api/vps`, `/api/vps/:id`
-- Feature-based grouping: `/api/admin/*`, `/api/billing/*`
-- Consistent HTTP methods: GET, POST, PUT, DELETE
+### Code Organization
+- **Feature-based routing**: Both frontend pages and backend routes organized by business domain
+- **Service layer abstraction**: External API calls isolated in service classes
+- **Shared types**: TypeScript interfaces shared between frontend and backend
+- **Environment-driven configuration**: All deployment-specific settings via environment variables
 
-### Database
-- Snake_case for tables and columns
-- Descriptive migration names with timestamps
-- Foreign key naming: `user_id`, `vps_id`
-
-## Import Patterns
-
-### Frontend
-```typescript
-// Absolute imports using @ alias
-import { Button } from "@/components/ui/button"
-import { useAuth } from "@/contexts/AuthContext"
-import { api } from "@/lib/api"
-```
-
-### Backend
-```typescript
-// Relative imports with .js extension (ESM)
-import { query } from '../lib/database.js'
-import { BillingService } from '../services/billingService.js'
-```
-
-## Code Organization Best Practices
-
-1. **Separation of Concerns**: Business logic in services, UI logic in components
-2. **Feature Grouping**: Related functionality organized together
-3. **Consistent Patterns**: Similar file structures across features
-4. **Type Safety**: Shared types between frontend and backend
-5. **Error Handling**: Centralized error handling in API client and services
+### Development Workflow
+- **Concurrent development**: Frontend and backend run simultaneously via `npm run dev`
+- **Hot reloading**: Vite for frontend, Nodemon for backend changes
+- **Type safety**: Full TypeScript coverage with shared type definitions
+- **Testing**: Vitest for unit tests, Supertest for API integration tests
