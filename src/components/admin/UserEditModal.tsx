@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -30,58 +28,43 @@ interface User {
 }
 
 interface UserEditModalProps {
-  user: User;
+  user: User | null;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
-}
-
-interface UpdateUserRequest {
-  name?: string;
-  email?: string;
-  role?: string;
+  onSave: (userId: string, updates: { name?: string; email?: string; role?: string }) => Promise<void>;
+  isSaving: boolean;
 }
 
 export const UserEditModal: React.FC<UserEditModalProps> = ({
   user,
   isOpen,
   onClose,
-  onSuccess,
+  onSave,
+  isSaving,
 }) => {
-  const { token } = useAuth();
   const [formData, setFormData] = useState({
-    name: user.name,
-    email: user.email,
-    role: user.role,
+    name: '',
+    email: '',
+    role: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const updateUserMutation = useMutation({
-    mutationFn: async (data: UpdateUserRequest) => {
-      const response = await fetch(`/api/admin/users/${user.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
+  // Initialize form data when user changes
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        email: user.email || '',
+        role: user.role || '',
       });
+      setErrors({});
+    }
+  }, [user]);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update user');
-      }
-
-      return response.json();
-    },
-    onSuccess: () => {
-      toast.success('User updated successfully');
-      onSuccess();
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to update user');
-    },
-  });
+  // Don't render if no user
+  if (!user) {
+    return null;
+  }
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -114,7 +97,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
     }
 
     // Only send changed fields
-    const updateData: UpdateUserRequest = {};
+    const updateData: { name?: string; email?: string; role?: string } = {};
     
     if (formData.name !== user.name) {
       updateData.name = formData.name.trim();
@@ -135,11 +118,17 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
       return;
     }
 
-    await updateUserMutation.mutateAsync(updateData);
+    try {
+      await onSave(user.id, updateData);
+      toast.success('User updated successfully');
+      onClose();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update user');
+    }
   };
 
   const handleClose = () => {
-    if (!updateUserMutation.isPending) {
+    if (!isSaving) {
       setFormData({
         name: user.name,
         email: user.email,
@@ -168,7 +157,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Enter user name"
-              disabled={updateUserMutation.isPending}
+              disabled={isSaving}
             />
             {errors.name && (
               <p className="text-sm text-red-500">{errors.name}</p>
@@ -183,7 +172,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="Enter email address"
-              disabled={updateUserMutation.isPending}
+              disabled={isSaving}
             />
             {errors.email && (
               <p className="text-sm text-red-500">{errors.email}</p>
@@ -195,7 +184,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
             <Select
               value={formData.role}
               onValueChange={(value) => setFormData({ ...formData, role: value })}
-              disabled={updateUserMutation.isPending}
+              disabled={isSaving}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select role" />
@@ -215,15 +204,15 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
               type="button"
               variant="outline"
               onClick={handleClose}
-              disabled={updateUserMutation.isPending}
+              disabled={isSaving}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={updateUserMutation.isPending}
+              disabled={isSaving}
             >
-              {updateUserMutation.isPending ? (
+              {isSaving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Saving...

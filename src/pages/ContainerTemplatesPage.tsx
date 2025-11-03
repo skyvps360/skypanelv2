@@ -444,23 +444,22 @@ const ContainerTemplatesPage: React.FC = () => {
                       <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Cpu className="h-3 w-3" />
-                            <span>{templateRequirements.cpuCores} cores</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <MemoryStick className="h-3 w-3" />
-                            <span>{templateRequirements.memoryGb} GB memory</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <HardDrive className="h-3 w-3" />
-                            <span>{templateRequirements.storageGb} GB storage</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Server className="h-3 w-3" />
-                            <span>{templateRequirements.containerCount} service{templateRequirements.containerCount !== 1 ? 's' : ''}</span>
-                          </div>
+                          <span>{templateRequirements.cpuCores} cores</span>
                         </div>
-                      )}
-                    </div>
+                        <div className="flex items-center gap-1">
+                          <MemoryStick className="h-3 w-3" />
+                          <span>{templateRequirements.memoryGb} GB memory</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <HardDrive className="h-3 w-3" />
+                          <span>{templateRequirements.storageGb} GB storage</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Server className="h-3 w-3" />
+                          <span>{templateRequirements.containerCount} service{templateRequirements.containerCount !== 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                    )}
 
                     {!hasSubscription ? (
                       <Alert>
