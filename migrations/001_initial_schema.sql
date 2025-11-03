@@ -1429,3 +1429,146 @@ CREATE TRIGGER update_user_rate_limit_overrides_updated_at
 BEFORE UPDATE ON user_rate_limit_overrides
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================
+-- Container as a Service (CaaS) Schema - Easypanel Integration
+-- ============================================================
+
+-- Container plans table
+CREATE TABLE IF NOT EXISTS container_plans (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    price_monthly DECIMAL(10,2) NOT NULL,
+    max_cpu_cores INTEGER NOT NULL,
+    max_memory_gb INTEGER NOT NULL,
+    max_storage_gb INTEGER NOT NULL,
+    max_containers INTEGER NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Container subscriptions table
+CREATE TABLE IF NOT EXISTS container_subscriptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    plan_id UUID NOT NULL REFERENCES container_plans(id) ON DELETE RESTRICT,
+    status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'cancelled')),
+    current_period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    current_period_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Container projects table
+CREATE TABLE IF NOT EXISTS container_projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    subscription_id UUID NOT NULL REFERENCES container_subscriptions(id) ON DELETE CASCADE,
+    project_name VARCHAR(255) NOT NULL,
+    easypanel_project_name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'active',
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(organization_id, project_name)
+);
+
+-- Container services table
+CREATE TABLE IF NOT EXISTS container_services (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES container_projects(id) ON DELETE CASCADE,
+    service_name VARCHAR(255) NOT NULL,
+    easypanel_service_name VARCHAR(255) NOT NULL,
+    service_type VARCHAR(50) NOT NULL CHECK (service_type IN ('app', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis', 'wordpress', 'box', 'compose')),
+    status VARCHAR(50) DEFAULT 'deploying',
+    cpu_limit DECIMAL(5,2),
+    memory_limit_gb DECIMAL(10,2),
+    storage_limit_gb DECIMAL(10,2),
+    configuration JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(project_id, service_name)
+);
+
+-- Container templates table
+CREATE TABLE IF NOT EXISTS container_templates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    template_name VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    category VARCHAR(100),
+    template_schema JSONB NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Container billing cycles table
+CREATE TABLE IF NOT EXISTS container_billing_cycles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    subscription_id UUID NOT NULL REFERENCES container_subscriptions(id) ON DELETE CASCADE,
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    billing_period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    billing_period_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    monthly_rate DECIMAL(10,2) NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'billed', 'failed', 'refunded')),
+    payment_transaction_id UUID REFERENCES payment_transactions(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Easypanel configuration table
+CREATE TABLE IF NOT EXISTS easypanel_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    api_url VARCHAR(500) NOT NULL,
+    api_key_encrypted TEXT NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    last_connection_test TIMESTAMP WITH TIME ZONE,
+    connection_status VARCHAR(50),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Container-related indexes for performance optimization
+CREATE INDEX IF NOT EXISTS idx_container_subscriptions_org_id ON container_subscriptions(organization_id);
+CREATE INDEX IF NOT EXISTS idx_container_subscriptions_status ON container_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_container_projects_org_id ON container_projects(organization_id);
+CREATE INDEX IF NOT EXISTS idx_container_projects_subscription_id ON container_projects(subscription_id);
+CREATE INDEX IF NOT EXISTS idx_container_services_project_id ON container_services(project_id);
+CREATE INDEX IF NOT EXISTS idx_container_services_status ON container_services(status);
+CREATE INDEX IF NOT EXISTS idx_container_billing_cycles_subscription_id ON container_billing_cycles(subscription_id);
+CREATE INDEX IF NOT EXISTS idx_container_billing_cycles_org_id ON container_billing_cycles(organization_id);
+CREATE INDEX IF NOT EXISTS idx_container_billing_cycles_period ON container_billing_cycles(billing_period_start, billing_period_end);
+CREATE INDEX IF NOT EXISTS idx_container_templates_enabled ON container_templates(enabled);
+
+-- Triggers for updated_at columns on container tables
+CREATE TRIGGER update_container_plans_updated_at
+BEFORE UPDATE ON container_plans
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_container_subscriptions_updated_at
+BEFORE UPDATE ON container_subscriptions
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_container_projects_updated_at
+BEFORE UPDATE ON container_projects
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_container_services_updated_at
+BEFORE UPDATE ON container_services
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_container_templates_updated_at
+BEFORE UPDATE ON container_templates
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_container_billing_cycles_updated_at
+BEFORE UPDATE ON container_billing_cycles
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_easypanel_config_updated_at
+BEFORE UPDATE ON easypanel_config
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

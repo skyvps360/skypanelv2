@@ -27,6 +27,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Activity,
+  Container,
   CreditCard,
   FileText,
   HelpCircle,
@@ -438,6 +439,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         href: "/vps",
         shortcut: isMac ? "⌘V" : "Ctrl+V",
         shortcutKey: "v",
+        requiresShift: false,
+        requiresAlt: false,
+      },
+      {
+        icon: Container,
+        label: "Containers",
+        href: "/containers",
+        shortcut: isMac ? "⌘C" : "Ctrl+C",
+        shortcutKey: "c",
         requiresShift: false,
         requiresAlt: false,
       },

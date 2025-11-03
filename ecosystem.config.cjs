@@ -43,6 +43,28 @@ module.exports = {
       exp_backoff_restart_delay: 2000,
       min_uptime: 5000,
       max_restarts: 10
+    },
+    {
+      name: 'container-billing-scheduler',
+      script: 'scripts/process-container-billing.js',
+      cwd: __dirname,
+      interpreter: 'node',
+      interpreter_args: '--import tsx',
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'development'
+      },
+      env_production: {
+        NODE_ENV: 'production'
+      },
+      instances: 1,
+      autorestart: false,
+      watch: false,
+      cron_restart: '0 2 * * *', // Run daily at 2:00 AM
+      restart_delay: 1000,
+      exp_backoff_restart_delay: 2000,
+      min_uptime: 1000,
+      max_restarts: 3
     }
   ]
 };

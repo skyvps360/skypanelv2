@@ -55,6 +55,18 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import SSHKeys from "./pages/SSHKeys";
 
+// Container pages
+import ContainerDashboard from "./pages/ContainerDashboard";
+import ContainerPlansPage from "./pages/ContainerPlansPage";
+import ProjectDetail from "./pages/ProjectDetail";
+import ServiceDetail from "./pages/ServiceDetail";
+
+// Admin container pages
+import ContainerPlansManagement from "./pages/admin/ContainerPlansManagement";
+import ContainerTemplatesManagement from "./pages/admin/ContainerTemplatesManagement";
+import ContainerMonitoring from "./pages/admin/ContainerMonitoring";
+import EasypanelConfig from "./pages/admin/EasypanelConfig";
+
 // Component to handle impersonation banner display
 function ImpersonationWrapper({ children }: { children: React.ReactNode }) {
   const {
@@ -271,6 +283,38 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <SSHKeys />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/containers"
+          element={
+            <ProtectedRoute>
+              <ContainerDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/containers/plans"
+          element={
+            <ProtectedRoute>
+              <ContainerPlansPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/containers/projects/:projectName"
+          element={
+            <ProtectedRoute>
+              <ProjectDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/containers/projects/:projectName/services/:serviceName"
+          element={
+            <ProtectedRoute>
+              <ServiceDetail />
             </ProtectedRoute>
           }
         />
