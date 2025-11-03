@@ -155,7 +155,7 @@ const extractServiceResources = (service: TemplateService) => {
 
 export const estimateTemplateResources = (template: ContainerTemplate): ResourceUsage => {
   const services = Array.isArray(template.templateSchema?.services)
-    ? template.templateSchema!.services
+    ? template.templateSchema.services
     : [];
 
   if (services.length === 0) {
@@ -196,7 +196,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
 }) => {
   const requirements = estimateTemplateResources(template);
   const services = Array.isArray(template.templateSchema?.services)
-    ? template.templateSchema!.services
+    ? template.templateSchema.services
     : [];
   const categoryLabel = template.category?.trim() || 'General';
   const description = template.description?.trim() || 'Template details coming soon.';
@@ -362,7 +362,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
       categoryLabel: selectedTemplate.category?.trim() || 'General',
       description: selectedTemplate.description?.trim() || 'Template details coming soon.',
       services: Array.isArray(selectedTemplate.templateSchema?.services)
-        ? selectedTemplate.templateSchema!.services
+        ? selectedTemplate.templateSchema.services
         : [],
     };
   }, [selectedTemplate]);

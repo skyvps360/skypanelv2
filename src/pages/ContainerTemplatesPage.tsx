@@ -460,7 +460,6 @@ const ContainerTemplatesPage: React.FC = () => {
                           </div>
                         </div>
                       )}
-                    </div>
 
                     {!hasSubscription ? (
                       <Alert>
