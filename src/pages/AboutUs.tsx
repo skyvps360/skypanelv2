@@ -138,6 +138,13 @@ export default function AboutUs() {
     refetchOnWindowFocus: false,
   });
 
+  const formatStat = (value?: number | null, fallback: string = 'N/A') => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value.toLocaleString();
+    }
+    return fallback;
+  };
+
   return (
     <PublicLayout>
       <div className="container mx-auto max-w-6xl px-4 py-12">
@@ -199,31 +206,31 @@ export default function AboutUs() {
               // Real data
               <>
                 <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{platformStats.users.total.toLocaleString()}</div>
+                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.users?.total)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Users</p>
                 </div>
                 <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{platformStats.organizations.total.toLocaleString()}</div>
+                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.organizations?.total)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Organizations</p>
                 </div>
                 <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{platformStats.vps.total.toLocaleString()}</div>
+                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.vps?.total)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Total VPS Deployed</p>
                 </div>
                 <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{platformStats.containers.total.toLocaleString()}</div>
+                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.containers?.total)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Containers</p>
                 </div>
                 <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{platformStats.support.totalTickets.toLocaleString()}</div>
+                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.support?.totalTickets)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Tickets Handled</p>
                 </div>
                 <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{platformStats.plans.vpsPlans}</div>
+                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.plans?.vpsPlans)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Available VPS Plans</p>
                 </div>
                 <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{platformStats.regions.total || 'N/A'}</div>
+                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.regions?.total)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Supported Regions</p>
                 </div>
               </>

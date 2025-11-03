@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import { containerService } from '@/services/containerService'
+import type { EasypanelConfigRequest } from '@/types/containers'
 
 interface EasypanelConfig {
   id?: string
@@ -59,26 +60,31 @@ export default function EasypanelConfig() {
       toast.success('Easypanel configuration saved successfully')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error?.message || 'Failed to save configuration')
+      const errorMessage = error?.message || error?.response?.data?.error?.message || 'Failed to save configuration'
+      toast.error(errorMessage)
     }
   })
 
   const testConnectionMutation = useMutation({
     mutationFn: containerService.testEasypanelConnection,
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'easypanel-config'] })
+    onSuccess: async (result) => {
+      // Invalidate and refetch to get updated connection status
+      await queryClient.refetchQueries({ queryKey: ['admin', 'easypanel-config'] })
       setTestResult({
         status: 'success',
         message: result.message || 'Connection test successful'
       })
       toast.success('Easypanel connection test successful')
     },
-    onError: (error: any) => {
+    onError: async (error: any) => {
+      // Still refetch to get updated status even on error
+      await queryClient.refetchQueries({ queryKey: ['admin', 'easypanel-config'] })
+      const errorMessage = error?.message || error?.response?.data?.error?.message || 'Connection test failed'
       setTestResult({
         status: 'error',
-        message: error.response?.data?.error?.message || 'Connection test failed'
+        message: errorMessage
       })
-      toast.error(error.response?.data?.error?.message || 'Connection test failed')
+      toast.error(errorMessage)
     }
   })
 
@@ -128,7 +134,7 @@ export default function EasypanelConfig() {
   const handleSaveConfig = () => {
     if (!validateForm()) return
 
-    const configData: any = {
+    const configData: EasypanelConfigRequest = {
       apiUrl: formData.apiUrl.trim()
     }
 
@@ -145,7 +151,7 @@ export default function EasypanelConfig() {
 
     setTestResult({ status: null, message: '' })
     
-    const configData: any = {
+    const configData: EasypanelConfigRequest = {
       apiUrl: formData.apiUrl.trim()
     }
 
@@ -393,10 +399,9 @@ export default function EasypanelConfig() {
                 <p className="font-medium">To configure Easypanel:</p>
                 <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                   <li>Log into your Easypanel instance</li>
-                  <li>Navigate to Settings → API Keys</li>
-                  <li>Create a new API key with full permissions</li>
-                  <li>Copy the API key and paste it above</li>
-                  <li>Enter your Easypanel URL (e.g., https://panel.example.com)</li>
+                  <li>Navigate to Settings → User → Your Admin User → API Keys</li>
+                  <li>Copy The API Key And Paste It Above</li>
+                  <li>Enter Easypanel URL (e.g., https://panel.example.com)</li>
                   <li>Test the connection before saving</li>
                 </ol>
               </div>

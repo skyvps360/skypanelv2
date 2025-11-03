@@ -451,7 +451,7 @@ export interface AdminServicesResponse {
 // Configuration
 export interface EasypanelConfigRequest {
   apiUrl: string;
-  apiKey: string;
+  apiKey?: string; // Optional when updating existing config
 }
 
 export interface EasypanelConfigResponse {

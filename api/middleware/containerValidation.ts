@@ -13,6 +13,7 @@ import {
   formatValidationErrorResponse,
   ERROR_CODES,
 } from '../lib/containerErrors.js';
+import { query } from '../lib/database.js';
 
 // ============================================================
 // Validation Middleware Functions
@@ -496,8 +497,9 @@ export function validateCreateContainerTemplate(req: Request, res: Response, nex
 
 /**
  * Validate Easypanel configuration request
+ * API key is optional when updating existing config, required for new configs
  */
-export function validateEasypanelConfig(req: Request, res: Response, next: NextFunction) {
+export async function validateEasypanelConfig(req: Request, res: Response, next: NextFunction) {
   const errors: ValidationErrorDetail[] = [];
   const { apiUrl, apiKey } = req.body;
 
@@ -520,14 +522,32 @@ export function validateEasypanelConfig(req: Request, res: Response, next: NextF
     }
   }
 
-  // Validate API key
-  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+  // Check if configuration exists to determine if API key is required
+  let existingConfig = null;
+  
+  try {
+    const existingResult = await query(
+      'SELECT id, api_key_encrypted FROM easypanel_config WHERE active = true LIMIT 1'
+    );
+    existingConfig = existingResult.rows.length > 0 ? existingResult.rows[0] : null;
+  } catch (error) {
+    // If we can't check, require API key to be safe
+    console.error('Error checking existing config in validation:', error);
+  }
+
+  // Validate API key - only required if:
+  // 1. No existing config exists (new configuration)
+  // 2. User provided one (validate it)
+  const isNewConfig = !existingConfig;
+  const hasProvidedApiKey = apiKey && typeof apiKey === 'string' && apiKey.trim() !== '';
+
+  if (isNewConfig && !hasProvidedApiKey) {
     errors.push({
       field: 'apiKey',
-      message: 'API key is required',
+      message: 'API key is required for new configuration',
       value: '[REDACTED]',
     });
-  } else if (apiKey.length < 10) {
+  } else if (hasProvidedApiKey && apiKey.trim().length < 10) {
     errors.push({
       field: 'apiKey',
       message: 'API key must be at least 10 characters long',

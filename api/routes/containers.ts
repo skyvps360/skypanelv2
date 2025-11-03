@@ -82,7 +82,7 @@ function handleContainerError(error: any, req: Request, res: Response, next: any
  * Get Easypanel configuration
  * Admin only
  */
-router.get('/admin/config', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+router.get('/admin/config', requireAdminRole, async (_req: AuthenticatedRequest, res: Response, next: any) => {
   try {
     const summary = await easypanelService.getConfigSummary();
 
@@ -138,12 +138,12 @@ router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (r
     if (existingResult.rows.length > 0) {
       // Update existing configuration
       const updateFields = ['api_url = $1', 'updated_at = NOW()'];
-      const updateValues = [apiUrl];
+      const updateValues: any[] = [apiUrl];
       
       // Only update API key if provided
       if (apiKey) {
         const encryptedApiKey = encryptSecret(apiKey);
-        updateFields.push('api_key_encrypted = $' + (updateValues.length + 1));
+        updateFields.push(`api_key_encrypted = $${updateValues.length + 1}`);
         updateValues.push(encryptedApiKey);
       }
       
@@ -197,11 +197,143 @@ router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (r
  * POST /api/containers/admin/config/test
  * Test Easypanel connection
  * Admin only
+ * Accepts optional apiUrl and apiKey in request body to test before saving
  */
 router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
   let activeConfig: Readonly<EasypanelConfig> | null = null;
+  const { apiUrl: testApiUrl, apiKey: testApiKey } = req.body;
 
   try {
+    // If test credentials are provided, test them directly without saving
+    if (testApiUrl || testApiKey) {
+      // Get current config for fallback values
+      easypanelService.resetConfigCache();
+      const currentConfig = await easypanelService.getActiveConfig();
+      
+      const urlToTest = testApiUrl || currentConfig?.apiUrl;
+      const keyToTest = testApiKey || (currentConfig?.source === 'env' ? currentConfig.apiKeyPlain : 
+                                       currentConfig?.apiKeyEncrypted ? decryptSecret(currentConfig.apiKeyEncrypted) : null);
+      
+      if (!urlToTest || !keyToTest) {
+        return res.status(400).json({
+          error: {
+            code: ERROR_CODES.CONFIG_NOT_FOUND,
+            message: 'API URL and API Key are required for testing'
+          }
+        });
+      }
+
+      // Test the connection with provided credentials
+      try {
+        // Normalize URL
+        let baseUrl = urlToTest.replace(/\/+$/, '').replace(/\/api\/trpc$/, '');
+        const testUrl = `${baseUrl}/api/trpc/projects.listProjects`;
+        
+        const response = await fetch(testUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${keyToTest}`,
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          console.error('Easypanel test connection failed:', response.status, errorText);
+          
+          // Update database status to failed if config exists
+          if (currentConfig && currentConfig.source === 'db' && currentConfig.id) {
+            try {
+              await query(
+                `UPDATE easypanel_config 
+                 SET last_connection_test = NOW(), connection_status = 'failed', updated_at = NOW()
+                 WHERE id = $1`,
+                [currentConfig.id]
+              );
+              easypanelService.resetConfigCache();
+            } catch (updateError) {
+              console.error('Failed to update connection status after failed test:', updateError);
+              // Continue even if update fails
+            }
+          }
+          
+          return res.status(400).json({
+            error: {
+              code: ERROR_CODES.EASYPANEL_CONNECTION_FAILED,
+              message: `Failed to connect to Easypanel: ${response.status} ${response.statusText}`,
+              details: { 
+                status: 'failed',
+                statusCode: response.status,
+                error: errorText
+              }
+            }
+          });
+        }
+
+        // Connection successful - update database status if config exists
+        if (currentConfig && currentConfig.source === 'db' && currentConfig.id) {
+          try {
+            await query(
+              `UPDATE easypanel_config 
+               SET last_connection_test = NOW(), connection_status = 'success', updated_at = NOW()
+               WHERE id = $1`,
+              [currentConfig.id]
+            );
+            easypanelService.resetConfigCache();
+          } catch (updateError) {
+            console.error('Failed to update connection status after test:', updateError);
+            // Continue even if update fails
+          }
+        }
+
+        await logActivity({
+          userId: req.user!.id,
+          organizationId: req.user!.organizationId!,
+          eventType: 'container.config.test',
+          entityType: 'easypanel_config',
+          entityId: currentConfig?.source === 'db' ? currentConfig.id : null,
+          status: 'success',
+          metadata: { status: 'success', apiUrl: urlToTest, testMode: true }
+        });
+
+        return res.json({
+          success: true,
+          message: 'Connection to Easypanel successful',
+          status: 'success'
+        });
+      } catch (testError: any) {
+        console.error('Easypanel test connection error:', testError);
+        
+        // Update database status to failed if config exists
+        if (currentConfig && currentConfig.source === 'db' && currentConfig.id) {
+          try {
+            await query(
+              `UPDATE easypanel_config 
+               SET last_connection_test = NOW(), connection_status = 'failed', updated_at = NOW()
+               WHERE id = $1`,
+              [currentConfig.id]
+            );
+            easypanelService.resetConfigCache();
+          } catch (updateError) {
+            console.error('Failed to update connection status after failed test:', updateError);
+            // Continue even if update fails
+          }
+        }
+        
+        return res.status(400).json({
+          error: {
+            code: ERROR_CODES.EASYPANEL_CONNECTION_FAILED,
+            message: 'Failed to connect to Easypanel. Please check your API URL and key.',
+            details: { 
+              status: 'failed',
+              error: testError.message
+            }
+          }
+        });
+      }
+    }
+
+    // Otherwise, test the saved configuration
     easypanelService.resetConfigCache();
     activeConfig = await easypanelService.getActiveConfig();
 

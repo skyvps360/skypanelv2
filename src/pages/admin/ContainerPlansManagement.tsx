@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Edit, Trash2, Power, PowerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,164 @@ const initialFormData: PlanFormData = {
   maxStorageGb: '',
   maxContainers: ''
 }
+
+interface PlanFormProps {
+  isEdit?: boolean
+  formData: PlanFormData
+  formErrors: Partial<PlanFormData>
+  onNameChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onPriceChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onDescriptionChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  onCpuCoresChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onMemoryChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onStorageChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onContainersChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onCancel: () => void
+  onSubmit: () => void
+  isPending: boolean
+}
+
+const PlanForm = React.memo(({ 
+  isEdit = false,
+  formData,
+  formErrors,
+  onNameChange,
+  onPriceChange,
+  onDescriptionChange,
+  onCpuCoresChange,
+  onMemoryChange,
+  onStorageChange,
+  onContainersChange,
+  onCancel,
+  onSubmit,
+  isPending
+}: PlanFormProps) => (
+  <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label htmlFor="name">Plan Name</Label>
+        <Input
+          id="name"
+          value={formData.name}
+          onChange={onNameChange}
+          placeholder="e.g., Starter Plan"
+        />
+        {formErrors.name && (
+          <p className="text-sm text-red-500">{formErrors.name}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="priceMonthly">Monthly Price ($)</Label>
+        <Input
+          id="priceMonthly"
+          type="number"
+          step="0.01"
+          min="0"
+          value={formData.priceMonthly}
+          onChange={onPriceChange}
+          placeholder="9.99"
+        />
+        {formErrors.priceMonthly && (
+          <p className="text-sm text-red-500">{formErrors.priceMonthly}</p>
+        )}
+      </div>
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="description">Description</Label>
+      <Textarea
+        id="description"
+        value={formData.description}
+        onChange={onDescriptionChange}
+        placeholder="Plan description and features"
+        rows={3}
+      />
+      {formErrors.description && (
+        <p className="text-sm text-red-500">{formErrors.description}</p>
+      )}
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label htmlFor="maxCpuCores">Max CPU Cores</Label>
+        <Input
+          id="maxCpuCores"
+          type="number"
+          min="1"
+          value={formData.maxCpuCores}
+          onChange={onCpuCoresChange}
+          placeholder="2"
+        />
+        {formErrors.maxCpuCores && (
+          <p className="text-sm text-red-500">{formErrors.maxCpuCores}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="maxMemoryGb">Max Memory (GB)</Label>
+        <Input
+          id="maxMemoryGb"
+          type="number"
+          min="1"
+          value={formData.maxMemoryGb}
+          onChange={onMemoryChange}
+          placeholder="4"
+        />
+        {formErrors.maxMemoryGb && (
+          <p className="text-sm text-red-500">{formErrors.maxMemoryGb}</p>
+        )}
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label htmlFor="maxStorageGb">Max Storage (GB)</Label>
+        <Input
+          id="maxStorageGb"
+          type="number"
+          min="1"
+          value={formData.maxStorageGb}
+          onChange={onStorageChange}
+          placeholder="20"
+        />
+        {formErrors.maxStorageGb && (
+          <p className="text-sm text-red-500">{formErrors.maxStorageGb}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="maxContainers">Max Containers</Label>
+        <Input
+          id="maxContainers"
+          type="number"
+          min="1"
+          value={formData.maxContainers}
+          onChange={onContainersChange}
+          placeholder="5"
+        />
+        {formErrors.maxContainers && (
+          <p className="text-sm text-red-500">{formErrors.maxContainers}</p>
+        )}
+      </div>
+    </div>
+
+    <div className="flex justify-end space-x-2 pt-4">
+      <Button
+        variant="outline"
+        onClick={onCancel}
+      >
+        Cancel
+      </Button>
+      <Button
+        onClick={onSubmit}
+        disabled={isPending}
+      >
+        {isEdit ? 'Update Plan' : 'Create Plan'}
+      </Button>
+    </div>
+  </div>
+))
 
 export default function ContainerPlansManagement() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -192,141 +350,45 @@ export default function ContainerPlansManagement() {
     }).format(amount)
   }
 
-  const PlanForm = ({ isEdit = false }: { isEdit?: boolean }) => (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="name">Plan Name</Label>
-          <Input
-            id="name"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="e.g., Starter Plan"
-          />
-          {formErrors.name && (
-            <p className="text-sm text-red-500">{formErrors.name}</p>
-          )}
-        </div>
+  // Memoize form handlers to prevent recreating them on every render
+  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, name: e.target.value }))
+  }, [])
 
-        <div className="space-y-2">
-          <Label htmlFor="priceMonthly">Monthly Price ($)</Label>
-          <Input
-            id="priceMonthly"
-            type="number"
-            step="0.01"
-            min="0"
-            value={formData.priceMonthly}
-            onChange={(e) => setFormData({ ...formData, priceMonthly: e.target.value })}
-            placeholder="9.99"
-          />
-          {formErrors.priceMonthly && (
-            <p className="text-sm text-red-500">{formErrors.priceMonthly}</p>
-          )}
-        </div>
-      </div>
+  const handlePriceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, priceMonthly: e.target.value }))
+  }, [])
 
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea
-          id="description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="Plan description and features"
-          rows={3}
-        />
-        {formErrors.description && (
-          <p className="text-sm text-red-500">{formErrors.description}</p>
-        )}
-      </div>
+  const handleDescriptionChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setFormData(prev => ({ ...prev, description: e.target.value }))
+  }, [])
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="maxCpuCores">Max CPU Cores</Label>
-          <Input
-            id="maxCpuCores"
-            type="number"
-            min="1"
-            value={formData.maxCpuCores}
-            onChange={(e) => setFormData({ ...formData, maxCpuCores: e.target.value })}
-            placeholder="2"
-          />
-          {formErrors.maxCpuCores && (
-            <p className="text-sm text-red-500">{formErrors.maxCpuCores}</p>
-          )}
-        </div>
+  const handleCpuCoresChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, maxCpuCores: e.target.value }))
+  }, [])
 
-        <div className="space-y-2">
-          <Label htmlFor="maxMemoryGb">Max Memory (GB)</Label>
-          <Input
-            id="maxMemoryGb"
-            type="number"
-            min="1"
-            value={formData.maxMemoryGb}
-            onChange={(e) => setFormData({ ...formData, maxMemoryGb: e.target.value })}
-            placeholder="4"
-          />
-          {formErrors.maxMemoryGb && (
-            <p className="text-sm text-red-500">{formErrors.maxMemoryGb}</p>
-          )}
-        </div>
-      </div>
+  const handleMemoryChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, maxMemoryGb: e.target.value }))
+  }, [])
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="maxStorageGb">Max Storage (GB)</Label>
-          <Input
-            id="maxStorageGb"
-            type="number"
-            min="1"
-            value={formData.maxStorageGb}
-            onChange={(e) => setFormData({ ...formData, maxStorageGb: e.target.value })}
-            placeholder="20"
-          />
-          {formErrors.maxStorageGb && (
-            <p className="text-sm text-red-500">{formErrors.maxStorageGb}</p>
-          )}
-        </div>
+  const handleStorageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, maxStorageGb: e.target.value }))
+  }, [])
 
-        <div className="space-y-2">
-          <Label htmlFor="maxContainers">Max Containers</Label>
-          <Input
-            id="maxContainers"
-            type="number"
-            min="1"
-            value={formData.maxContainers}
-            onChange={(e) => setFormData({ ...formData, maxContainers: e.target.value })}
-            placeholder="5"
-          />
-          {formErrors.maxContainers && (
-            <p className="text-sm text-red-500">{formErrors.maxContainers}</p>
-          )}
-        </div>
-      </div>
+  const handleContainersChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, maxContainers: e.target.value }))
+  }, [])
 
-      <div className="flex justify-end space-x-2 pt-4">
-        <Button
-          variant="outline"
-          onClick={() => {
-            if (isEdit) {
-              setIsEditDialogOpen(false)
-              setEditingPlan(null)
-            } else {
-              setIsCreateDialogOpen(false)
-            }
-            resetForm()
-          }}
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={isEdit ? handleUpdatePlan : handleCreatePlan}
-          disabled={isEdit ? updatePlanMutation.isPending : createPlanMutation.isPending}
-        >
-          {isEdit ? 'Update Plan' : 'Create Plan'}
-        </Button>
-      </div>
-    </div>
-  )
+  const handleCancel = useCallback(() => {
+    if (isEditDialogOpen) {
+      setIsEditDialogOpen(false)
+      setEditingPlan(null)
+    } else {
+      setIsCreateDialogOpen(false)
+    }
+    resetForm()
+  }, [isEditDialogOpen])
+
 
   return (
     <div className="space-y-6">
@@ -349,7 +411,20 @@ export default function ContainerPlansManagement() {
             <DialogHeader>
               <DialogTitle>Create Container Plan</DialogTitle>
             </DialogHeader>
-            <PlanForm />
+            <PlanForm
+              formData={formData}
+              formErrors={formErrors}
+              onNameChange={handleNameChange}
+              onPriceChange={handlePriceChange}
+              onDescriptionChange={handleDescriptionChange}
+              onCpuCoresChange={handleCpuCoresChange}
+              onMemoryChange={handleMemoryChange}
+              onStorageChange={handleStorageChange}
+              onContainersChange={handleContainersChange}
+              onCancel={handleCancel}
+              onSubmit={handleCreatePlan}
+              isPending={createPlanMutation.isPending}
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -452,7 +527,21 @@ export default function ContainerPlansManagement() {
           <DialogHeader>
             <DialogTitle>Edit Container Plan</DialogTitle>
           </DialogHeader>
-          <PlanForm isEdit />
+          <PlanForm
+            isEdit
+            formData={formData}
+            formErrors={formErrors}
+            onNameChange={handleNameChange}
+            onPriceChange={handlePriceChange}
+            onDescriptionChange={handleDescriptionChange}
+            onCpuCoresChange={handleCpuCoresChange}
+            onMemoryChange={handleMemoryChange}
+            onStorageChange={handleStorageChange}
+            onContainersChange={handleContainersChange}
+            onCancel={handleCancel}
+            onSubmit={handleUpdatePlan}
+            isPending={updatePlanMutation.isPending}
+          />
         </DialogContent>
       </Dialog>
     </div>

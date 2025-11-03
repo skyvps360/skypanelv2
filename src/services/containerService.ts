@@ -893,10 +893,17 @@ class ContainerService {
     error?: string;
   }> {
     try {
-      const response = await apiClient.get<EasypanelConfigResponse>('/containers/admin/config');
+      const response = await apiClient.get<EasypanelConfigResponse | { config: EasypanelConfigResponse }>(
+        '/containers/admin/config'
+      );
+
+      const configData =
+        response && typeof response === 'object' && 'config' in response
+          ? (response as { config: EasypanelConfigResponse }).config
+          : (response as EasypanelConfigResponse);
       return {
         success: true,
-        config: response,
+        config: configData,
       };
     } catch (error) {
       console.error('Get Easypanel config error:', error);
@@ -912,17 +919,21 @@ class ContainerService {
    */
   async updateEasypanelConfig(config: EasypanelConfigRequest): Promise<{
     success: boolean;
-    error?: string;
+    message?: string;
   }> {
     try {
-      await apiClient.post('/containers/admin/config', config);
-      return { success: true };
-    } catch (error) {
-      console.error('Update Easypanel config error:', error);
+      const response = await apiClient.post<{ success: boolean; message?: string }>('/containers/admin/config', config);
+      if (response.success === false) {
+        throw new Error(response.message || 'Failed to update Easypanel configuration');
+      }
       return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update Easypanel configuration',
+        success: true,
+        message: response.message,
       };
+    } catch (error: any) {
+      console.error('Update Easypanel config error:', error);
+      // Re-throw to let React Query handle it
+      throw error;
     }
   }
 
@@ -933,21 +944,21 @@ class ContainerService {
     success: boolean;
     message?: string;
     user?: EasypanelUser;
-    error?: string;
   }> {
     try {
-      const response = await apiClient.post<ConnectionTestResponse>('/containers/admin/config/test', config);
+      const response = await apiClient.post<ConnectionTestResponse>('/containers/admin/config/test', config || {});
+      if (response.success === false) {
+        throw new Error(response.message || 'Connection test failed');
+      }
       return {
-        success: response.success,
+        success: true,
         message: response.message,
         user: response.user,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Test Easypanel connection error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to test Easypanel connection',
-      };
+      // Re-throw to let React Query handle it
+      throw error;
     }
   }
 

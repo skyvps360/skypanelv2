@@ -275,12 +275,12 @@ class EasypanelService {
       throw createConfigError('Easypanel not configured');
     }
 
-    // Ensure URL ends with /api/trpc
+    // Remove trailing slashes and ensure we have the base URL
     let baseUrl = config.apiUrl.replace(/\/+$/, '');
-    if (!baseUrl.endsWith('/api/trpc')) {
-      baseUrl += '/api/trpc';
-    }
-
+    
+    // Remove /api/trpc if it's already in the URL
+    baseUrl = baseUrl.replace(/\/api\/trpc$/, '');
+    
     return baseUrl;
   }
 
@@ -301,18 +301,25 @@ class EasypanelService {
       'Content-Type': 'application/json',
     };
 
+    let url = `${baseUrl}/api/trpc/${endpoint}`;
     const requestOptions: RequestInit = {
       method,
       headers,
     };
 
-    // For TRPC-style requests, wrap body in json property
-    if (body && method !== 'GET') {
+    // For GET requests with parameters, add to query string
+    if (method === 'GET' && body) {
+      const params = new URLSearchParams();
+      params.append('input', JSON.stringify({ json: body }));
+      url += `?${params.toString()}`;
+    }
+    // For POST requests, wrap body in json property
+    else if (body && method !== 'GET') {
       requestOptions.body = JSON.stringify({ json: body });
     }
 
     try {
-      const response = await fetch(`${baseUrl}/${endpoint}`, requestOptions);
+      const response = await fetch(url, requestOptions);
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
@@ -341,7 +348,8 @@ class EasypanelService {
    */
   async testConnection(): Promise<boolean> {
     try {
-      await this.getUser();
+      // Use listProjects as a simple test endpoint
+      await this.makeRequest('projects.listProjects', { method: 'GET' });
       return true;
     } catch (error) {
       console.error('Easypanel connection test failed:', error);
@@ -350,21 +358,16 @@ class EasypanelService {
   }
 
   /**
-   * Get current user information
+   * Get current user information (deprecated - not available in Easypanel API)
    */
   async getUser(): Promise<EasypanelUser> {
-    try {
-      const data = await this.makeRequest('auth.getUser');
-      
-      return {
-        id: data.id || '',
-        email: data.email || '',
-        name: data.name || data.email || '',
-      };
-    } catch (error) {
-      console.error('Error fetching Easypanel user:', error);
-      throw error;
-    }
+    // This endpoint doesn't exist in Easypanel API
+    // Return a placeholder for compatibility
+    return {
+      id: 'easypanel-user',
+      email: 'admin@easypanel',
+      name: 'Easypanel Admin',
+    };
   }
 
   // ============================================================
@@ -376,7 +379,7 @@ class EasypanelService {
    */
   async listProjects(): Promise<EasypanelProject[]> {
     try {
-      const data = await this.makeRequest('projects.list');
+      const data = await this.makeRequest('projects.listProjects', { method: 'GET' });
       
       if (!Array.isArray(data)) {
         return [];
@@ -398,7 +401,7 @@ class EasypanelService {
    */
   async listProjectsAndServices(): Promise<EasypanelProjectWithServices[]> {
     try {
-      const data = await this.makeRequest('projects.listProjectsAndServices');
+      const data = await this.makeRequest('projects.listProjectsAndServices', { method: 'GET' });
       
       if (!Array.isArray(data)) {
         return [];
@@ -428,7 +431,8 @@ class EasypanelService {
   async inspectProject(projectName: string): Promise<EasypanelProjectDetail> {
     try {
       const data = await this.makeRequest('projects.inspectProject', {
-        body: { name: projectName }
+        method: 'GET',
+        body: { projectName }
       });
 
       return {
@@ -533,6 +537,7 @@ class EasypanelService {
   async inspectAppService(projectName: string, serviceName: string): Promise<AppServiceDetail> {
     try {
       const data = await this.makeRequest('services.app.inspectService', {
+        method: 'GET',
         body: { 
           projectName,
           serviceName 
@@ -809,7 +814,8 @@ class EasypanelService {
   async getDockerContainers(serviceName: string): Promise<DockerContainer[]> {
     try {
       const data = await this.makeRequest('projects.getDockerContainers', {
-        body: { serviceName }
+        method: 'GET',
+        body: { service: serviceName }
       });
 
       if (!Array.isArray(data)) {
@@ -835,7 +841,8 @@ class EasypanelService {
    */
   async getServiceError(projectName: string, serviceName: string): Promise<ServiceError | null> {
     try {
-      const data = await this.makeRequest('services.getServiceError', {
+      const data = await this.makeRequest('services.common.getServiceError', {
+        method: 'GET',
         body: { 
           projectName,
           serviceName 
