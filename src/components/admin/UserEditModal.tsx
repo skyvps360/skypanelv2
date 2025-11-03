@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,7 +30,7 @@ interface User {
 }
 
 interface UserEditModalProps {
-  user: User;
+  user: User | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -49,15 +49,28 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
   onSuccess,
 }) => {
   const { token } = useAuth();
-  const [formData, setFormData] = useState({
-    name: user.name,
-    email: user.email,
-    role: user.role,
-  });
+  const emptyForm = useMemo(() => ({ name: '', email: '', role: 'user' }), []);
+  const [formData, setFormData] = useState(() =>
+    user
+      ? { name: user.name, email: user.email, role: user.role }
+      : emptyForm
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (user) {
+      setFormData({ name: user.name, email: user.email, role: user.role });
+    } else {
+      setFormData(emptyForm);
+    }
+  }, [user, emptyForm]);
 
   const updateUserMutation = useMutation({
     mutationFn: async (data: UpdateUserRequest) => {
+      if (!user) {
+        throw new Error('No user selected');
+      }
+
       const response = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PUT',
         headers: {
@@ -109,6 +122,11 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!user) {
+      toast.error('No user selected to update');
+      return;
+    }
+
     if (!validateForm()) {
       return;
     }
@@ -139,15 +157,18 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
   };
 
   const handleClose = () => {
-    if (!updateUserMutation.isPending) {
-      setFormData({
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      });
-      setErrors({});
-      onClose();
+    if (updateUserMutation.isPending) {
+      return;
     }
+
+    if (user) {
+      setFormData({ name: user.name, email: user.email, role: user.role });
+    } else {
+      setFormData(emptyForm);
+    }
+
+    setErrors({});
+    onClose();
   };
 
   return (
@@ -161,6 +182,12 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!user && (
+            <p className="text-sm text-muted-foreground">
+              Select a user to edit their details.
+            </p>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input
@@ -168,7 +195,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Enter user name"
-              disabled={updateUserMutation.isPending}
+              disabled={updateUserMutation.isPending || !user}
             />
             {errors.name && (
               <p className="text-sm text-red-500">{errors.name}</p>
@@ -183,7 +210,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="Enter email address"
-              disabled={updateUserMutation.isPending}
+              disabled={updateUserMutation.isPending || !user}
             />
             {errors.email && (
               <p className="text-sm text-red-500">{errors.email}</p>
@@ -195,7 +222,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
             <Select
               value={formData.role}
               onValueChange={(value) => setFormData({ ...formData, role: value })}
-              disabled={updateUserMutation.isPending}
+              disabled={updateUserMutation.isPending || !user}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select role" />
@@ -221,7 +248,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
             </Button>
             <Button
               type="submit"
-              disabled={updateUserMutation.isPending}
+              disabled={updateUserMutation.isPending || !user}
             >
               {updateUserMutation.isPending ? (
                 <>
