@@ -5,11 +5,11 @@
 
 import { query } from '../lib/database.js';
 import { decryptSecret } from '../lib/crypto.js';
+import { config as appConfig } from '../config/index.js';
 import { 
   ContainerServiceError, 
   transformEasypanelError, 
   createConfigError, 
-  createConnectionError,
   ERROR_CODES 
 } from '../lib/containerErrors.js';
 
@@ -162,12 +162,14 @@ export interface ServiceError {
 }
 
 export interface EasypanelConfig {
-  id: string;
+  id: string | null;
   apiUrl: string;
-  apiKeyEncrypted: string;
+  apiKeyEncrypted?: string;
+  apiKeyPlain?: string;
   active: boolean;
-  lastConnectionTest?: string;
-  connectionStatus?: string;
+  lastConnectionTest?: string | null;
+  connectionStatus?: string | null;
+  source: 'db' | 'env';
 }
 
 // ============================================================
@@ -192,7 +194,22 @@ class EasypanelService {
       );
 
       if (result.rows.length === 0) {
-        this.config = null;
+        const envUrl = appConfig.EASYPANEL_API_URL?.trim();
+        const envKey = appConfig.EASYPANEL_API_KEY?.trim();
+
+        if (envUrl && envKey) {
+          this.config = {
+            id: null,
+            apiUrl: envUrl,
+            apiKeyPlain: envKey,
+            active: true,
+            lastConnectionTest: null,
+            connectionStatus: 'env-config',
+            source: 'env',
+          };
+        } else {
+          this.config = null;
+        }
       } else {
         const row = result.rows[0];
         this.config = {
@@ -202,6 +219,7 @@ class EasypanelService {
           active: row.active,
           lastConnectionTest: row.last_connection_test,
           connectionStatus: row.connection_status,
+          source: 'db',
         };
       }
 
@@ -228,6 +246,17 @@ class EasypanelService {
     }
 
     try {
+      if (config.source === 'env') {
+        if (!config.apiKeyPlain) {
+          throw createConfigError('Easypanel API key missing in environment configuration');
+        }
+        return config.apiKeyPlain;
+      }
+
+      if (!config.apiKeyEncrypted) {
+        throw createConfigError('Easypanel API key not set');
+      }
+
       return decryptSecret(config.apiKeyEncrypted);
     } catch (error) {
       console.error('Error decrypting Easypanel API key:', error);
@@ -848,9 +877,44 @@ class EasypanelService {
     try {
       const config = await this.loadConfig();
       return config !== null;
-    } catch (error) {
+    } catch {
       return false;
     }
+  }
+
+  /**
+   * Expose the active configuration without sensitive fields
+   */
+  async getConfigSummary(): Promise<{
+    apiUrl: string;
+    hasApiKey: boolean;
+    lastConnectionTest: string | null;
+    connectionStatus: string | null;
+    source: 'db' | 'env';
+  } | null> {
+    const config = await this.loadConfig();
+
+    if (!config) {
+      return null;
+    }
+
+    return {
+      apiUrl: config.apiUrl,
+      hasApiKey: config.source === 'env'
+        ? Boolean(config.apiKeyPlain)
+        : Boolean(config.apiKeyEncrypted),
+      lastConnectionTest: config.lastConnectionTest ?? null,
+      connectionStatus: config.connectionStatus ?? (config.source === 'env' ? 'env-config' : null),
+      source: config.source,
+    };
+  }
+
+  /**
+   * Get the full active configuration for internal use
+   */
+  async getActiveConfig(): Promise<Readonly<EasypanelConfig> | null> {
+    const config = await this.loadConfig();
+    return config ? { ...config } : null;
   }
 }
 

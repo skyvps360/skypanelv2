@@ -710,7 +710,18 @@ class ApiClient {
 
       try {
         const errorData = JSON.parse(errorText);
-        errorMessage = errorData.message || errorData.error || errorMessage;
+        const nestedMessage =
+          (typeof errorData?.message === "string" && errorData.message) ||
+          (typeof errorData?.error === "string" && errorData.error) ||
+          (typeof errorData?.error?.message === "string" && errorData.error.message) ||
+          errorMessage;
+
+        const codeSuffix =
+          typeof errorData?.error?.code === "string"
+            ? ` (${errorData.error.code})`
+            : "";
+
+        errorMessage = `${nestedMessage}${codeSuffix}`.trim();
       } catch {
         // If not JSON, use the text as error message
         errorMessage = errorText || errorMessage;

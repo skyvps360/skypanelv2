@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity,
@@ -128,6 +129,8 @@ const faqs = [
 ];
 
 export default function Home() {
+  const [openFaq, setOpenFaq] = useState<string | null>(faqs.length ? faqs[0].question : null);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <MarketingNavbar />
@@ -384,7 +387,13 @@ export default function Home() {
                 Everything you need to know to feel confident migrating your workloads to SkyPanel.
               </p>
             </div>
-            <Accordion type="single" collapsible className="mt-12 space-y-4">
+            <Accordion
+              type="single"
+              collapsible
+              value={openFaq ?? undefined}
+              onValueChange={(value) => setOpenFaq(value || null)}
+              className="mt-12 space-y-4"
+            >
               {faqs.map((faq) => (
                 <AccordionItem key={faq.question} value={faq.question} className="overflow-hidden rounded-2xl border border-border/60 bg-background">
                   <AccordionTrigger className="px-6 py-4 text-left text-base font-semibold hover:text-primary">

@@ -17,7 +17,8 @@ interface EasypanelConfig {
   hasApiKey?: boolean
   active?: boolean
   lastConnectionTest?: string
-  connectionStatus?: 'success' | 'failed' | 'pending' | 'connected'
+  connectionStatus?: 'success' | 'failed' | 'pending' | 'connected' | 'env-config'
+  source?: 'db' | 'env' | 'none'
 }
 
 interface ConfigFormData {
@@ -196,6 +197,13 @@ export default function EasypanelConfig() {
             Pending
           </Badge>
         )
+      case 'env-config':
+        return (
+          <Badge variant="secondary">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Environment Config
+          </Badge>
+        )
       default:
         return null
     }
@@ -355,9 +363,20 @@ export default function EasypanelConfig() {
 
                   <div className="space-y-2">
                     <Label>Configuration Status</Label>
-                    <Badge variant={config?.connectionStatus === 'success' || config?.connectionStatus === 'connected' ? 'default' : 'secondary'}>
-                      {config?.connectionStatus === 'success' || config?.connectionStatus === 'connected' ? 'Active' : 'Inactive'}
+                    <Badge
+                      variant={config?.connectionStatus === 'success' || config?.connectionStatus === 'connected' || config?.connectionStatus === 'env-config' ? 'default' : 'secondary'}
+                    >
+                      {config?.connectionStatus === 'env-config'
+                        ? 'Provided via environment'
+                        : config?.connectionStatus === 'success' || config?.connectionStatus === 'connected'
+                          ? 'Active'
+                          : 'Inactive'}
                     </Badge>
+                    {config?.source === 'env' && (
+                      <p className="text-xs text-muted-foreground">
+                        This connection uses credentials from server environment variables.
+                      </p>
+                    )}
                   </div>
                 </>
               )}

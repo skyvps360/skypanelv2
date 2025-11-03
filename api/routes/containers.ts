@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { authenticateToken, requireOrganization, requireAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import { query } from '../lib/database.js';
 import { encryptSecret, decryptSecret } from '../lib/crypto.js';
-import { easypanelService } from '../services/easypanelService.js';
+import { easypanelService, type EasypanelConfig } from '../services/easypanelService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { ContainerPlanService } from '../services/containerPlanService.js';
 import { ResourceQuotaService } from '../services/resourceQuotaService.js';
@@ -84,39 +84,36 @@ function handleContainerError(error: any, req: Request, res: Response, next: any
  */
 router.get('/admin/config', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
   try {
-    const result = await query(
-      'SELECT api_url, last_connection_test, connection_status FROM easypanel_config WHERE active = true ORDER BY updated_at DESC LIMIT 1'
-    );
+    const summary = await easypanelService.getConfigSummary();
 
-    if (result.rows.length === 0) {
+    if (!summary) {
       return res.json({
         config: {
           apiUrl: '',
           hasApiKey: false,
           lastConnectionTest: null,
-          connectionStatus: null
+          connectionStatus: null,
+          source: 'none'
         }
       });
     }
 
-    const config = result.rows[0];
-    
-    // Normalize connection status to match frontend expectations
-    let normalizedStatus = null;
-    if (config.connection_status === 'connected') {
+    let normalizedStatus: string | null = null;
+    if (summary.connectionStatus === 'connected') {
       normalizedStatus = 'success';
-    } else if (config.connection_status === 'failed') {
+    } else if (summary.connectionStatus === 'failed') {
       normalizedStatus = 'failed';
-    } else if (config.connection_status) {
-      normalizedStatus = config.connection_status;
+    } else if (summary.connectionStatus) {
+      normalizedStatus = summary.connectionStatus;
     }
-    
+
     res.json({
       config: {
-        apiUrl: config.api_url || '',
-        hasApiKey: true, // Don't expose the actual key
-        lastConnectionTest: config.last_connection_test,
-        connectionStatus: normalizedStatus
+        apiUrl: summary.apiUrl,
+        hasApiKey: summary.hasApiKey,
+        lastConnectionTest: summary.lastConnectionTest,
+        connectionStatus: normalizedStatus,
+        source: summary.source
       }
     });
   } catch (error) {
@@ -177,6 +174,7 @@ router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (r
     }
 
     // Log the configuration update
+    easypanelService.resetConfigCache();
     await logActivity({
       userId: req.user!.id,
       organizationId: req.user!.organizationId!,
@@ -201,13 +199,13 @@ router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (r
  * Admin only
  */
 router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
-  try {
-    // Get current configuration
-    const configResult = await query(
-      'SELECT api_url, api_key_encrypted FROM easypanel_config WHERE active = true ORDER BY updated_at DESC LIMIT 1'
-    );
+  let activeConfig: Readonly<EasypanelConfig> | null = null;
 
-    if (configResult.rows.length === 0) {
+  try {
+    easypanelService.resetConfigCache();
+    activeConfig = await easypanelService.getActiveConfig();
+
+    if (!activeConfig) {
       throw new ContainerServiceError(
         ERROR_CODES.CONFIG_NOT_FOUND,
         'No Easypanel configuration found. Please configure API credentials first.',
@@ -215,68 +213,60 @@ router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedReq
       );
     }
 
-    const config = configResult.rows[0];
-
-    // Test connection using the service instance
     const connectionTest = await easypanelService.testConnection();
-
-    // Update connection test results with normalized status
     const status = connectionTest ? 'success' : 'failed';
-    await query(
-      `UPDATE easypanel_config 
-       SET last_connection_test = NOW(), connection_status = $1, updated_at = NOW()
-       WHERE api_url = $2 AND active = true`,
-      [status, config.api_url]
-    );
+
+    if (activeConfig.source === 'db' && activeConfig.id) {
+      await query(
+        `UPDATE easypanel_config 
+         SET last_connection_test = NOW(), connection_status = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [status, activeConfig.id]
+      );
+    }
+
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'container.config.test',
+      entityType: 'easypanel_config',
+      entityId: activeConfig.source === 'db' ? activeConfig.id : null,
+      status: connectionTest ? 'success' : 'error',
+      metadata: { status, apiUrl: activeConfig.apiUrl, source: activeConfig.source }
+    });
+
+    easypanelService.resetConfigCache();
 
     if (connectionTest) {
-      // Log successful connection test
-      await logActivity({
-        userId: req.user!.id,
-        organizationId: req.user!.organizationId!,
-        eventType: 'container.config.test',
-        entityType: 'easypanel_config',
-        entityId: null,
-        status: 'success',
-        metadata: { status: 'success', apiUrl: config.api_url }
-      });
-
-      res.json({
+      return res.json({
         success: true,
         message: 'Connection to Easypanel successful',
         status: 'success'
       });
-    } else {
-      // Log failed connection test
-      await logActivity({
-        userId: req.user!.id,
-        organizationId: req.user!.organizationId!,
-        eventType: 'container.config.test',
-        entityType: 'easypanel_config',
-        entityId: null,
-        status: 'error',
-        metadata: { status: 'failed', apiUrl: config.api_url }
-      });
-
-      throw new ContainerServiceError(
-        ERROR_CODES.EASYPANEL_CONNECTION_FAILED,
-        'Failed to connect to Easypanel. Please check your API URL and key.',
-        400,
-        { status: 'failed' }
-      );
     }
+
+    return res.status(400).json({
+      error: {
+        code: ERROR_CODES.EASYPANEL_CONNECTION_FAILED,
+        message: 'Failed to connect to Easypanel. Please check your API URL and key.',
+        details: { status: 'failed' }
+      }
+    });
   } catch (error) {
-    // Update connection status to failed
-    try {
-      await query(
-        `UPDATE easypanel_config 
-         SET last_connection_test = NOW(), connection_status = 'failed', updated_at = NOW()
-         WHERE active = true`
-      );
-    } catch (updateError) {
-      console.error('Failed to update connection status:', updateError);
+    if (activeConfig && activeConfig.source === 'db' && activeConfig.id) {
+      try {
+        await query(
+          `UPDATE easypanel_config 
+           SET last_connection_test = NOW(), connection_status = 'failed', updated_at = NOW()
+           WHERE id = $1`,
+          [activeConfig.id]
+        );
+      } catch (updateError) {
+        console.error('Failed to update connection status:', updateError);
+      }
     }
 
+    easypanelService.resetConfigCache();
     next(error);
   }
 });

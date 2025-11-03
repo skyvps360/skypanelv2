@@ -43,6 +43,8 @@ export interface Config {
   SSH_CRED_SECRET?: string;
   CONTACT_FORM_RECIPIENT?: string;
   COMPANY_BRAND_NAME: string;
+  EASYPANEL_API_URL?: string;
+  EASYPANEL_API_KEY?: string;
 }
 
 /**
@@ -160,6 +162,8 @@ function getConfig(): Config {
       process.env.COMPANY_BRAND_NAME?.trim() ||
       process.env.COMPANY_NAME?.trim() ||
       'SkyPanelV2',
+    EASYPANEL_API_URL: process.env.EASYPANEL_API_URL,
+    EASYPANEL_API_KEY: process.env.EASYPANEL_API_KEY,
   };
 
   // Debug logging

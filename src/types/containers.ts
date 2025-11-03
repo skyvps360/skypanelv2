@@ -459,6 +459,7 @@ export interface EasypanelConfigResponse {
   hasApiKey?: boolean;
   connectionStatus?: string;
   lastConnectionTest?: string;
+  source?: 'db' | 'env' | 'none';
 }
 
 export interface ConnectionTestResponse {
