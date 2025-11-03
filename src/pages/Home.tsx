@@ -1,20 +1,16 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity,
-  ArrowRight,
   ArrowUpRight,
   Check,
   Cloud,
   Globe,
   Layers,
-  Menu,
   Server,
   ShieldCheck,
   Sparkles,
   Wallet,
-  Zap,
-  X
+  Zap
 } from 'lucide-react';
 import { BRAND_NAME } from '../lib/brand';
 import { Button } from '@/components/ui/button';
@@ -26,14 +22,7 @@ import {
   AccordionItem,
   AccordionTrigger
 } from '@/components/ui/accordion';
-
-const navLinks = [
-  { label: 'Platform', href: '#platform' },
-  { label: 'Capabilities', href: '#capabilities' },
-  { label: 'Solutions', href: '#solutions' },
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'Status', href: '/status' }
-];
+import MarketingNavbar from '@/components/MarketingNavbar';
 
 const featureHighlights = [
   {
@@ -139,80 +128,9 @@ const faqs = [
 ];
 
 export default function Home() {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/65">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-2 text-lg font-semibold">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
-              <Cloud className="h-5 w-5" />
-            </div>
-            <span>{BRAND_NAME}</span>
-          </Link>
-          <nav className="hidden items-center gap-8 text-sm font-medium md:flex">
-            {navLinks.map((link) => (
-              link.href.startsWith('#') ? (
-                <a key={link.href} href={link.href} className="text-muted-foreground transition hover:text-primary">
-                  {link.label}
-                </a>
-              ) : (
-                <Link key={link.href} to={link.href} className="text-muted-foreground transition hover:text-primary">
-                  {link.label}
-                </Link>
-              )
-            ))}
-          </nav>
-          <div className="hidden items-center gap-3 md:flex">
-            <Button variant="ghost" asChild>
-              <Link to="/login">Log in</Link>
-            </Button>
-            <Button asChild>
-              <Link to="/register">
-                Launch console
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setIsMobileMenuOpen((open) => !open)}
-            aria-label="Toggle menu"
-          >
-            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </Button>
-        </div>
-        {isMobileMenuOpen && (
-          <div className="border-t border-border/60 bg-background/95 px-4 pb-6 pt-3 md:hidden">
-            <div className="flex flex-col gap-4 text-sm font-medium">
-              {navLinks.map((link) => (
-                link.href.startsWith('#') ? (
-                  <a key={link.href} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground">
-                    {link.label}
-                  </a>
-                ) : (
-                  <Link key={link.href} to={link.href} onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground">
-                    {link.label}
-                  </Link>
-                )
-              ))}
-            </div>
-            <div className="mt-6 flex flex-col gap-3">
-              <Button variant="ghost" asChild className="justify-start">
-                <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
-                  Log in
-                </Link>
-              </Button>
-              <Button asChild onClick={() => setIsMobileMenuOpen(false)}>
-                <Link to="/register">Launch console</Link>
-              </Button>
-            </div>
-          </div>
-        )}
-      </header>
+      <MarketingNavbar />
 
       <main className="flex flex-col gap-24">
         <section className="relative overflow-hidden">

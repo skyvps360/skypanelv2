@@ -101,12 +101,22 @@ router.get('/admin/config', requireAdminRole, async (req: AuthenticatedRequest, 
 
     const config = result.rows[0];
     
+    // Normalize connection status to match frontend expectations
+    let normalizedStatus = null;
+    if (config.connection_status === 'connected') {
+      normalizedStatus = 'success';
+    } else if (config.connection_status === 'failed') {
+      normalizedStatus = 'failed';
+    } else if (config.connection_status) {
+      normalizedStatus = config.connection_status;
+    }
+    
     res.json({
       config: {
         apiUrl: config.api_url || '',
         hasApiKey: true, // Don't expose the actual key
         lastConnectionTest: config.last_connection_test,
-        connectionStatus: config.connection_status
+        connectionStatus: normalizedStatus
       }
     });
   } catch (error) {
@@ -123,9 +133,6 @@ router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (r
   try {
     const { apiUrl, apiKey } = req.body;
 
-    // Encrypt the API key
-    const encryptedApiKey = encryptSecret(apiKey);
-
     // Check if configuration already exists
     const existingResult = await query(
       'SELECT id FROM easypanel_config WHERE active = true LIMIT 1'
@@ -133,14 +140,35 @@ router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (r
 
     if (existingResult.rows.length > 0) {
       // Update existing configuration
+      const updateFields = ['api_url = $1', 'updated_at = NOW()'];
+      const updateValues = [apiUrl];
+      
+      // Only update API key if provided
+      if (apiKey) {
+        const encryptedApiKey = encryptSecret(apiKey);
+        updateFields.push('api_key_encrypted = $' + (updateValues.length + 1));
+        updateValues.push(encryptedApiKey);
+      }
+      
+      updateValues.push(existingResult.rows[0].id);
+      
       await query(
         `UPDATE easypanel_config 
-         SET api_url = $1, api_key_encrypted = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [apiUrl, encryptedApiKey, existingResult.rows[0].id]
+         SET ${updateFields.join(', ')}
+         WHERE id = $${updateValues.length}`,
+        updateValues
       );
     } else {
-      // Create new configuration
+      // Create new configuration - API key is required for new configs
+      if (!apiKey) {
+        return res.status(400).json({
+          error: {
+            message: 'API key is required for new configuration'
+          }
+        });
+      }
+      
+      const encryptedApiKey = encryptSecret(apiKey);
       await query(
         `INSERT INTO easypanel_config (api_url, api_key_encrypted, active)
          VALUES ($1, $2, true)`,
@@ -192,8 +220,8 @@ router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedReq
     // Test connection using the service instance
     const connectionTest = await easypanelService.testConnection();
 
-    // Update connection test results
-    const status = connectionTest ? 'connected' : 'failed';
+    // Update connection test results with normalized status
+    const status = connectionTest ? 'success' : 'failed';
     await query(
       `UPDATE easypanel_config 
        SET last_connection_test = NOW(), connection_status = $1, updated_at = NOW()
@@ -216,7 +244,7 @@ router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedReq
       res.json({
         success: true,
         message: 'Connection to Easypanel successful',
-        status: 'connected'
+        status: 'success'
       });
     } else {
       // Log failed connection test

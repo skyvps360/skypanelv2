@@ -12,6 +12,7 @@ import { BRAND_NAME } from '../lib/brand';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import MarketingNavbar from '@/components/MarketingNavbar';
 
 interface PublicLayoutProps {
   children: React.ReactNode;
@@ -20,32 +21,7 @@ interface PublicLayoutProps {
 export default function PublicLayout({ children }: PublicLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
-      {/* Navigation */}
-      <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <Link to="/" className="flex items-center hover:opacity-80 transition-opacity">
-              <Server className="h-8 w-8 text-primary" />
-              <span className="ml-2 text-xl font-bold">{BRAND_NAME}</span>
-            </Link>
-            <div className="hidden md:flex items-center space-x-8">
-              <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">Home</Link>
-              <Link to="/about" className="text-sm font-medium hover:text-primary transition-colors">About</Link>
-              <Link to="/contact" className="text-sm font-medium hover:text-primary transition-colors">Contact</Link>
-              <Link to="/faq" className="text-sm font-medium hover:text-primary transition-colors">FAQ</Link>
-              <Link to="/status" className="text-sm font-medium hover:text-primary transition-colors">Status</Link>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" asChild>
-                <Link to="/login">Sign in</Link>
-              </Button>
-              <Button asChild>
-                <Link to="/register">Get Started</Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <MarketingNavbar />
 
       {/* Main Content */}
       <main>

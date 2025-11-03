@@ -14,9 +14,10 @@ interface EasypanelConfig {
   id?: string
   apiUrl: string
   apiKey?: string
+  hasApiKey?: boolean
   active?: boolean
   lastConnectionTest?: string
-  connectionStatus?: 'success' | 'failed' | 'pending'
+  connectionStatus?: 'success' | 'failed' | 'pending' | 'connected'
 }
 
 interface ConfigFormData {
@@ -52,6 +53,8 @@ export default function EasypanelConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'easypanel-config'] })
       setHasChanges(false)
+      // Clear the API key field after successful save for security
+      setFormData(prev => ({ ...prev, apiKey: '' }))
       toast.success('Easypanel configuration saved successfully')
     },
     onError: (error: any) => {
@@ -81,10 +84,12 @@ export default function EasypanelConfig() {
   // Load config data into form when available
   useEffect(() => {
     if (config) {
-      setFormData({
+      setFormData(prev => ({
+        ...prev,
         apiUrl: config.apiUrl || '',
-        apiKey: '' // Don't pre-fill API key for security
-      })
+        // Only clear API key if we're loading for the first time and there's no existing key
+        apiKey: prev.apiKey || ''
+      }))
     }
   }, [config])
 
@@ -110,7 +115,8 @@ export default function EasypanelConfig() {
       }
     }
 
-    if (!formData.apiKey.trim()) {
+    // Only require API key if we don't have one saved or if user is trying to update it
+    if (!formData.apiKey.trim() && !config?.hasApiKey) {
       errors.apiKey = 'API Key is required'
     }
 
@@ -121,9 +127,13 @@ export default function EasypanelConfig() {
   const handleSaveConfig = () => {
     if (!validateForm()) return
 
-    const configData = {
-      apiUrl: formData.apiUrl.trim(),
-      apiKey: formData.apiKey.trim()
+    const configData: any = {
+      apiUrl: formData.apiUrl.trim()
+    }
+
+    // Only include API key if user provided one
+    if (formData.apiKey.trim()) {
+      configData.apiKey = formData.apiKey.trim()
     }
 
     saveConfigMutation.mutate(configData)
@@ -134,9 +144,13 @@ export default function EasypanelConfig() {
 
     setTestResult({ status: null, message: '' })
     
-    const configData = {
-      apiUrl: formData.apiUrl.trim(),
-      apiKey: formData.apiKey.trim()
+    const configData: any = {
+      apiUrl: formData.apiUrl.trim()
+    }
+
+    // Only include API key if user provided one
+    if (formData.apiKey.trim()) {
+      configData.apiKey = formData.apiKey.trim()
     }
 
     testConnectionMutation.mutate(configData)
@@ -157,7 +171,10 @@ export default function EasypanelConfig() {
   const getConnectionStatusBadge = () => {
     if (!config?.connectionStatus) return null
 
-    switch (config.connectionStatus) {
+    // Normalize the status values from backend
+    const normalizedStatus = config.connectionStatus === 'connected' ? 'success' : config.connectionStatus
+
+    switch (normalizedStatus) {
       case 'success':
         return (
           <Badge variant="default" className="bg-green-500">
@@ -248,13 +265,16 @@ export default function EasypanelConfig() {
                       type="password"
                       value={formData.apiKey}
                       onChange={(e) => handleInputChange('apiKey', e.target.value)}
-                      placeholder="Enter your Easypanel API key"
+                      placeholder={config?.hasApiKey ? "Enter new API key (leave blank to keep current)" : "Enter your Easypanel API key"}
                     />
                     {formErrors.apiKey && (
                       <p className="text-sm text-red-500">{formErrors.apiKey}</p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      API key with permissions to manage projects and services
+                      {config?.hasApiKey 
+                        ? "API key with permissions to manage projects and services (configured)"
+                        : "API key with permissions to manage projects and services"
+                      }
                     </p>
                   </div>
 
@@ -272,7 +292,7 @@ export default function EasypanelConfig() {
                     <Button
                       onClick={handleTestConnection}
                       variant="outline"
-                      disabled={testConnectionMutation.isPending || !formData.apiUrl || !formData.apiKey}
+                      disabled={testConnectionMutation.isPending || !formData.apiUrl || (!formData.apiKey && !config?.hasApiKey)}
                     >
                       <TestTube className="h-4 w-4 mr-2" />
                       {testConnectionMutation.isPending ? 'Testing...' : 'Test Connection'}
@@ -335,8 +355,8 @@ export default function EasypanelConfig() {
 
                   <div className="space-y-2">
                     <Label>Configuration Status</Label>
-                    <Badge variant={config?.connectionStatus === 'success' ? 'default' : 'secondary'}>
-                      {config?.connectionStatus === 'success' ? 'Active' : 'Inactive'}
+                    <Badge variant={config?.connectionStatus === 'success' || config?.connectionStatus === 'connected' ? 'default' : 'secondary'}>
+                      {config?.connectionStatus === 'success' || config?.connectionStatus === 'connected' ? 'Active' : 'Inactive'}
                     </Badge>
                   </div>
                 </>

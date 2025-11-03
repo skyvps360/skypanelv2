@@ -456,6 +456,7 @@ export interface EasypanelConfigRequest {
 
 export interface EasypanelConfigResponse {
   apiUrl: string;
+  hasApiKey?: boolean;
   connectionStatus?: string;
   lastConnectionTest?: string;
 }
