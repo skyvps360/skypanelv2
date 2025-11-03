@@ -24,6 +24,7 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import MarketingNavbar from '@/components/MarketingNavbar';
+import MarketingFooter from '@/components/MarketingFooter';
 
 const featureHighlights = [
   {
@@ -154,8 +155,8 @@ export default function Home() {
                   </Link>
                 </Button>
                 <Button variant="outline" size="lg" asChild className="gap-2">
-                  <Link to="/containers/plans">
-                    View Plans
+                  <Link to="/pricing">
+                    View Pricing
                     <ArrowUpRight className="h-4 w-4" />
                   </Link>
                 </Button>
@@ -415,6 +416,9 @@ export default function Home() {
                 <Link to="/register">Get Started</Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
+                <Link to="/pricing">View Pricing</Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild>
                 <Link to="/contact">Get Support</Link>
               </Button>
             </div>
@@ -422,33 +426,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-border/60 bg-background/95">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-10 text-sm text-muted-foreground sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-2 text-foreground">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-              <Cloud className="h-4 w-4" />
-            </div>
-            <span className="font-semibold">{BRAND_NAME}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <Link to="/privacy" className="hover:text-primary">
-              Privacy
-            </Link>
-            <Link to="/terms" className="hover:text-primary">
-              Terms
-            </Link>
-            <Link to="/status" className="hover:text-primary">
-              Status
-            </Link>
-            <Link to="/contact" className="hover:text-primary">
-              Support
-            </Link>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} {BRAND_NAME}. Purpose-built for teams who demand elegance and power.
-          </p>
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

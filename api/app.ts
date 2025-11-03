@@ -32,6 +32,7 @@ import faqRoutes from './routes/faq.js';
 import adminFaqRoutes from './routes/adminFaq.js';
 import sshKeysRoutes from './routes/sshKeys.js';
 import containersRoutes from './routes/containers.js';
+import pricingRoutes from './routes/pricing.js';
 import { notificationService } from './services/notificationService.js';
 import { performStartupValidation, initializeConfigurationMonitoring } from './services/rateLimitConfigValidator.js';
 import { initializeMetricsCollection, startMetricsPersistence } from './services/rateLimitMetrics.js';
@@ -115,6 +116,7 @@ app.use('/api/activity', activityRoutes)
 app.use('/api/notifications', notificationsRouter)
 app.use('/api/theme', themeRoutes)
 app.use('/api/health', healthRoutes)
+app.use('/api/pricing', pricingRoutes)
 app.use('/api/contact', contactRouter);
 app.use('/api/admin/contact', adminContactRoutes);
 app.use('/api/admin/platform', adminPlatformRoutes);

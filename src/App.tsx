@@ -53,6 +53,7 @@ import Contact from "./pages/Contact";
 import Status from "./pages/Status";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Pricing from "./pages/Pricing";
 import SSHKeys from "./pages/SSHKeys";
 
 // Container pages
@@ -407,6 +408,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route path="/pricing" element={<Pricing />} />
         <Route path="/faq" element={<FAQ />} />
         <Route path="/about" element={<AboutUs />} />
         <Route path="/contact" element={<Contact />} />
