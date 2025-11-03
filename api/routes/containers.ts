@@ -860,11 +860,8 @@ router.delete('/subscription', async (req: AuthenticatedRequest, res: Response) 
     const subscription = await ContainerPlanService.getSubscription(organizationId);
     
     if (!subscription) {
-      return res.status(404).json({
-        error: {
-          code: 'NO_SUBSCRIPTION',
-          message: 'No active container subscription found'
-        }
+      return res.json({
+        projects: []
       });
     }
 
@@ -935,21 +932,41 @@ router.delete('/subscription', async (req: AuthenticatedRequest, res: Response) 
 router.get('/subscription/usage', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = req.user!.organizationId!;
-    
-    // Check if organization has an active subscription
+
+    // Provide sane defaults when a subscription is not yet active
+    const zeroUsage = {
+      cpuCores: 0,
+      memoryGb: 0,
+      storageGb: 0,
+      containerCount: 0
+    };
+    const zeroPercentages = {
+      cpu: 0,
+      memory: 0,
+      storage: 0,
+      containers: 0
+    };
+
     const subscription = await ContainerPlanService.getSubscription(organizationId);
-    
+
     if (!subscription) {
-      return res.status(404).json({
-        error: {
-          code: 'NO_SUBSCRIPTION',
-          message: 'No active container subscription found'
-        }
+      return res.json({
+        subscription: null,
+        usage: zeroUsage,
+        quota: { ...zeroUsage },
+        percentages: zeroPercentages
       });
     }
 
-    // Get resource usage summary
     const usageSummary = await ResourceQuotaService.getResourceUsageSummary(organizationId);
+
+    const quota = usageSummary.planLimits || { ...zeroUsage };
+    const percentages = usageSummary.usagePercentages ? {
+      cpu: usageSummary.usagePercentages.cpuCores,
+      memory: usageSummary.usagePercentages.memoryGb,
+      storage: usageSummary.usagePercentages.storageGb,
+      containers: usageSummary.usagePercentages.containerCount
+    } : zeroPercentages;
 
     res.json({
       subscription: {
@@ -960,11 +977,9 @@ router.get('/subscription/usage', async (req: AuthenticatedRequest, res: Respons
         currentPeriodStart: subscription.currentPeriodStart,
         currentPeriodEnd: subscription.currentPeriodEnd
       },
-      usage: {
-        current: usageSummary.currentUsage,
-        limits: usageSummary.planLimits,
-        percentages: usageSummary.usagePercentages
-      }
+      usage: usageSummary.currentUsage,
+      quota,
+      percentages
     });
   } catch (error) {
     console.error('Failed to get subscription usage:', error);

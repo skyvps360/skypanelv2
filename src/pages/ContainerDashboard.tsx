@@ -16,17 +16,14 @@ import {
   Cpu,
   HardDrive,
   MemoryStick,
-  Activity as ActivityIcon,
   Settings,
   Play,
-  Square,
-  RotateCcw
+  Square
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useContainerError } from '@/hooks/useContainerError';
-import { ContainerErrorBoundary, ContainerErrorFallback } from '@/components/containers/ContainerErrorBoundary';
+import { ContainerErrorBoundary } from '@/components/containers/ContainerErrorBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -67,23 +64,40 @@ const ContainerDashboard: React.FC = () => {
   });
   const { token } = useAuth();
   const navigate = useNavigate();
-  const { handleError, showBillingError, showConfigError } = useContainerError();
+  const { handleError } = useContainerError();
 
   const loadDashboardData = useCallback(async () => {
     if (!token) return;
-    
+
     setState(prev => ({ ...prev, loading: true, error: null }));
-    
+
     try {
-      const [subscriptionResult, projectsResult, usageResult] = await Promise.all([
-        containerService.getSubscription(),
-        containerService.getProjects(),
-        containerService.getResourceUsage()
-      ]);
+      const subscriptionResult = await containerService.getSubscription();
 
       if (!subscriptionResult.success) {
         throw new Error(subscriptionResult.error || 'Failed to load subscription');
       }
+
+      const subscription = subscriptionResult.subscription || null;
+
+      if (!subscription) {
+        setState(prev => ({
+          ...prev,
+          subscription: null,
+          projects: [],
+          resourceUsage: null,
+          quota: null,
+          percentages: null,
+          loading: false,
+          error: null
+        }));
+        return;
+      }
+
+      const [projectsResult, usageResult] = await Promise.all([
+        containerService.getProjects(),
+        containerService.getResourceUsage()
+      ]);
 
       if (!projectsResult.success) {
         throw new Error(projectsResult.error || 'Failed to load projects');
@@ -95,7 +109,7 @@ const ContainerDashboard: React.FC = () => {
 
       setState(prev => ({
         ...prev,
-        subscription: subscriptionResult.subscription || null,
+        subscription,
         projects: projectsResult.projects || [],
         resourceUsage: usageResult.usage || null,
         quota: usageResult.quota || null,
@@ -105,17 +119,16 @@ const ContainerDashboard: React.FC = () => {
       }));
     } catch (error) {
       console.error('Failed to load container dashboard data:', error);
-      
-      // Handle specific error types based on the error response
+
       handleError(error, { customMessage: 'Failed to load dashboard data' });
-      
+
       setState(prev => ({
         ...prev,
         loading: false,
         error: error instanceof Error ? error.message : 'Failed to load dashboard data'
       }));
     }
-  }, [token]);
+  }, [token, handleError]);
 
   useEffect(() => {
     loadDashboardData();
