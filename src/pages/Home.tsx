@@ -27,59 +27,59 @@ import MarketingNavbar from '@/components/MarketingNavbar';
 
 const featureHighlights = [
   {
-    title: 'Unified control plane',
+    title: 'High-Performance VPS',
     description:
-      'Aggregate Linode, DigitalOcean, and bare-metal workloads with consistent automation and audit-ready activity logs.',
-    icon: Globe,
-    bullets: ['Cross-provider orchestration', 'Region-aware scheduling', 'Real-time event streaming'],
+      'Deploy powerful VPS instances with instant provisioning and guaranteed resources. Get root access, SSH console, and full control over your server environment.',
+    icon: Server,
+    bullets: ['Instant deployment in 45 seconds', 'Full root access', 'Web-based SSH console'],
     accent: 'from-sky-500/20 via-transparent to-transparent'
   },
   {
-    title: 'Velocity at scale',
+    title: 'Container Applications',
     description:
-      'Deploy optimized VPS blueprints in under 45 seconds with guardrails for SSH keys, networking, and billing spend alerts.',
-    icon: Zap,
-    bullets: ['Blueprint library', 'Policy-backed provisioning', 'Live health telemetry'],
+      'Deploy containerized applications with one-click templates. Run WordPress, databases, and custom applications with managed scaling and monitoring.',
+    icon: Layers,
+    bullets: ['One-click app deployment', 'Popular application templates', 'Managed scaling'],
     accent: 'from-emerald-500/20 via-transparent to-transparent'
   },
   {
-    title: 'Enterprise-grade safety',
+    title: 'Secure Access',
     description:
-      'SOC-ready logging, encrypted provider credentials, and configurable rate limiting keep customer data protected by default.',
-    icon: ShieldCheck,
-    bullets: ['Secrets vaulted with AES-256', 'Rate-limit overrides per tenant', 'Granular role-based access'],
+      'Access your servers directly through our web interface with secure SSH console. Manage files, run commands, and monitor your applications.',
+    icon: Globe,
+    bullets: ['Web-based SSH console', 'Secure connections', 'Real-time terminal access'],
     accent: 'from-purple-500/20 via-transparent to-transparent'
   },
   {
-    title: 'Finance-ready billing',
+    title: 'Flexible Billing',
     description:
-      'Wallet-based billing with hourly reconciliation, cost trend projections, and actionable alerts before spend spikes hit.',
+      'Pay-as-you-go billing with prepaid wallet system. Add funds via PayPal and track your usage with detailed billing reports and invoices.',
     icon: Wallet,
-    bullets: ['Hourly usage ledger', 'Automated invoices', 'Wallet webhooks'],
+    bullets: ['PayPal integration', 'Hourly billing', 'Detailed usage reports'],
     accent: 'from-amber-500/20 via-transparent to-transparent'
   }
 ];
 
 const solutionTiles = [
   {
-    title: 'Deploy modern workloads',
-    blurb: 'Opinionated defaults for Node, Laravel, and container-ready stacks mean teams ship in minutes, not days.',
-    statLabel: 'Average deploy time',
+    title: 'Deploy VPS Infrastructure',
+    blurb: 'Provision VPS instances across multiple cloud providers with unified management. Get instant deployment and SSH console access.',
+    statLabel: 'Average provision time',
     statValue: '43s',
+    icon: Server
+  },
+  {
+    title: 'Container Applications',
+    blurb: 'Deploy containerized applications with one-click templates. WordPress, databases, and custom apps ready in minutes.',
+    statLabel: 'App templates',
+    statValue: '50+',
     icon: Layers
   },
   {
-    title: 'Operate globally',
-    blurb: 'Pick from 18+ regions with intelligent fallbacks, DNS helpers, and automatic reverse DNS management.',
-    statLabel: 'Regions available',
-    statValue: '18',
-    icon: Globe
-  },
-  {
-    title: 'Stay in control',
-    blurb: 'Live activity feeds, SLA dashboards, and AI-delivered incident summaries keep teams ahead of customer pings.',
-    statLabel: 'Incidents auto-triaged',
-    statValue: '92%',
+    title: 'Cost Management',
+    blurb: 'PayPal wallet integration with hourly usage tracking. Monitor your infrastructure spending with detailed billing and automated invoicing.',
+    statLabel: 'Billing accuracy',
+    statValue: '99.9%',
     icon: Activity
   }
 ];
@@ -87,21 +87,21 @@ const solutionTiles = [
 const testimonials = [
   {
     quote:
-      'SkyPanel compressed our deployment pipeline into a single dashboard. We now iterate daily without touching provider portals.',
-    name: 'Amelia Stone',
-    role: 'Director of Platform • NovaOps'
+      'The VPS instances are incredibly fast and reliable. SSH console access through the web makes server management so much easier.',
+    name: 'Marcus Chen',
+    role: 'DevOps Engineer • TechCorp'
   },
   {
     quote:
-      'Hourly billing visibility and wallet thresholds saved our launch budget. Finance finally gets proactive alerts.',
-    name: 'Jordan Park',
-    role: 'Head of Finance • Lumen Studio'
+      'Great pricing with the prepaid wallet system. The hourly billing is transparent and the performance has been excellent for our applications.',
+    name: 'Sarah Williams',
+    role: 'Infrastructure Lead • StartupXYZ'
   },
   {
     quote:
-      'The SSE activity stream means our on-call team is notified before customers ever notice. It feels like cheating.',
-    name: 'Priya Narayanan',
-    role: 'Site Reliability Lead • Driftwave'
+      'Deploying our containerized applications was incredibly simple. The one-click templates got us up and running in minutes.',
+    name: 'David Rodriguez',
+    role: 'CTO • DevTeam Inc'
   }
 ];
 
@@ -109,7 +109,7 @@ const faqs = [
   {
     question: 'How fast can I provision infrastructure?',
     answer:
-      'VPS workloads typically land in 45-60 seconds. SkyPanel pre-validates SSH keys, regions, and plans before the provider call so you are never surprised at the end.'
+      'VPS instances typically deploy in 45-60 seconds. Our platform pre-validates configurations to ensure smooth deployment every time.'
   },
   {
     question: 'Which payment methods are supported?',
@@ -117,9 +117,9 @@ const faqs = [
       'Wallets accept PayPal-backed cards today with ACH in beta. Every top-up synchronizes to the ledger instantly and exposes webhook events.'
   },
   {
-    question: 'Does SkyPanel replace provider dashboards?',
+    question: 'Can I manage everything from one dashboard?',
     answer:
-      'Yes. You can create, resize, backup, rebuild, and delete VPS instances across connected providers without leaving SkyPanel. Provider metadata is synced so you always see authoritative status.'
+      'Yes. You can create, resize, backup, rebuild, and delete VPS instances and containers from our unified control panel. Real-time status updates keep you informed.'
   },
   {
     question: 'Is there a free tier?',
@@ -136,34 +136,30 @@ export default function Home() {
       <MarketingNavbar />
 
       <main className="flex flex-col gap-24">
-        <section className="relative overflow-hidden">
-          <div className="absolute inset-0 -z-20 bg-gradient-to-br from-primary/20 via-background to-background" />
-          <div className="absolute -top-36 left-1/2 -z-10 h-96 w-96 -translate-x-1/2 rounded-full bg-primary/30 blur-3xl" />
-          <div className="absolute bottom-0 left-0 right-0 -z-10 h-48 bg-gradient-to-t from-background to-transparent" />
-
+        <section className="rounded-3xl border border-border bg-card p-8 md:p-10">
           <div className="mx-auto grid max-w-7xl gap-12 px-4 py-24 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
             <div className="space-y-8">
               <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-                Built for infrastructure teams
+                Cloud infrastructure platform
               </Badge>
               <div className="space-y-6">
                 <h1 className="text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl">
-                  Deploy jaw-dropping infrastructure with composable controls.
+                  Deploy VPS and Container Services
                 </h1>
                 <p className="text-lg text-muted-foreground sm:text-xl">
-                  SkyPanel unifies your multi-provider VPS footprint into a single, beautiful command center. Provision, observe, and bill with clarity—no more tab sprawl.
+                  Get powerful VPS instances and containerized applications with instant deployment, SSH console access, and flexible billing. Scale your infrastructure on demand.
                 </p>
               </div>
               <div className="flex flex-wrap gap-4">
                 <Button asChild size="lg" className="gap-2">
                   <Link to="/register">
-                    Start for free
+                    Deploy Now
                     <Sparkles className="h-5 w-5" />
                   </Link>
                 </Button>
                 <Button variant="outline" size="lg" asChild className="gap-2">
-                  <Link to="/demo">
-                    View interactive demo
+                  <Link to="/containers/plans">
+                    View Plans
                     <ArrowUpRight className="h-4 w-4" />
                   </Link>
                 </Button>
@@ -244,7 +240,7 @@ export default function Home() {
         <section id="platform" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <Badge variant="outline" className="mb-4 border-primary/40 bg-primary/10 text-primary">
-              Why teams choose SkyPanel
+              Why choose {BRAND_NAME}
             </Badge>
             <h2 className="text-3xl font-semibold sm:text-4xl">
               A platform engineered for modern infrastructure.
@@ -287,31 +283,31 @@ export default function Home() {
             <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr]">
               <div className="space-y-6">
                 <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-                  Built for velocity
+                  Enterprise-grade infrastructure
                 </Badge>
                 <h2 className="text-3xl font-semibold sm:text-4xl">
-                  Automation, observability, and billing—elevated.
+                  Reliable, scalable, and secure cloud hosting.
                 </h2>
                 <p className="text-lg text-muted-foreground">
-                  SkyPanel ships with live SSE notifications, synthetics-ready health checks, and a ledger-aware billing engine. Teams get a beautifully opinionated UI layered on top of formidable automation.
+                  Deploy your applications on high-performance infrastructure with 99.9% uptime, automated backups, and 24/7 monitoring.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {[
                     {
-                      title: 'Telemetry first',
-                      copy: 'Every provisioned VPS streams metrics to the dashboard within seconds.'
+                      title: 'High performance',
+                      copy: 'NVMe SSD storage, dedicated CPU cores, and high-speed networking for optimal performance.'
                     },
                     {
-                      title: 'Pluggable providers',
-                      copy: 'Connect Linode, DigitalOcean, and bespoke providers with the same workflow.'
+                      title: 'Global availability',
+                      copy: 'Deploy in multiple regions worldwide for low latency and high availability.'
                     },
                     {
-                      title: 'Security by default',
-                      copy: 'Encrypted credentials, RBAC, and rate limiting help you pass audits with ease.'
+                      title: 'Enterprise security',
+                      copy: 'DDoS protection, encrypted storage, and secure network isolation by default.'
                     },
                     {
-                      title: 'Design that inspires',
-                      copy: 'Crafted with shadcn primitives so every screen feels polished and familiar.'
+                      title: 'Easy management',
+                      copy: 'Intuitive control panel with one-click deployments and automated scaling.'
                     }
                   ].map((item) => (
                     <Card key={item.title} className="border-border/60 bg-background/80">
@@ -355,10 +351,10 @@ export default function Home() {
               Teams that switched
             </Badge>
             <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
-              Revenue teams, platform teams, and startups love the polish.
+              DevOps teams, platform engineers, and startups love the simplicity.
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-              SkyPanel turns infrastructure into an experience your customers notice.
+              {BRAND_NAME} turns complex cloud management into a streamlined experience.
             </p>
           </div>
           <div className="mt-14 grid gap-6 md:grid-cols-3">
@@ -384,7 +380,7 @@ export default function Home() {
               </Badge>
               <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">Answers before you ask.</h2>
               <p className="mx-auto mt-3 max-w-2xl text-lg text-muted-foreground">
-                Everything you need to know to feel confident migrating your workloads to SkyPanel.
+                Everything you need to know to get started with {BRAND_NAME} cloud hosting.
               </p>
             </div>
             <Accordion
@@ -414,16 +410,16 @@ export default function Home() {
             <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
               Ready when you are
             </Badge>
-            <h2 className="text-3xl font-semibold sm:text-4xl">Create an account, connect a provider, ship your next release.</h2>
+            <h2 className="text-3xl font-semibold sm:text-4xl">Create an account, add funds, deploy your infrastructure.</h2>
             <p className="max-w-2xl text-lg text-muted-foreground">
-              Your first deployment takes minutes. We include detailed migration guides, observability instrumentation, and fast support when you need it.
+              Your first deployment takes minutes. Add funds to your wallet and start deploying VPS instances and containers immediately.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <Button size="lg" asChild>
-                <Link to="/register">Launch SkyPanel</Link>
+                <Link to="/register">Get Started</Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link to="/contact">Talk to sales</Link>
+                <Link to="/contact">Get Support</Link>
               </Button>
             </div>
           </div>

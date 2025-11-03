@@ -3297,4 +3297,453 @@ router.post(
   }
 );
 
+// Get comprehensive user details including VPS, containers, and billing
+router.get(
+  "/users/:id/detail",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("view_user_comprehensive_details"),
+  [param("id").isUUID().withMessage("Invalid user id")],
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ errors: errors.array() });
+        return;
+      }
+
+      const { id } = req.params;
+
+      // Get user profile information
+      const userResult = await query(
+        `SELECT 
+          u.id,
+          u.email,
+          u.name,
+          u.role,
+          u.phone,
+          u.timezone,
+          u.preferences,
+          u.created_at,
+          u.updated_at,
+          COALESCE(
+            jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'organizationId', om.organization_id,
+                'organizationName', org.name,
+                'organizationSlug', org.slug,
+                'role', om.role,
+                'joinedAt', om.created_at
+              )
+            ) FILTER (WHERE om.organization_id IS NOT NULL),
+            '[]'::jsonb
+          ) AS organizations
+        FROM users u
+        LEFT JOIN organization_members om ON om.user_id = u.id
+        LEFT JOIN organizations org ON org.id = om.organization_id
+        WHERE u.id = $1
+        GROUP BY u.id`,
+        [id]
+      );
+
+      if (userResult.rows.length === 0) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const user = userResult.rows[0];
+
+      // Get user's VPS instances
+      const vpsResult = await query(
+        `SELECT 
+          v.id,
+          v.label,
+          v.status,
+          v.ip_address,
+          v.created_at,
+          p.name as plan_name,
+          sp.name as provider_name,
+          v.configuration->>'region' as region_label
+        FROM vps_instances v
+        JOIN organizations org ON org.id = v.organization_id
+        JOIN organization_members om ON om.organization_id = org.id
+        LEFT JOIN vps_plans p ON p.id = v.plan_id
+        LEFT JOIN service_providers sp ON sp.id = p.provider_id
+        WHERE om.user_id = $1
+        ORDER BY v.created_at DESC`,
+        [id]
+      );
+
+      // Get user's container subscription and projects
+      let containerSubscription = null;
+      let containerProjects: any[] = [];
+
+      try {
+        const containerSubResult = await query(
+          `SELECT 
+            cs.id,
+            cs.plan_id,
+            cp.name as plan_name,
+            cs.status,
+            cs.created_at
+          FROM container_subscriptions cs
+          JOIN organizations org ON org.id = cs.organization_id
+          JOIN organization_members om ON om.organization_id = org.id
+          LEFT JOIN container_plans cp ON cp.id = cs.plan_id
+          WHERE om.user_id = $1
+          ORDER BY cs.created_at DESC
+          LIMIT 1`,
+          [id]
+        );
+
+        if (containerSubResult.rows.length > 0) {
+          containerSubscription = containerSubResult.rows[0];
+
+          // Get container projects for this user
+          const projectsResult = await query(
+            `SELECT 
+              cp.id,
+              cp.project_name,
+              cp.status,
+              cp.created_at,
+              COALESCE(
+                (SELECT COUNT(*) FROM container_services cs WHERE cs.project_id = cp.id),
+                0
+              ) as service_count
+            FROM container_projects cp
+            JOIN organizations org ON org.id = cp.organization_id
+            JOIN organization_members om ON om.organization_id = org.id
+            WHERE om.user_id = $1
+            ORDER BY cp.created_at DESC`,
+            [id]
+          );
+          containerProjects = projectsResult.rows;
+        }
+      } catch (containerErr: any) {
+        // Container tables might not exist, continue without container data
+        console.warn("Container data not available:", containerErr.message);
+      }
+
+      // Get user's billing information
+      let billing = {
+        wallet_balance: 0,
+        monthly_spend: 0,
+        total_payments: 0,
+        last_payment_date: null,
+        last_payment_amount: null,
+        payment_history: []
+      };
+
+      try {
+        // Get wallet balance
+        const walletResult = await query(
+          `SELECT balance
+          FROM wallet_balances wb
+          JOIN organizations org ON org.id = wb.organization_id
+          JOIN organization_members om ON om.organization_id = org.id
+          WHERE om.user_id = $1
+          ORDER BY wb.updated_at DESC
+          LIMIT 1`,
+          [id]
+        );
+
+        if (walletResult.rows.length > 0) {
+          billing.wallet_balance = parseFloat(walletResult.rows[0].balance) || 0;
+        }
+
+        // Get monthly spend (current month)
+        const currentMonth = new Date();
+        const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+        
+        const spendResult = await query(
+          `SELECT COALESCE(SUM(amount), 0) as monthly_spend
+          FROM billing_transactions bt
+          JOIN organizations org ON org.id = bt.organization_id
+          JOIN organization_members om ON om.organization_id = org.id
+          WHERE om.user_id = $1 
+          AND bt.type = 'charge'
+          AND bt.created_at >= $2`,
+          [id, startOfMonth.toISOString()]
+        );
+
+        if (spendResult.rows.length > 0) {
+          billing.monthly_spend = parseFloat(spendResult.rows[0].monthly_spend) || 0;
+        }
+
+        // Get payment history
+        const paymentsResult = await query(
+          `SELECT 
+            bt.id,
+            bt.amount,
+            bt.status,
+            bt.created_at
+          FROM billing_transactions bt
+          JOIN organizations org ON org.id = bt.organization_id
+          JOIN organization_members om ON om.organization_id = org.id
+          WHERE om.user_id = $1 
+          AND bt.type = 'payment'
+          ORDER BY bt.created_at DESC
+          LIMIT 10`,
+          [id]
+        );
+
+        billing.payment_history = paymentsResult.rows;
+        billing.total_payments = paymentsResult.rows.length;
+
+        if (paymentsResult.rows.length > 0) {
+          const lastPayment = paymentsResult.rows[0];
+          billing.last_payment_date = lastPayment.created_at;
+          billing.last_payment_amount = parseFloat(lastPayment.amount) || 0;
+        }
+      } catch (billingErr: any) {
+        // Billing tables might not exist, continue with default values
+        console.warn("Billing data not available:", billingErr.message);
+      }
+
+      // Get recent activity
+      let activity: any[] = [];
+      try {
+        const activityResult = await query(
+          `SELECT 
+            id,
+            event_type,
+            message,
+            created_at
+          FROM activity_logs
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT 20`,
+          [id]
+        );
+        activity = activityResult.rows;
+      } catch (activityErr: any) {
+        // Activity table might not exist
+        console.warn("Activity data not available:", activityErr.message);
+      }
+
+      // Build comprehensive response
+      const detailedUser = {
+        user,
+        vpsInstances: vpsResult.rows,
+        containerSubscription,
+        containerProjects,
+        billing,
+        activity
+      };
+
+      res.json(detailedUser);
+    } catch (err: any) {
+      console.error("Admin user comprehensive detail error:", err);
+      res
+        .status(500)
+        .json({ error: err.message || "Failed to fetch comprehensive user details" });
+    }
+  }
+);
+
+// Delete user account and all associated data
+router.delete(
+  "/users/:id",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("delete_user"),
+  [param("id").isUUID().withMessage("Invalid user id")],
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ errors: errors.array() });
+        return;
+      }
+
+      const { id } = req.params;
+
+      // Check if user exists
+      const userCheck = await query(
+        "SELECT id, email, name, role FROM users WHERE id = $1",
+        [id]
+      );
+      
+      if (userCheck.rows.length === 0) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const user = userCheck.rows[0];
+
+      // Prevent deletion of admin users by non-super-admin
+      if (user.role === 'admin' && req.user?.role !== 'admin') {
+        res.status(403).json({ error: "Cannot delete admin users" });
+        return;
+      }
+
+      // Prevent self-deletion
+      if (user.id === req.user?.id) {
+        res.status(403).json({ error: "Cannot delete your own account" });
+        return;
+      }
+
+      // Start transaction for cascading deletes
+      await query('BEGIN');
+
+      try {
+        // Get user's organizations
+        const orgsResult = await query(
+          `SELECT DISTINCT om.organization_id
+          FROM organization_members om
+          WHERE om.user_id = $1`,
+          [id]
+        );
+
+        const organizationIds = orgsResult.rows.map(row => row.organization_id);
+
+        // Delete VPS instances for user's organizations
+        if (organizationIds.length > 0) {
+          await query(
+            `DELETE FROM vps_instances 
+            WHERE organization_id = ANY($1)`,
+            [organizationIds]
+          );
+        }
+
+        // Delete container subscriptions and projects
+        try {
+          if (organizationIds.length > 0) {
+            await query(
+              `DELETE FROM container_services 
+              WHERE project_id IN (
+                SELECT id FROM container_projects 
+                WHERE organization_id = ANY($1)
+              )`,
+              [organizationIds]
+            );
+
+            await query(
+              `DELETE FROM container_projects 
+              WHERE organization_id = ANY($1)`,
+              [organizationIds]
+            );
+
+            await query(
+              `DELETE FROM container_subscriptions 
+              WHERE organization_id = ANY($1)`,
+              [organizationIds]
+            );
+          }
+        } catch (containerErr: any) {
+          // Container tables might not exist, continue
+          console.warn("Container cleanup not available:", containerErr.message);
+        }
+
+        // Delete billing records
+        try {
+          if (organizationIds.length > 0) {
+            await query(
+              `DELETE FROM billing_transactions 
+              WHERE organization_id = ANY($1)`,
+              [organizationIds]
+            );
+
+            await query(
+              `DELETE FROM wallet_balances 
+              WHERE organization_id = ANY($1)`,
+              [organizationIds]
+            );
+          }
+        } catch (billingErr: any) {
+          // Billing tables might not exist, continue
+          console.warn("Billing cleanup not available:", billingErr.message);
+        }
+
+        // Delete activity logs
+        try {
+          await query(
+            `DELETE FROM activity_logs WHERE user_id = $1`,
+            [id]
+          );
+        } catch (activityErr: any) {
+          // Activity table might not exist, continue
+          console.warn("Activity cleanup not available:", activityErr.message);
+        }
+
+        // Delete support tickets and replies
+        try {
+          await query(
+            `DELETE FROM support_ticket_replies 
+            WHERE ticket_id IN (
+              SELECT id FROM support_tickets WHERE created_by = $1
+            )`,
+            [id]
+          );
+
+          await query(
+            `DELETE FROM support_tickets WHERE created_by = $1`,
+            [id]
+          );
+        } catch (supportErr: any) {
+          // Support tables might not exist, continue
+          console.warn("Support cleanup not available:", supportErr.message);
+        }
+
+        // Delete organization memberships
+        await query(
+          `DELETE FROM organization_members WHERE user_id = $1`,
+          [id]
+        );
+
+        // Delete organizations owned by this user (if they're the only member)
+        if (organizationIds.length > 0) {
+          await query(
+            `DELETE FROM organizations 
+            WHERE id = ANY($1) 
+            AND owner_id = $2
+            AND NOT EXISTS (
+              SELECT 1 FROM organization_members 
+              WHERE organization_id = organizations.id
+            )`,
+            [organizationIds, id]
+          );
+        }
+
+        // Finally, delete the user
+        await query(
+          `DELETE FROM users WHERE id = $1`,
+          [id]
+        );
+
+        await query('COMMIT');
+
+        // Log the deletion
+        if (req.user?.id) {
+          await logActivity(
+            {
+              userId: req.user.id,
+              organizationId: req.user.organizationId ?? null,
+              eventType: "user_deleted",
+              entityType: "user",
+              entityId: id,
+              message: `Deleted user account: ${user.email}`,
+              status: "success",
+              metadata: {
+                deleted_user_email: user.email,
+                deleted_user_name: user.name,
+                deleted_user_role: user.role,
+              },
+            },
+            req
+          );
+        }
+
+        res.status(204).send();
+      } catch (deleteErr: any) {
+        await query('ROLLBACK');
+        throw deleteErr;
+      }
+    } catch (err: any) {
+      console.error("Admin user delete error:", err);
+      res.status(500).json({ error: err.message || "Failed to delete user" });
+    }
+  }
+);
+
 export default router;

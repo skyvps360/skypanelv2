@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
+import { PageHeader, StatsGrid, ContentCard } from '@/components/layouts';
 import { containerService } from '@/services/containerService';
 import type {
   ContainerSubscription,
@@ -248,11 +249,7 @@ const ContainerDashboard: React.FC = () => {
   if (!state.subscription) {
     return (
       <div className="space-y-8">
-        <section className="relative overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-background to-background p-8 md:p-10">
-          <div className="pointer-events-none absolute inset-0 -z-10">
-            <div className="absolute -top-16 right-0 h-40 w-40 rounded-full bg-primary/20 blur-3xl" />
-            <div className="absolute bottom-0 left-10 h-24 w-24 rounded-full bg-emerald-500/20 blur-2xl" />
-          </div>
+        <section className="rounded-3xl border border-border bg-card p-8 md:p-10">
           <div className="flex flex-col items-center justify-center text-center">
             <Container className="mb-4 h-12 w-12 text-primary" />
             <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
@@ -285,57 +282,30 @@ const ContainerDashboard: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Hero Section */}
-      <section className="relative overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-background to-background p-8 md:p-10">
-        <div className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute -top-16 right-0 h-40 w-40 rounded-full bg-primary/20 blur-3xl" />
-          <div className="absolute bottom-0 left-10 h-24 w-24 rounded-full bg-emerald-500/20 blur-2xl" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_60%)]" />
-        </div>
+      <section className="rounded-3xl border border-border bg-card p-8 md:p-10">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-4">
-            <Badge variant="secondary" className="w-fit bg-primary/15 text-primary">
-              Container Dashboard
-            </Badge>
-            <div className="space-y-3">
-              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-                Container Management Center
-              </h1>
-              <p className="max-w-xl text-base text-muted-foreground">
-                Deploy, manage, and monitor your containerized applications with real-time metrics and unified control.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/80 px-4 py-2">
-                <Server className="h-4 w-4 text-primary" />
-                {dashboardStats.totalProjects} projects
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-emerald-400">
-                <Play className="h-4 w-4" />
-                {dashboardStats.runningServices} running
-              </span>
-              {dashboardStats.stoppedServices > 0 && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-amber-400">
-                  <Square className="h-4 w-4" />
-                  {dashboardStats.stoppedServices} stopped
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button onClick={() => navigate('/containers/projects/new')}>
-                <Plus className="mr-2 h-4 w-4" />Create Project
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/containers/templates">
-                  Browse Templates
-                  <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
+          <PageHeader
+            title="Container Management Center"
+            description="Deploy, manage, and monitor your containerized applications with real-time metrics and unified control."
+            badge={{ text: "Container Dashboard", variant: "secondary" }}
+            actions={
+              <>
+                <Button onClick={() => navigate('/containers/projects/new')}>
+                  <Plus className="mr-2 h-4 w-4" />Create Project
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link to="/containers/templates">
+                    Browse Templates
+                    <ArrowUpRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            }
+          />
 
           {/* Resource Usage Card */}
           {state.resourceUsage && state.quota && state.percentages && (
-            <Card className="w-full max-w-sm border-primary/20 bg-background/70 backdrop-blur">
+            <Card className="w-full max-w-sm border-border bg-card">
               <CardHeader className="pb-4">
                 <CardTitle className="text-base font-semibold text-muted-foreground">
                   Resource Usage
@@ -424,80 +394,71 @@ const ContainerDashboard: React.FC = () => {
             </Card>
           )}
         </div>
+        
+        {/* Quick Stats */}
+        <div className="mt-8 flex flex-wrap gap-3 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2">
+            <Server className="h-4 w-4 text-primary" />
+            {dashboardStats.totalProjects} projects
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-emerald-400">
+            <Play className="h-4 w-4" />
+            {dashboardStats.runningServices} running
+          </span>
+          {dashboardStats.stoppedServices > 0 && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-amber-400">
+              <Square className="h-4 w-4" />
+              {dashboardStats.stoppedServices} stopped
+            </span>
+          )}
+        </div>
       </section>
 
       {/* Stats Cards */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center justify-between gap-6 p-6">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Projects</p>
-              <p className="text-3xl font-semibold tracking-tight">{dashboardStats.totalProjects}</p>
-              <p className="text-xs text-muted-foreground">Container projects</p>
-            </div>
-            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <Server className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="flex items-center justify-between gap-6 p-6">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Services</p>
-              <p className="text-3xl font-semibold tracking-tight">{dashboardStats.totalServices}</p>
-              <p className="text-xs text-muted-foreground">Deployed containers</p>
-            </div>
-            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <Container className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="flex items-center justify-between gap-6 p-6">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Running</p>
-              <p className="text-3xl font-semibold tracking-tight">{dashboardStats.runningServices}</p>
-              <p className="text-xs text-muted-foreground">Active services</p>
-            </div>
-            <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-500">
-              <Play className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="flex items-center justify-between gap-6 p-6">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Plan</p>
-              <p className="text-3xl font-semibold tracking-tight">{state.subscription.plan?.name || 'Unknown'}</p>
-              <p className="text-xs text-muted-foreground">Current subscription</p>
-            </div>
-            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <TrendingUp className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+      <StatsGrid
+        columns={4}
+        stats={[
+          {
+            label: "Projects",
+            value: dashboardStats.totalProjects,
+            description: "Container projects",
+            icon: <Server className="h-6 w-6" />
+          },
+          {
+            label: "Services",
+            value: dashboardStats.totalServices,
+            description: "Deployed containers",
+            icon: <Container className="h-6 w-6" />
+          },
+          {
+            label: "Running",
+            value: dashboardStats.runningServices,
+            description: "Active services",
+            icon: <Play className="h-6 w-6" />
+          },
+          {
+            label: "Plan",
+            value: state.subscription.plan?.name || 'Unknown',
+            description: "Current subscription",
+            icon: <TrendingUp className="h-6 w-6" />
+          }
+        ]}
+      />
 
       {/* Main Content */}
       <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         {/* Projects List */}
-        <Card className="h-full">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-lg">Container Projects</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Manage your containerized applications organized by project.
-              </p>
-            </div>
+        <ContentCard
+          title="Container Projects"
+          description="Manage your containerized applications organized by project."
+          headerAction={
             <Button onClick={() => navigate('/containers/projects/new')}>
               <Plus className="mr-2 h-4 w-4" />
               Create Project
             </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          }
+        >
+          <div className="space-y-4">
             {state.projects.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-muted p-10 text-center">
                 <Server className="mb-3 h-8 w-8 text-muted-foreground" />
@@ -554,18 +515,15 @@ const ContainerDashboard: React.FC = () => {
                 </button>
               ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </ContentCard>
 
         {/* Quick Actions */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Quick Actions</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Common tasks for container management.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <ContentCard
+          title="Quick Actions"
+          description="Common tasks for container management."
+        >
+          <div className="space-y-4">
             {quickActions.map((action) => (
               <button
                 key={action.title}
@@ -585,8 +543,8 @@ const ContainerDashboard: React.FC = () => {
                 </span>
               </button>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </ContentCard>
       </section>
     </div>
   );

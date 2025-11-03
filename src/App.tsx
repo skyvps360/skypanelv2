@@ -66,6 +66,7 @@ import ContainerPlansManagement from "./pages/admin/ContainerPlansManagement";
 import ContainerTemplatesManagement from "./pages/admin/ContainerTemplatesManagement";
 import ContainerMonitoring from "./pages/admin/ContainerMonitoring";
 import EasypanelConfig from "./pages/admin/EasypanelConfig";
+import AdminUserDetail from "./pages/admin/AdminUserDetail";
 
 // Component to handle impersonation banner display
 function ImpersonationWrapper({ children }: { children: React.ReactNode }) {
@@ -387,6 +388,14 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <Admin />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/user/:id"
+          element={
+            <AdminRoute>
+              <AdminUserDetail />
             </AdminRoute>
           }
         />

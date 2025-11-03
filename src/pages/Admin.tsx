@@ -723,39 +723,10 @@ const Admin: React.FC = () => {
 
   // User action handlers
   const handleViewUser = useCallback(
-    async (user: AdminUserRecord) => {
-      if (!token) {
-        toast.error("Authentication required");
-        return;
-      }
-
-      try {
-        setLoadingUserDetails(true);
-        const response = await fetch(
-          buildApiUrl(`/api/admin/users/${user.id}`),
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || "Failed to load user details");
-        }
-
-        const data = await response.json();
-        setSelectedUserForProfile(data.user);
-        setUserProfileModalOpen(true);
-      } catch (error: any) {
-        console.error("Failed to load user details:", error);
-        toast.error(error.message || "Failed to load user details");
-      } finally {
-        setLoadingUserDetails(false);
-      }
+    (user: AdminUserRecord) => {
+      navigate(`/admin/user/${user.id}`);
     },
-    [token]
+    [navigate]
   );
 
   const handleCloseUserProfileModal = useCallback(() => {

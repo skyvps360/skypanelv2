@@ -5,7 +5,7 @@
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Node.js](https://img.shields.io/badge/Node.js-43853D?logo=node.js&logoColor=white)](https://nodejs.org/)
 
-SkyPanelV2 is an open-source control plane for cloud service resellers. It packages provider provisioning, PayPal-backed wallet billing, white-label branding, and a modern self-service portal backed by a React 18 + Vite frontend and an Express.js API.
+SkyPanelV2 is an open-source control plane for cloud service providing offering vps and container services. It packages provider provisioning, PayPal-backed wallet billing, white-label branding for the applicaiton owner, and a modern self-service portal backed by a React 18 + Vite frontend and an Express.js API.
 
 ## Feature Highlights
 
@@ -15,10 +15,15 @@ SkyPanelV2 is an open-source control plane for cloud service resellers. It packa
 - **Provider provisioning**: Linode and DigitalOcean services orchestrate instance creation, plan catalogs, stackscript automation, and activity logging.
 - **Billing & wallets**: PayPal prepaid wallets, hourly reconciliation via `BillingService`, invoices, and downloadable billing artifacts.
 - **Real-time notifications**: PostgreSQL LISTEN/NOTIFY feeds a Server-Sent Events stream surfaced in the UI for activity, billing, and support updates.
-- **White-label experience**: Environment-driven branding, theme toggles, and shadcn-style UI primitives let resellers ship a fully branded portal.
+- **White-label experience**: Environment-driven branding, theme toggles, and shadcn-style UI primitives lets admins whitelabel everything from brandname to even the upstream providers.
 - **Secure access**: JWT auth, impersonation support, SSH WebSocket bridge for VPS consoles, and centrally managed rate limiting.
 - **Team collaboration**: Multi-tenant organizations, role-based routing, and auditable activity logs across the stack.
-
+- **Mention Of Brand Name**: Use of consistant brand name definable by `.env` secret.
+- **White Label i.e hiding of digitalocean easypanel & linode**: mentions of linode, digitalocean, or easypanel will not be seen to clients.
+- **Providers**: offering the applicaiton admin to define the actual provider i.e linode/digitalocean names via the admin dashboard.
+- **Easypanel**: If easypanel is not defined in the `/admin#easypanel-config` it will not allow the use of containers or selling containers to clients. 
+- **DESIGN**: WHEN DEVELOPING AND SPEAKING ABOUT APPLICAITON SPEAK ABOUT APPLICATION IN A  customer-facing for your cloud hosting business.
+ 
 ## Architecture Snapshot
 
 - Frontend (`src/`): React 18, Vite, TypeScript, Tailwind, TanStack Query 5, Zustand, shadcn-inspired components.

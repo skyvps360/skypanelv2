@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
+import { PageHeader, StatsGrid, ContentCard } from '@/components/layouts';
 import { getMonthlySpendWithFallback } from '../lib/billingUtils';
 import { MonthlyResetIndicator } from '@/components/Dashboard/MonthlyResetIndicator';
 import { formatCurrency } from '@/lib/formatters';
@@ -316,54 +317,29 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-background to-background p-8 md:p-10">
-        <div className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute -top-16 right-0 h-40 w-40 rounded-full bg-primary/20 blur-3xl" />
-          <div className="absolute bottom-0 left-10 h-24 w-24 rounded-full bg-emerald-500/20 blur-2xl" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_60%)]" />
-        </div>
+      <section className="rounded-3xl border border-border bg-card p-8 md:p-10">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-4">
-            <Badge variant="secondary" className="w-fit bg-primary/15 text-primary">
-              Welcome back
-            </Badge>
-            <div className="space-y-3">
-              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-                {user?.firstName ? `Good to see you, ${user.firstName}.` : 'SkyPanel command center'}
-              </h1>
-              <p className="max-w-xl text-base text-muted-foreground">
-                Deploy and manage infrastructure across your providers with live telemetry, unified billing, and proactive insights.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/80 px-4 py-2">
-                <Server className="h-4 w-4 text-primary" />
-                {heroStats.running} active
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-amber-400">
-                <AlertTriangle className="h-4 w-4" />
-                {heroStats.flagged} attention
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/80 px-4 py-2">
-                <TrendingUp className="h-4 w-4 text-primary" />
-                Avg CPU {heroStats.averageCpu !== null ? `${heroStats.averageCpu.toFixed(1)}%` : 'n/a'}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button asChild>
-                <Link to="/vps">
-                  <Plus className="mr-2 h-4 w-4" />Launch VPS
-                </Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/billing">
-                  View billing
-                  <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-          <Card className="w-full max-w-sm border-primary/20 bg-background/70 backdrop-blur">
+          <PageHeader
+            title={user?.firstName ? `Good to see you, ${user.firstName}.` : 'SkyPanel command center'}
+            description="Deploy and manage infrastructure across your providers with live telemetry, unified billing, and proactive insights."
+            badge={{ text: "Welcome back", variant: "secondary" }}
+            actions={
+              <>
+                <Button asChild>
+                  <Link to="/vps">
+                    <Plus className="mr-2 h-4 w-4" />Launch VPS
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link to="/billing">
+                    View billing
+                    <ArrowUpRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            }
+          />
+          <Card className="w-full max-w-sm border-border bg-card">
             <CardHeader className="pb-4">
               <CardTitle className="text-base font-semibold text-muted-foreground">
                 Platform pulse
@@ -381,7 +357,7 @@ const Dashboard: React.FC = () => {
                 </div>
                 <MonthlyResetIndicator monthlySpend={monthlySpend} />
               </div>
-              <div className="rounded-xl border border-primary/10 bg-primary/5 p-4 text-sm">
+              <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm">
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Last payment</span>
                   <span className="font-medium text-foreground">
@@ -393,7 +369,7 @@ const Dashboard: React.FC = () => {
                 </p>
               </div>
               {heroStats.topInstance && (
-                <div className="rounded-xl border border-primary/10 bg-background p-4 text-sm">
+                <div className="rounded-xl border border-border bg-card p-4 text-sm">
                   <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
                     Top load VPS
                     <span className="inline-flex items-center gap-1 text-primary">
@@ -410,62 +386,62 @@ const Dashboard: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+        
+        {/* Quick Stats */}
+        <div className="mt-8 flex flex-wrap gap-3 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2">
+            <Server className="h-4 w-4 text-primary" />
+            {heroStats.running} active
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-amber-400">
+            <AlertTriangle className="h-4 w-4" />
+            {heroStats.flagged} attention
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            Avg CPU {heroStats.averageCpu !== null ? `${heroStats.averageCpu.toFixed(1)}%` : 'n/a'}
+          </span>
+        </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center justify-between gap-6 p-6">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">VPS instances</p>
-              <p className="text-3xl font-semibold tracking-tight">{vpsInstances.length}</p>
-              <p className="text-xs text-muted-foreground">Across all connected providers</p>
-            </div>
-            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <Server className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center justify-between gap-6 p-6">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Wallet balance</p>
-              <p className="text-3xl font-semibold tracking-tight">{formatCurrency(walletBalance)}</p>
-              <p className="text-xs text-muted-foreground">Ready to deploy infrastructure</p>
-            </div>
-            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <Wallet className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center justify-between gap-6 p-6">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Monthly spend</p>
-              <p className="text-3xl font-semibold tracking-tight">{formatCurrency(monthlySpend)}</p>
-              <p className="text-xs text-muted-foreground">Resets at the start of each cycle</p>
-            </div>
-            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <TrendingUp className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+      <StatsGrid
+        columns={3}
+        stats={[
+          {
+            label: "VPS instances",
+            value: vpsInstances.length,
+            description: "Across all connected providers",
+            icon: <Server className="h-6 w-6" />
+          },
+          {
+            label: "Wallet balance",
+            value: formatCurrency(walletBalance),
+            description: "Ready to deploy infrastructure",
+            icon: <Wallet className="h-6 w-6" />
+          },
+          {
+            label: "Monthly spend",
+            value: formatCurrency(monthlySpend),
+            description: "Resets at the start of each cycle",
+            icon: <TrendingUp className="h-6 w-6" />
+          }
+        ]}
+      />
 
       <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <Card className="h-full">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-lg">VPS fleet</CardTitle>
-              <p className="text-sm text-muted-foreground">Live signal across your most recent deployments.</p>
-            </div>
+        <ContentCard
+          title="VPS fleet"
+          description="Live signal across your most recent deployments."
+          headerAction={
             <Button variant="outline" size="sm" asChild>
               <Link to="/vps">
                 Manage instances
                 <ArrowUpRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          }
+        >
+          <div className="space-y-4">
             {vpsInstances.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-muted p-10 text-center">
                 <Server className="mb-3 h-8 w-8 text-muted-foreground" />
@@ -545,16 +521,13 @@ const Dashboard: React.FC = () => {
                 </Link>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </ContentCard>
 
         <div className="grid gap-6">
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg">Billing snapshot</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5 text-sm">
-              <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
+          <ContentCard title="Billing snapshot">
+            <div className="space-y-5 text-sm">
+              <div className="rounded-2xl border border-border bg-muted/20 p-4">
                 <div className="flex items-center justify-between text-xs uppercase tracking-wide text-primary">
                   Spend this cycle
                   <span className="text-foreground">{formatCurrency(monthlySpend)}</span>
@@ -588,15 +561,14 @@ const Dashboard: React.FC = () => {
                 <Clock className="mr-2 inline h-4 w-4 align-middle text-primary" />
                 Hourly billing engine reconciles usage at the top of each hour.
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </ContentCard>
 
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg">Quick actions</CardTitle>
-              <p className="text-sm text-muted-foreground">Fast paths for the workflows you visit the most.</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <ContentCard
+            title="Quick actions"
+            description="Fast paths for the workflows you visit the most."
+          >
+            <div className="space-y-4">
               {quickActions.map((action) => (
                 <Link
                   key={action.title}
@@ -615,16 +587,13 @@ const Dashboard: React.FC = () => {
                   </span>
                 </Link>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </ContentCard>
         </div>
       </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Recent activity</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <ContentCard title="Recent activity">
+        <div>
           {recentActivity.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-muted p-10 text-center text-sm text-muted-foreground">
               <ActivityIcon className="mb-3 h-8 w-8" />
@@ -661,8 +630,8 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </ContentCard>
     </div>
   );
 };
