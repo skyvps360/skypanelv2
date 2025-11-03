@@ -59,6 +59,7 @@ import SSHKeys from "./pages/SSHKeys";
 // Container pages
 import ContainerDashboard from "./pages/ContainerDashboard";
 import ContainerPlansPage from "./pages/ContainerPlansPage";
+import ContainerTemplatesPage from "./pages/ContainerTemplatesPage";
 import ProjectDetail from "./pages/ProjectDetail";
 import ServiceDetail from "./pages/ServiceDetail";
 
@@ -301,6 +302,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <ContainerPlansPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/containers/templates"
+          element={
+            <ProtectedRoute>
+              <ContainerTemplatesPage />
             </ProtectedRoute>
           }
         />
