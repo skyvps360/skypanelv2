@@ -146,26 +146,33 @@ const ContainerDashboard: React.FC = () => {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  const quickActions = useMemo(() => [
-    {
-      title: 'Create Project',
-      description: 'Start a new container project to organize your services.',
-      action: () => navigate('/containers/projects/new'),
-      icon: <Plus className="h-4 w-4" />
-    },
-    {
-      title: 'Browse Templates',
-      description: 'Deploy popular applications with one-click templates.',
-      action: () => navigate('/containers/templates'),
-      icon: <Globe className="h-4 w-4" />
-    },
-    {
-      title: 'View Plans',
-      description: 'Upgrade your subscription or view plan details.',
-      action: () => navigate('/containers/plans'),
-      icon: <Settings className="h-4 w-4" />
+  const quickActions = useMemo(() => {
+    const actions = [
+      {
+        title: 'Create Project',
+        description: 'Start a new container project to organize your services.',
+        action: () => navigate('/containers/projects/new'),
+        icon: <Plus className="h-4 w-4" />
+      },
+      {
+        title: 'View Plans',
+        description: 'Upgrade your subscription or view plan details.',
+        action: () => navigate('/containers/plans'),
+        icon: <Settings className="h-4 w-4" />
+      }
+    ];
+
+    if (state.subscription?.status === 'active') {
+      actions.splice(1, 0, {
+        title: 'Browse Templates',
+        description: 'Deploy popular applications with one-click templates.',
+        action: () => navigate('/containers/templates'),
+        icon: <Globe className="h-4 w-4" />
+      });
     }
-  ], [navigate]);
+
+    return actions;
+  }, [navigate, state.subscription?.status]);
 
   const dashboardStats = useMemo(() => {
     const totalServices = state.projects.reduce((sum, project) => 
@@ -263,7 +270,7 @@ const ContainerDashboard: React.FC = () => {
               Container as a Service
             </h1>
             <p className="mt-3 max-w-xl text-muted-foreground">
-              Deploy and manage containerized applications with Easypanel integration. 
+              Deploy and manage containerized applications with ease. 
               Choose a plan to get started with your container infrastructure.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
@@ -271,12 +278,6 @@ const ContainerDashboard: React.FC = () => {
                 <Link to="/containers/plans">
                   <Plus className="mr-2 h-4 w-4" />
                   Choose a Plan
-                </Link>
-              </Button>
-              <Button variant="outline" size="lg" asChild>
-                <Link to="/containers/templates">
-                  Browse Templates
-                  <ArrowUpRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
             </div>
@@ -313,12 +314,14 @@ const ContainerDashboard: React.FC = () => {
               <Plus className="mr-2 h-4 w-4" />
               Create Project
             </Button>
-            <Button variant="outline" size="lg" asChild>
-              <Link to="/containers/templates">
-                Browse Templates
-                <ArrowUpRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+            {state.subscription?.status === 'active' && (
+              <Button variant="outline" size="lg" asChild>
+                <Link to="/containers/templates">
+                  Browse Templates
+                  <ArrowUpRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
         

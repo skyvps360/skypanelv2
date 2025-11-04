@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { buildApiUrl } from "@/lib/api";
+import { buildApiUrl, apiClient } from "@/lib/api";
 
 interface Notification {
   id: string;
@@ -61,12 +61,7 @@ const NotificationDropdown: React.FC = () => {
   const markAsRead = async (notificationId: string) => {
     if (!token) return;
     try {
-      const response = await fetch(buildApiUrl(`/api/notifications/${notificationId}/read`), {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error("Failed to mark notification as read");
+      await apiClient.patch(`/notifications/${notificationId}/read`);
 
       setNotifications((prev) => {
         const next = prev.map((notification) =>
@@ -86,12 +81,7 @@ const NotificationDropdown: React.FC = () => {
   const markAllAsRead = async () => {
     if (!token || unreadCount === 0) return;
     try {
-      const response = await fetch(buildApiUrl("/api/notifications/read-all"), {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error("Failed to mark all notifications as read");
+      await apiClient.patch("/notifications/read-all");
 
       setNotifications((prev) => {
         const next = prev.map((notification) => ({
@@ -113,13 +103,9 @@ const NotificationDropdown: React.FC = () => {
     if (!token) return;
     try {
       setLoading(true);
-      const response = await fetch(buildApiUrl("/api/notifications/unread?limit=20"), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch notifications");
-
-      const payload = await response.json();
+      const payload = await apiClient.get<{ notifications: Notification[] }>(
+        "/notifications/unread?limit=20",
+      );
       const items: Notification[] = payload.notifications || [];
       setNotifications(items);
       syncUnreadCount(items);
@@ -134,13 +120,9 @@ const NotificationDropdown: React.FC = () => {
   const loadUnreadCount = useCallback(async () => {
     if (!token) return;
     try {
-      const response = await fetch(buildApiUrl("/notifications/unread-count"), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch unread count");
-
-      const payload = await response.json();
+      const payload = await apiClient.get<{ count: number }>(
+        "/notifications/unread-count",
+      );
       setUnreadCount(payload.count || 0);
     } catch (error) {
       console.error("Error fetching unread count:", error);

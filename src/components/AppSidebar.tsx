@@ -23,6 +23,7 @@ import { NavSecondary } from "@/components/nav-secondary";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { containerService } from "@/services/containerService";
 import {
   Sidebar,
   SidebarContent,
@@ -40,6 +41,28 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
   const location = useLocation();
   const { user } = useAuth();
+
+  // Determine if user has an active container subscription
+  const [hasActiveContainerSubscription, setHasActiveContainerSubscription] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+    // Only check subscription status for authenticated users
+    if (!user) {
+      setHasActiveContainerSubscription(false);
+      return;
+    }
+    (async () => {
+      try {
+        const result = await containerService.getSubscription();
+        const isActive = !!(result.success && result.subscription && result.subscription.status === "active");
+        if (mounted) setHasActiveContainerSubscription(isActive);
+      } catch (_) {
+        if (mounted) setHasActiveContainerSubscription(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [user]);
 
   // Main navigation items
   const pathname = location.pathname;
@@ -168,11 +191,16 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               url: "/containers",
               isActive: pathname === "/containers",
             },
-            {
-              title: "Templates",
-              url: "/containers/templates",
-              isActive: pathname === "/containers/templates",
-            },
+            // Only show Templates if subscription is active
+            ...(hasActiveContainerSubscription
+              ? [
+                  {
+                    title: "Templates",
+                    url: "/containers/templates",
+                    isActive: pathname === "/containers/templates",
+                  },
+                ]
+              : []),
             {
               title: "Plans",
               url: "/containers/plans",

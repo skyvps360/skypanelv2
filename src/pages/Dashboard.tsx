@@ -26,6 +26,7 @@ import { Progress } from '@/components/ui/progress';
 import { getMonthlySpendWithFallback } from '../lib/billingUtils';
 import { MonthlyResetIndicator } from '@/components/Dashboard/MonthlyResetIndicator';
 import { formatCurrency } from '@/lib/formatters';
+import { apiClient } from '@/lib/api';
 
 interface MetricSummary {
   average: number;
@@ -87,21 +88,11 @@ const Dashboard: React.FC = () => {
     if (!token) return;
     setLoading(true);
     try {
-      const [vpsRes, walletRes, paymentsRes] = await Promise.all([
-        fetch('/api/vps', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/payments/wallet/balance', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/payments/history?limit=1&status=completed', { headers: { Authorization: `Bearer ${token}` } }),
-      ]);
-
       const [vpsData, walletData, paymentsData] = await Promise.all([
-        vpsRes.json(),
-        walletRes.json(),
-        paymentsRes.json()
+        apiClient.get('/vps'),
+        apiClient.get('/payments/wallet/balance'),
+        apiClient.get('/payments/history?limit=1&status=completed'),
       ]);
-
-      if (!vpsRes.ok) throw new Error(vpsData.error || 'Failed to load VPS instances');
-      if (!walletRes.ok) throw new Error(walletData.error || 'Failed to load wallet');
-      if (!paymentsRes.ok) throw new Error(paymentsData.error || 'Failed to load payment history');
 
       const instances: VPSStats[] = await Promise.all(
         (vpsData.instances || []).map(async (instance: any) => {
@@ -109,25 +100,19 @@ const Dashboard: React.FC = () => {
           let cpu = 0;
 
           try {
-            const detailRes = await fetch(`/api/vps/${instance.id}`, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (detailRes.ok) {
-              const detailData = await detailRes.json();
-              metrics = {
-                cpu: detailData.metrics?.cpu?.summary ?? null,
-                network: {
-                  inbound: detailData.metrics?.network?.inbound?.summary ?? null,
-                  outbound: detailData.metrics?.network?.outbound?.summary ?? null
-                },
-                io: {
-                  read: detailData.metrics?.io?.read?.summary ?? null,
-                  swap: detailData.metrics?.io?.swap?.summary ?? null
-                }
-              };
-              cpu = detailData.metrics?.cpu?.summary?.last || 0;
-            }
+            const detailData = await apiClient.get(`/vps/${instance.id}`);
+            metrics = {
+              cpu: detailData.metrics?.cpu?.summary ?? null,
+              network: {
+                inbound: detailData.metrics?.network?.inbound?.summary ?? null,
+                outbound: detailData.metrics?.network?.outbound?.summary ?? null
+              },
+              io: {
+                read: detailData.metrics?.io?.read?.summary ?? null,
+                swap: detailData.metrics?.io?.swap?.summary ?? null
+              }
+            };
+            cpu = detailData.metrics?.cpu?.summary?.last || 0;
           } catch (error) {
             console.warn(`Failed to fetch metrics for VPS ${instance.id}:`, error);
           }
@@ -162,20 +147,15 @@ const Dashboard: React.FC = () => {
       });
 
       try {
-        const actRes = await fetch('/api/activity/recent?limit=10', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const actData = await actRes.json();
-        if (actRes.ok) {
-          const mapped: ActivityItem[] = (actData.activities || []).map((activity: any) => ({
-            id: activity.id,
-            type: activity.type || activity.entity_type || 'activity',
-            message: activity.message || `${activity.event_type}`,
-            timestamp: activity.timestamp || activity.created_at,
-            status: activity.status || 'info'
-          }));
-          setRecentActivity(mapped);
-        }
+        const actData = await apiClient.get('/activity/recent?limit=10');
+        const mapped: ActivityItem[] = (actData.activities || []).map((activity: any) => ({
+          id: activity.id,
+          type: activity.type || activity.entity_type || 'activity',
+          message: activity.message || `${activity.event_type}`,
+          timestamp: activity.timestamp || activity.created_at,
+          status: activity.status || 'info'
+        }));
+        setRecentActivity(mapped);
       } catch (error) {
         console.warn('Failed to load recent activity', error);
       }
