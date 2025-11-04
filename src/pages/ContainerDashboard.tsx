@@ -21,9 +21,11 @@ import {
   Square
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useContainerError } from '@/hooks/useContainerError';
 import { ContainerErrorBoundary } from '@/components/containers/ContainerErrorBoundary';
+import { CancelSubscriptionDialog } from '@/components/containers/CancelSubscriptionDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -129,6 +131,16 @@ const ContainerDashboard: React.FC = () => {
       }));
     }
   }, [token, handleError]);
+
+  const handleCancelSuccess = useCallback(() => {
+    toast.success('Your subscription has been cancelled and any refund has been credited to your wallet.');
+    // Reload dashboard to reflect changes
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  const handleCancelError = useCallback((error: string) => {
+    toast.error(error);
+  }, []);
 
   useEffect(() => {
     loadDashboardData();
@@ -597,6 +609,31 @@ const ContainerDashboard: React.FC = () => {
               ))}
             </CardContent>
           </Card>
+
+          {/* Cancel Subscription */}
+          {state.subscription && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Subscription Management</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="rounded-lg border bg-muted/50 p-3">
+                    <p className="text-sm font-medium">{state.subscription.plan?.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ${state.subscription.plan?.priceMonthly.toFixed(2)}/month
+                    </p>
+                  </div>
+                  <CancelSubscriptionDialog
+                    subscription={state.subscription}
+                    projectCount={state.projects.length}
+                    onSuccess={handleCancelSuccess}
+                    onError={handleCancelError}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

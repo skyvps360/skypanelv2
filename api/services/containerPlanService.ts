@@ -397,12 +397,12 @@ export class ContainerPlanService {
           throw new Error('Failed to deduct subscription fee from wallet');
         }
 
-        // Get organization and user details for Easypanel account
+        // Get organization and owner user details for Easypanel account
         const orgUserResult = await client.query(`
           SELECT u.id, u.email, o.name as org_name
-          FROM users u
-          JOIN organizations o ON o.id = u.organization_id
-          WHERE u.organization_id = $1 AND u.role = 'owner'
+          FROM organizations o
+          JOIN users u ON u.id = o.owner_id
+          WHERE o.id = $1
           LIMIT 1
         `, [organizationId]);
 
@@ -494,15 +494,17 @@ export class ContainerPlanService {
   }
 
   /**
-   * Cancel a container subscription
+   * Cancel a container subscription with prorated refund and cleanup
    */
-  static async cancelSubscription(subscriptionId: string): Promise<void> {
+  static async cancelSubscription(subscriptionId: string): Promise<{ refundAmount: number; projectsDeleted: number }> {
     try {
       return await transaction(async (client) => {
-        // Check if subscription exists and is active
+        // Get subscription details with plan pricing
         const subscriptionResult = await client.query(`
-          SELECT id, organization_id, status FROM container_subscriptions 
-          WHERE id = $1
+          SELECT cs.*, cp.price_monthly
+          FROM container_subscriptions cs
+          JOIN container_plans cp ON cs.plan_id = cp.id
+          WHERE cs.id = $1
         `, [subscriptionId]);
 
         if (subscriptionResult.rows.length === 0) {
@@ -514,23 +516,77 @@ export class ContainerPlanService {
           throw new Error('Subscription is not active');
         }
 
-        // Check if organization has any active projects
-        const projectsResult = await client.query(`
-          SELECT COUNT(*) as count FROM container_projects 
-          WHERE subscription_id = $1 AND status = 'active'
-        `, [subscriptionId]);
+        // Calculate prorated refund
+        const now = new Date();
+        const periodStart = new Date(subscription.current_period_start);
+        
+        const totalDays = 30; // Monthly subscription
+        const daysElapsed = Math.floor((now.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24));
+        const daysRemaining = Math.max(0, totalDays - daysElapsed);
+        
+        const monthlyPrice = parseFloat(subscription.price_monthly);
+        const refundAmount = Number(((daysRemaining / totalDays) * monthlyPrice).toFixed(2));
 
-        const activeProjectCount = parseInt(projectsResult.rows[0].count);
-        if (activeProjectCount > 0) {
-          throw new Error(`Cannot cancel subscription with ${activeProjectCount} active project(s). Please delete all projects first.`);
+        // Get all Easypanel projects for this organization
+        const projectsResult = await client.query(`
+          SELECT project_name, easypanel_project_name
+          FROM container_projects
+          WHERE organization_id = $1
+        `, [subscription.organization_id]);
+
+        const projects = projectsResult.rows;
+        let projectsDeleted = 0;
+
+        // Delete all Easypanel projects via API
+        if (projects.length > 0) {
+          for (const project of projects) {
+            try {
+              await easypanelService.destroyProject(project.easypanel_project_name);
+              
+              // Remove from database
+              await client.query(`
+                DELETE FROM container_projects
+                WHERE easypanel_project_name = $1 AND organization_id = $2
+              `, [project.easypanel_project_name, subscription.organization_id]);
+              
+              projectsDeleted++;
+            } catch (error) {
+              console.error(`Failed to delete project ${project.easypanel_project_name}:`, error);
+              // Continue with other projects even if one fails
+            }
+          }
         }
 
-        // Cancel the subscription
+        // Credit wallet with refund if amount > 0
+        if (refundAmount > 0) {
+          const PayPalService = (await import('./paypalService.js')).PayPalService;
+          const refundSuccess = await PayPalService.addFundsToWallet(
+            subscription.organization_id,
+            refundAmount,
+            `Prorated refund for cancelled container subscription (${daysRemaining} days remaining)`,
+            undefined,
+            undefined,
+            {
+              subscription_id: subscriptionId,
+              days_remaining: daysRemaining,
+              monthly_price: monthlyPrice,
+              refund_type: 'prorated_cancellation'
+            }
+          );
+
+          if (!refundSuccess) {
+            console.error('Failed to credit wallet with refund, but continuing with cancellation');
+          }
+        }
+
+        // Update subscription status to cancelled
         await client.query(`
           UPDATE container_subscriptions 
-          SET status = 'cancelled'
+          SET status = 'cancelled', updated_at = NOW()
           WHERE id = $1
         `, [subscriptionId]);
+
+        return { refundAmount, projectsDeleted };
       });
     } catch (error) {
       console.error('Error cancelling container subscription:', error);

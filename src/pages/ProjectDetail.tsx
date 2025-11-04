@@ -17,8 +17,6 @@ import {
   Server,
   AlertTriangle,
   ExternalLink,
-  Edit,
-  Save,
   X,
   Eye,
   EyeOff
@@ -31,19 +29,26 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DeployServiceModal } from '@/components/containers/DeployServiceModal';
 import { containerService } from '@/services/containerService';
 import type {
   ContainerProject,
-  ContainerService as ContainerServiceType
+  ContainerService as ContainerServiceType,
+  ContainerTemplate,
+  ResourceUsage,
+  AppServiceFormData,
+  DatabaseServiceFormData,
+  TemplateServiceFormData
 } from '@/types/containers';
 
 interface ProjectDetailState {
   project: ContainerProject | null;
   services: ContainerServiceType[];
+  templates: ContainerTemplate[];
+  usage: ResourceUsage | null;
+  quota: ResourceUsage | null;
   loading: boolean;
   error: string | null;
   updating: boolean;
@@ -59,11 +64,15 @@ const ProjectDetail: React.FC = () => {
   const [state, setState] = useState<ProjectDetailState>({
     project: null,
     services: [],
+    templates: [],
+    usage: null,
+    quota: null,
     loading: true,
     error: null,
     updating: false
   });
   const [envDialogOpen, setEnvDialogOpen] = useState(false);
+  const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [envVariables, setEnvVariables] = useState<EnvironmentVariable[]>([]);
   const [showEnvValues, setShowEnvValues] = useState<Record<string, boolean>>({});
   const { token } = useAuth();
@@ -75,9 +84,11 @@ const ProjectDetail: React.FC = () => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
-      const [projectResult, servicesResult] = await Promise.all([
+      const [projectResult, servicesResult, templatesResult, usageResult] = await Promise.all([
         containerService.getProject(projectName),
-        containerService.getServices(projectName)
+        containerService.getServices(projectName),
+        containerService.getTemplates(),
+        containerService.getResourceUsage()
       ]);
 
       if (!projectResult.success) {
@@ -92,6 +103,9 @@ const ProjectDetail: React.FC = () => {
         ...prev,
         project: projectResult.project || null,
         services: servicesResult.services || [],
+        templates: templatesResult.success ? (templatesResult.templates || []) : [],
+        usage: usageResult.success ? (usageResult.usage || null) : null,
+        quota: usageResult.success ? (usageResult.quota || null) : null,
         loading: false,
         error: null
       }));
@@ -221,6 +235,156 @@ const ProjectDetail: React.FC = () => {
   const toggleShowEnvValue = useCallback((key: string) => {
     setShowEnvValues(prev => ({ ...prev, [key]: !prev[key] }));
   }, []);
+
+  // Deployment handlers
+  const handleDeployApp = useCallback(async (formData: AppServiceFormData) => {
+    if (!projectName) return;
+    
+    try {
+      // Convert form data to API request format
+      const source: any = {
+        type: formData.sourceType
+      };
+
+      if (formData.sourceType === 'image') {
+        source.image = formData.image;
+      } else if (formData.sourceType === 'github') {
+        source.owner = formData.owner;
+        source.repo = formData.repo;
+        source.ref = formData.ref || 'main';
+        source.path = formData.path;
+      } else if (formData.sourceType === 'dockerfile') {
+        source.dockerfile = formData.dockerfile;
+      }
+
+      const env = formData.env.reduce((acc, { key, value }) => {
+        if (key.trim()) {
+          acc[key.trim()] = value;
+        }
+        return acc;
+      }, {} as Record<string, string>);
+
+      const resources: any = {};
+      if (formData.cpuLimit) resources.cpuLimit = parseFloat(formData.cpuLimit);
+      if (formData.memoryLimit) resources.memoryLimit = parseFloat(formData.memoryLimit);
+      if (formData.memoryReservation) resources.memoryReservation = parseFloat(formData.memoryReservation);
+
+      const result = await containerService.deployAppService(projectName, {
+        serviceName: formData.serviceName,
+        source,
+        env: Object.keys(env).length > 0 ? env : undefined,
+        resources: Object.keys(resources).length > 0 ? resources : undefined
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to deploy app service');
+      }
+      
+      toast.success('App service deployed successfully');
+      setDeployModalOpen(false);
+      loadProjectData(); // Reload to show new service
+    } catch (error) {
+      console.error('Failed to deploy app service:', error);
+      throw error; // Let modal handle the error
+    }
+  }, [projectName, loadProjectData]);
+
+  const handleDeployDatabase = useCallback(async (formData: DatabaseServiceFormData) => {
+    if (!projectName) return;
+    
+    try {
+      const resources: any = {};
+      if (formData.cpuLimit) resources.cpuLimit = parseFloat(formData.cpuLimit);
+      if (formData.memoryLimit) resources.memoryLimit = parseFloat(formData.memoryLimit);
+
+      const result = await containerService.deployDatabaseService(projectName, {
+        serviceName: formData.serviceName,
+        databaseType: formData.databaseType,
+        version: formData.version,
+        username: formData.username,
+        password: formData.password,
+        database: formData.database,
+        resources: Object.keys(resources).length > 0 ? resources : undefined
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to deploy database service');
+      }
+      
+      toast.success('Database service deployed successfully');
+      setDeployModalOpen(false);
+      loadProjectData(); // Reload to show new service
+    } catch (error) {
+      console.error('Failed to deploy database service:', error);
+      throw error; // Let modal handle the error
+    }
+  }, [projectName, loadProjectData]);
+
+  const handleDeployTemplate = useCallback(async (formData: TemplateServiceFormData) => {
+    if (!projectName) return;
+    
+    try {
+      const result = await containerService.deployTemplateService(projectName, {
+        serviceName: formData.serviceName,
+        templateName: formData.templateName,
+        templateConfig: formData.templateConfig
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to deploy template service');
+      }
+      
+      toast.success('Template service deployed successfully');
+      setDeployModalOpen(false);
+      loadProjectData(); // Reload to show new service
+    } catch (error) {
+      console.error('Failed to deploy template service:', error);
+      throw error; // Let modal handle the error
+    }
+  }, [projectName, loadProjectData]);
+
+  const handleCheckQuota = useCallback(async (requirements: any) => {
+    // Simple client-side quota check based on current usage
+    if (!state.usage || !state.quota) {
+      return {
+        allowed: false,
+        exceededQuotas: ['quota_unavailable'],
+        availableResources: {
+          cpuCores: 0,
+          memoryGb: 0,
+          storageGb: 0,
+          containerCount: 0
+        }
+      };
+    }
+
+    const exceededQuotas: string[] = [];
+    const availableResources = {
+      cpuCores: state.quota.cpuCores - state.usage.cpuCores,
+      memoryGb: state.quota.memoryGb - state.usage.memoryGb,
+      storageGb: state.quota.storageGb - state.usage.storageGb,
+      containerCount: state.quota.containerCount - state.usage.containerCount
+    };
+
+    if (requirements.cpuLimit && requirements.cpuLimit > availableResources.cpuCores) {
+      exceededQuotas.push('cpuCores');
+    }
+    if (requirements.memoryLimit && requirements.memoryLimit > availableResources.memoryGb) {
+      exceededQuotas.push('memoryGb');
+    }
+    if (requirements.storageLimit && requirements.storageLimit > availableResources.storageGb) {
+      exceededQuotas.push('storageGb');
+    }
+    if (availableResources.containerCount <= 0) {
+      exceededQuotas.push('containerCount');
+    }
+
+    return {
+      allowed: exceededQuotas.length === 0,
+      exceededQuotas,
+      availableResources
+    };
+  }, [state.usage, state.quota]);
 
   const getServiceTypeIcon = useCallback((serviceType: ContainerServiceType['serviceType']) => {
     switch (serviceType) {
@@ -400,7 +564,7 @@ const ProjectDetail: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          <Button onClick={() => navigate(`/containers/projects/${projectName}/deploy`)}>
+          <Button onClick={() => setDeployModalOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Deploy Service
           </Button>
@@ -593,6 +757,22 @@ const ProjectDetail: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Deploy Service Modal */}
+      {state.project && state.usage && state.quota && (
+        <DeployServiceModal
+          isOpen={deployModalOpen}
+          onClose={() => setDeployModalOpen(false)}
+          projectName={projectName || ''}
+          templates={state.templates}
+          currentUsage={state.usage}
+          quota={state.quota}
+          onDeployApp={handleDeployApp}
+          onDeployDatabase={handleDeployDatabase}
+          onDeployTemplate={handleDeployTemplate}
+          onCheckQuota={handleCheckQuota}
+        />
+      )}
     </div>
   );
 };

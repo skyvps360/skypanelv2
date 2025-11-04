@@ -860,12 +860,15 @@ router.delete('/subscription', async (req: AuthenticatedRequest, res: Response) 
     const subscription = await ContainerPlanService.getSubscription(organizationId);
     
     if (!subscription) {
-      return res.json({
-        projects: []
+      return res.status(404).json({
+        error: {
+          code: 'SUBSCRIPTION_NOT_FOUND',
+          message: 'No active subscription found'
+        }
       });
     }
 
-    await ContainerPlanService.cancelSubscription(subscription.id);
+    const { refundAmount, projectsDeleted } = await ContainerPlanService.cancelSubscription(subscription.id);
 
     // Log the subscription cancellation
     await logActivity({
@@ -876,13 +879,19 @@ router.delete('/subscription', async (req: AuthenticatedRequest, res: Response) 
       entityId: subscription.id,
       metadata: { 
         planId: subscription.planId,
-        cancelledAt: new Date().toISOString()
+        cancelledAt: new Date().toISOString(),
+        refundAmount,
+        projectsDeleted
       }
     });
 
     res.json({
       success: true,
-      message: 'Container subscription cancelled successfully'
+      message: refundAmount > 0 
+        ? `Container subscription cancelled successfully. $${refundAmount.toFixed(2)} has been refunded to your wallet.`
+        : 'Container subscription cancelled successfully.',
+      refundAmount,
+      projectsDeleted
     });
   } catch (error) {
     console.error('Failed to cancel container subscription:', error);
@@ -901,15 +910,6 @@ router.delete('/subscription', async (req: AuthenticatedRequest, res: Response) 
         return res.status(400).json({
           error: {
             code: 'SUBSCRIPTION_NOT_ACTIVE',
-            message: error.message
-          }
-        });
-      }
-      
-      if (error.message.includes('active project')) {
-        return res.status(409).json({
-          error: {
-            code: 'ACTIVE_PROJECTS_EXIST',
             message: error.message
           }
         });

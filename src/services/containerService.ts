@@ -257,11 +257,24 @@ class ContainerService {
    */
   async cancelSubscription(): Promise<{
     success: boolean;
+    refundAmount?: number;
+    projectsDeleted?: number;
+    message?: string;
     error?: string;
   }> {
     try {
-      await apiClient.delete('/containers/subscription');
-      return { success: true };
+      const response = await apiClient.delete<{
+        success: boolean;
+        message: string;
+        refundAmount: number;
+        projectsDeleted: number;
+      }>('/containers/subscription');
+      return { 
+        success: true,
+        refundAmount: response.refundAmount,
+        projectsDeleted: response.projectsDeleted,
+        message: response.message
+      };
     } catch (error) {
       console.error('Cancel subscription error:', error);
       return {
