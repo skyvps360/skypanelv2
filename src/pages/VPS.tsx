@@ -31,7 +31,6 @@ import { useMobilePerformance } from "@/hooks/use-mobile-performance";
 import { useMobileToast } from "@/components/ui/mobile-toast";
 import {
   MobileLoading,
-  MobileLoadingButton,
   useMobileLoading,
 } from "@/components/ui/mobile-loading";
 import { Button } from "@/components/ui/button";
@@ -1925,7 +1924,7 @@ const VPS: React.FC = () => {
   }
 
   return (
-    <div className="w-full space-y-10 pb-16 pt-10">
+    <div className="space-y-6">
       {/* Mobile loading overlay */}
       <MobileLoading
         isLoading={mobileLoading.isLoading}
@@ -1934,268 +1933,278 @@ const VPS: React.FC = () => {
         progress={mobileLoading.progress}
       />
 
-      {/* Header */}
-      <section className="flex flex-col gap-6 border-b border-border/80 pb-8 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Compute Control Center
-            </h1>
-            <p className="max-w-2xl text-base text-muted-foreground">
-              Deploy, monitor, and scale your cloud infrastructure from a unified control panel built for performance.
-            </p>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <div className="mb-2">
+            <Badge variant="secondary" className="mb-3">
+              Infrastructure
+            </Badge>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-11 gap-2 rounded-xl border-border/80"
-              onClick={loadInstances}
-              aria-label="Refresh VPS instances list"
-            >
-              <RefreshCw className="h-4 w-4" />
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Compute Control Center
+          </h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Deploy, monitor, and scale your cloud infrastructure from a unified control panel built for performance.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button size="lg" onClick={() => { setCreateStep(1); setShowCreateModal(true); }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create instance
+            </Button>
+            <Button variant="outline" size="lg" onClick={loadInstances}>
+              <RefreshCw className="mr-2 h-4 w-4" />
               Refresh data
             </Button>
-            <MobileLoadingButton
-              onClick={() => {
-                setCreateStep(1);
-                setShowCreateModal(true);
-              }}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-              isLoading={false}
-              aria-label="Create new VPS instance"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Create instance</span>
-            </MobileLoadingButton>
           </div>
-        </section>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Server className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+          <Network className="absolute bottom-10 right-20 h-24 w-24 -rotate-6" />
+        </div>
+      </div>
 
-        {/* KPI rail */}
-  <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-sm text-muted-foreground">Running</p>
-                <p className="mt-2 text-3xl font-semibold">
+      {/* Key Metrics Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Running</p>
+                <p className="text-3xl font-bold tracking-tight">
                   {instances.filter((i) => i.status === "running").length}
                 </p>
+                <p className="text-xs text-muted-foreground">Active instances</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-                <Power className="h-6 w-6" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-sm text-muted-foreground">Stopped</p>
-                <p className="mt-2 text-3xl font-semibold">
-                  {instances.filter((i) => i.status === "stopped").length}
-                </p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
-                <PowerOff className="h-6 w-6" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-sm text-muted-foreground">Instances</p>
-                <p className="mt-2 text-3xl font-semibold">{instances.length}</p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
-                <Server className="h-6 w-6" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-sm text-muted-foreground">Monthly spend</p>
-                <p className="mt-2 text-3xl font-semibold">
-                  {formatCurrency(
-                    instances.reduce((sum, i) => sum + i.pricing.monthly, 0)
-                  )}
-                </p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50">
-                <DollarSign className="h-6 w-6 text-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Filters and Search */}
-  <Card className="rounded-2xl border-border/70 bg-card/70">
-          <CardContent className="space-y-6 p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="relative w-full lg:max-w-xl">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by label, IP, or region"
-                  className="h-12 w-full rounded-xl bg-background/70 pl-10 text-base"
-                  aria-label="Search VPS instances"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="vps-status-filter">Status</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger id="vps-status-filter" className="h-11 rounded-xl bg-background/70">
-                    <SelectValue placeholder="All status" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-border/70">
-                    <SelectItem value="all">All status</SelectItem>
-                    <SelectItem value="running">Running</SelectItem>
-                    <SelectItem value="stopped">Stopped</SelectItem>
-                    <SelectItem value="provisioning">Provisioning</SelectItem>
-                    <SelectItem value="rebooting">Rebooting</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vps-region-filter">Region</Label>
-                <Select
-                  value={regionFilter}
-                  onValueChange={setRegionFilter}
-                >
-                  <SelectTrigger id="vps-region-filter" className="h-11 rounded-xl bg-background/70">
-                    <SelectValue placeholder="All regions" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-border/70 max-h-64">
-                    <SelectItem value="all">All regions</SelectItem>
-                    {visibleRegionOptions.map((region) => (
-                      <SelectItem key={region.id} value={region.id}>
-                        {region.country
-                          ? `${region.label} · ${region.country}`
-                          : region.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vps-provider-filter">Provider</Label>
-                <Select
-                  value={providerFilter}
-                  onValueChange={(value) => {
-                    setProviderFilter(value);
-                    sessionStorage.setItem("vps-provider-filter", value);
-                  }}
-                >
-                  <SelectTrigger id="vps-provider-filter" className="h-11 rounded-xl bg-background/70">
-                    <SelectValue placeholder="All providers" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-border/70">
-                    <SelectItem value="all">All providers</SelectItem>
-                    {providerOptions.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id}>
-                        {formatProviderOptionLabel(provider)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Power className="h-6 w-6 text-primary" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Bulk Actions Toolbar */}
-        {selectedInstances.length > 0 && (
-          <Card className="mb-4">
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">
-                    {selectedInstances.length} instance
-                    {selectedInstances.length > 1 ? "s" : ""} selected
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 sm:gap-2">
-                  <Button
-                    onClick={() => handleBulkAction("boot")}
-                    variant="secondary"
-                    size="sm"
-                    className="min-h-[44px] touch-manipulation flex-1 sm:flex-none"
-                    disabled={selectedInstances.every(
-                      (instance) => instance.status === "running"
-                    )}
-                  >
-                    <Power className="h-4 w-4 mr-1" />
-                    <span className="hidden xs:inline">Start</span>
-                    <span className="xs:hidden">▶️</span>
-                  </Button>
-                  <Button
-                    onClick={() => handleBulkAction("shutdown")}
-                    variant="secondary"
-                    size="sm"
-                    className="min-h-[44px] touch-manipulation flex-1 sm:flex-none"
-                    disabled={selectedInstances.every(
-                      (instance) => instance.status === "stopped"
-                    )}
-                  >
-                    <PowerOff className="h-4 w-4 mr-1" />
-                    <span className="hidden xs:inline">Stop</span>
-                    <span className="xs:hidden">⏹️</span>
-                  </Button>
-                  <Button
-                    onClick={() => handleBulkAction("reboot")}
-                    variant="default"
-                    size="sm"
-                    className="min-h-[44px] touch-manipulation flex-1 sm:flex-none"
-                    disabled={selectedInstances.every(
-                      (instance) => instance.status !== "running"
-                    )}
-                  >
-                    <RotateCcw className="h-4 w-4 mr-1" />
-                    <span className="hidden xs:inline">Restart</span>
-                    <span className="xs:hidden">🔄</span>
-                  </Button>
-                  <Button
-                    onClick={() => handleBulkAction("delete")}
-                    variant="destructive"
-                    size="sm"
-                    className="min-h-[44px] touch-manipulation flex-1 sm:flex-none"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    <span className="hidden xs:inline">Delete</span>
-                    <span className="xs:hidden">🗑️</span>
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setSelectedInstances([]);
-                      setSelectedRowSelection({});
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className="min-h-[44px] touch-manipulation w-full sm:w-auto mt-2 sm:mt-0"
-                  >
-                    Clear Selection
-                  </Button>
-                </div>
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Stopped</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {instances.filter((i) => i.status === "stopped").length}
+                </p>
+                <p className="text-xs text-muted-foreground">Inactive instances</p>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <div className="rounded-lg bg-muted/50 p-3">
+                <PowerOff className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* VPS List */}
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Total Instances</p>
+                <p className="text-3xl font-bold tracking-tight">{instances.length}</p>
+                <p className="text-xs text-muted-foreground">Across all providers</p>
+              </div>
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Server className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Monthly Spend</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {formatCurrency(
+                    instances.reduce((sum, i) => sum + i.pricing.monthly, 0)
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">Estimated monthly cost</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <DollarSign className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters and Search */}
+      <Card>
+        <CardContent className="space-y-4 p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full lg:max-w-xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search by label, IP, or region"
+                className="pl-10"
+                aria-label="Search VPS instances"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="vps-status-filter">Status</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger id="vps-status-filter">
+                  <SelectValue placeholder="All status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All status</SelectItem>
+                  <SelectItem value="running">Running</SelectItem>
+                  <SelectItem value="stopped">Stopped</SelectItem>
+                  <SelectItem value="provisioning">Provisioning</SelectItem>
+                  <SelectItem value="rebooting">Rebooting</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vps-region-filter">Region</Label>
+              <Select
+                value={regionFilter}
+                onValueChange={setRegionFilter}
+              >
+                <SelectTrigger id="vps-region-filter">
+                  <SelectValue placeholder="All regions" />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  <SelectItem value="all">All regions</SelectItem>
+                  {visibleRegionOptions.map((region) => (
+                    <SelectItem key={region.id} value={region.id}>
+                      {region.country
+                        ? `${region.label} · ${region.country}`
+                        : region.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vps-provider-filter">Provider</Label>
+              <Select
+                value={providerFilter}
+                onValueChange={(value) => {
+                  setProviderFilter(value);
+                  sessionStorage.setItem("vps-provider-filter", value);
+                }}
+              >
+                <SelectTrigger id="vps-provider-filter">
+                  <SelectValue placeholder="All providers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All providers</SelectItem>
+                  {providerOptions.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {formatProviderOptionLabel(provider)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bulk Actions Toolbar */}
+      {selectedInstances.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>VPS Instances ({filteredInstances.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <VpsInstancesTable
-              instances={filteredInstances}
-              allowedRegions={allowedRegions}
-              providerLabelsById={providerLabelsById}
-              onAction={handleInstanceAction}
-              onCopy={copyToClipboard}
-              onSelectionChange={setSelectedInstances}
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {selectedInstances.length} instance
+                  {selectedInstances.length > 1 ? "s" : ""} selected
+                </Badge>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={() => handleBulkAction("boot")}
+                  variant="secondary"
+                  size="sm"
+                  disabled={selectedInstances.every(
+                    (instance) => instance.status === "running"
+                  )}
+                >
+                  <Power className="h-4 w-4 mr-1" />
+                  Start
+                </Button>
+                <Button
+                  onClick={() => handleBulkAction("shutdown")}
+                  variant="secondary"
+                  size="sm"
+                  disabled={selectedInstances.every(
+                    (instance) => instance.status === "stopped"
+                  )}
+                >
+                  <PowerOff className="h-4 w-4 mr-1" />
+                  Stop
+                </Button>
+                <Button
+                  onClick={() => handleBulkAction("reboot")}
+                  variant="default"
+                  size="sm"
+                  disabled={selectedInstances.every(
+                    (instance) => instance.status !== "running"
+                  )}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Restart
+                </Button>
+                <Button
+                  onClick={() => handleBulkAction("delete")}
+                  variant="destructive"
+                  size="sm"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSelectedInstances([]);
+                    setSelectedRowSelection({});
+                  }}
+                  variant="outline"
+                  size="sm"
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* VPS Instances Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>VPS Instances</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {filteredInstances.length} {filteredInstances.length === 1 ? 'instance' : 'instances'} found
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <VpsInstancesTable
+            instances={filteredInstances}
+            allowedRegions={allowedRegions}
+            providerLabelsById={providerLabelsById}
+            onAction={handleInstanceAction}
+            onCopy={copyToClipboard}
+            onSelectionChange={setSelectedInstances}
               rowSelection={selectedRowSelection}
               onRowSelectionChange={setSelectedRowSelection}
               isLoading={loading && instances.length > 0}

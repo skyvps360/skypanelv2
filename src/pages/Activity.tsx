@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Activity as ActivityIcon, Filter, Download } from 'lucide-react';
+import { Activity as ActivityIcon, Filter, Download, Clock, CheckCircle, AlertCircle, XCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -127,144 +128,277 @@ const ActivityPage: React.FC = () => {
       .catch(err => console.error('Export error:', err));
   };
 
-  const getStatusColor = (s: string) => {
+  const getStatusBadge = (s: string) => {
     switch (s) {
-      case 'success': return 'text-green-600';
-      case 'warning': return 'text-yellow-600';
-      case 'error': return 'text-red-600';
-      default: return 'text-primary';
+      case 'success':
+        return <Badge variant="outline" className="border-green-200 text-green-700 bg-green-50 dark:border-green-900/60 dark:text-green-200 dark:bg-green-900/30">
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Success
+        </Badge>;
+      case 'warning':
+        return <Badge variant="outline" className="border-yellow-200 text-yellow-700 bg-yellow-50 dark:border-yellow-900/60 dark:text-yellow-200 dark:bg-yellow-900/30">
+          <AlertCircle className="h-3 w-3 mr-1" />
+          Warning
+        </Badge>;
+      case 'error':
+        return <Badge variant="outline" className="border-red-200 text-red-700 bg-red-50 dark:border-red-900/60 dark:text-red-200 dark:bg-red-900/30">
+          <XCircle className="h-3 w-3 mr-1" />
+          Error
+        </Badge>;
+      default:
+        return <Badge variant="outline" className="border-primary/20 text-primary bg-primary/5">
+          <Info className="h-3 w-3 mr-1" />
+          Info
+        </Badge>;
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <ActivityIcon className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-semibold text-foreground">Activity</h1>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <div className="mb-2">
+            <Badge variant="secondary" className="mb-3">
+              Activity
+            </Badge>
           </div>
-          <button onClick={exportCsv} className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90">
-            <Download className="h-4 w-4" /> Export CSV
-          </button>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Activity Log
+          </h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Track and monitor all activities across your infrastructure, billing, and support.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button size="lg" onClick={exportCsv}>
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <ActivityIcon className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+          <Clock className="absolute bottom-10 right-20 h-24 w-24 -rotate-6" />
+        </div>
+      </div>
 
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-end">
+      {/* Key Metrics Grid */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
               <div className="space-y-2">
-                <Label htmlFor="type" className="text-sm text-muted-foreground">Type</Label>
-                <Input 
-                  id="type"
-                  value={type} 
-                  onChange={e => setType(e.target.value)} 
-                  placeholder="vps, container, billing" 
-                />
+                <p className="text-sm font-medium text-muted-foreground">Total Events</p>
+                <p className="text-3xl font-bold tracking-tight">{pagination.total}</p>
+                <p className="text-xs text-muted-foreground">Activity records</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="status" className="text-sm text-muted-foreground">Status</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger id="status">
-                    <SelectValue placeholder="Any status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Any</SelectItem>
-                    <SelectItem value="success">Success</SelectItem>
-                    <SelectItem value="warning">Warning</SelectItem>
-                    <SelectItem value="error">Error</SelectItem>
-                    <SelectItem value="info">Info</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">From Date</Label>
-                <DatePicker 
-                  date={from} 
-                  onDateChange={setFrom} 
-                  placeholder="Select start date" 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">To Date</Label>
-                <DatePicker 
-                  date={to} 
-                  onDateChange={setTo} 
-                  placeholder="Select end date" 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="limit" className="text-sm text-muted-foreground">Items per page</Label>
-                <Select value={limit.toString()} onValueChange={(value) => handleLimitChange(Number(value))}>
-                  <SelectTrigger id="limit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="sm:col-span-2 lg:col-span-1">
-                <Button onClick={() => fetchActivities(1)} className="w-full">
-                  <Filter className="h-4 w-4 mr-2" /> Apply Filters
-                </Button>
+              <div className="rounded-lg bg-primary/10 p-3">
+                <ActivityIcon className="h-6 w-6 text-primary" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="p-6">Loading...</div>
-            ) : (
-              <>
-                <table className="min-w-full divide-y divide-border">
-                  <thead className="bg-background">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Event</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Message</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-card divide-y divide-border">
-                  {activities.map(a => (
-                    <tr key={a.id}>
-                      <td className="px-6 py-4 text-sm text-foreground">{new Date(a.created_at).toLocaleString()}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{a.entity_type}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{a.event_type}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{a.message || ''}</td>
-                      <td className={`px-6 py-4 text-sm font-medium ${getStatusColor(a.status)}`}>{a.status}</td>
-                    </tr>
-                  ))}
-                  {activities.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No activity found</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Current Page</p>
+                <p className="text-3xl font-bold tracking-tight">{pagination.page} / {pagination.totalPages}</p>
+                <p className="text-xs text-muted-foreground">Page navigation</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <Filter className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-              {/* Pagination Controls */}
-              {pagination.total > 0 && (
-                <Pagination
-                  currentPage={pagination.page}
-                  totalItems={pagination.total}
-                  itemsPerPage={pagination.limit}
-                  onPageChange={handlePageChange}
-                  onItemsPerPageChange={handleLimitChange}
-                  itemsPerPageOptions={[10, 20, 50, 100]}
-                />
-              )}
-              </>
-            )}
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Per Page</p>
+                <p className="text-3xl font-bold tracking-tight">{limit}</p>
+                <p className="text-xs text-muted-foreground">Items displayed</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <ActivityIcon className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+          <CardDescription>Narrow down your activity search</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-end">
+            <div className="space-y-2">
+              <Label htmlFor="type">Type</Label>
+              <Input 
+                id="type"
+                value={type} 
+                onChange={e => setType(e.target.value)} 
+                placeholder="vps, container, billing" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger id="status">
+                  <SelectValue placeholder="Any status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any</SelectItem>
+                  <SelectItem value="success">Success</SelectItem>
+                  <SelectItem value="warning">Warning</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                  <SelectItem value="info">Info</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>From Date</Label>
+              <DatePicker 
+                date={from} 
+                onDateChange={setFrom} 
+                placeholder="Select start date" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>To Date</Label>
+              <DatePicker 
+                date={to} 
+                onDateChange={setTo} 
+                placeholder="Select end date" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="limit">Items per page</Label>
+              <Select value={limit.toString()} onValueChange={(value) => handleLimitChange(Number(value))}>
+                <SelectTrigger id="limit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-1">
+              <Button onClick={() => fetchActivities(1)} className="w-full">
+                <Filter className="h-4 w-4 mr-2" /> Apply
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Activity Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Activity Records</CardTitle>
+              <CardDescription className="mt-1">
+                {activities.length > 0
+                  ? `Showing ${activities.length} of ${pagination.total} activities`
+                  : 'No activities found'}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span className="text-muted-foreground">Loading activities...</span>
+              </div>
+            </div>
+          ) : activities.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 text-center">
+              <div className="rounded-full bg-muted p-4">
+                <ActivityIcon className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="mt-4 text-sm font-semibold">No Activity Found</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Try adjusting your filters or check back later
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-muted/30">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Time
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Event
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Message
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-card divide-y divide-border">
+                    {activities.map(a => (
+                      <tr key={a.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-6 py-4 text-sm text-foreground whitespace-nowrap">
+                          {new Date(a.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <Badge variant="outline">{a.entity_type}</Badge>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-muted-foreground">
+                          {a.event_type}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-muted-foreground max-w-md truncate">
+                          {a.message || '—'}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {getStatusBadge(a.status)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              {pagination.total > 0 && (
+                <div className="mt-6">
+                  <Pagination
+                    currentPage={pagination.page}
+                    totalItems={pagination.total}
+                    itemsPerPage={pagination.limit}
+                    onPageChange={handlePageChange}
+                    onItemsPerPageChange={handleLimitChange}
+                    itemsPerPageOptions={[10, 20, 50, 100]}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

@@ -21,7 +21,7 @@ import {
 import { toast } from 'sonner';
 import { paymentService, type WalletTransaction, type PaymentHistory, type VPSUptimeSummary, type BillingSummary } from '../services/paymentService';
 import Pagination from '../components/ui/Pagination';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import PayPalCheckoutDialog from '@/components/billing/PayPalCheckoutDialog';
 import { formatCurrency as formatCurrencyDisplay } from '@/lib/formatters';
@@ -555,10 +555,33 @@ const Billing: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-foreground mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading billing information...</p>
+      <div className="space-y-6">
+        <div className="rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+          <div className="mb-2">
+            <Badge variant="secondary" className="mb-3">
+              Billing
+            </Badge>
+          </div>
+          <div className="space-y-3">
+            <div className="h-10 w-3/4 bg-muted animate-pulse rounded" />
+            <div className="h-5 w-2/3 bg-muted animate-pulse rounded" />
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                    <div className="h-9 w-32 bg-muted animate-pulse rounded" />
+                    <div className="h-3 w-40 bg-muted animate-pulse rounded" />
+                  </div>
+                  <div className="h-12 w-12 bg-muted animate-pulse rounded-lg" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     );
@@ -566,122 +589,141 @@ const Billing: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Billing &amp; Payments</h1>
-          <p className="mt-2 text-muted-foreground">
-            Manage your wallet, add funds, and view payment history
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <div className="mb-2">
+            <Badge variant="secondary" className="mb-3">
+              Billing
+            </Badge>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Billing &amp; Payments
+          </h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Manage your wallet, add funds via PayPal, and track your spending across all services.
           </p>
         </div>
-
-        {/* Wallet Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-primary/10 dark:bg-primary/20 rounded-lg">
-                  <Wallet className="h-6 w-6 text-primary" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Wallet Balance</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {formatCurrencyValue(walletBalance)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                  <ArrowUpRight className="h-6 w-6 text-green-600 dark:text-green-400" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">This Month</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {summaryLoading ? (
-                      <span className="text-base text-muted-foreground">Loading...</span>
-                    ) : billingSummary ? (
-                      formatCurrencyValue(billingSummary.monthlyEstimate)
-                    ) : (
-                      formatCurrencyValue(0)
-                    )}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
-                  <ArrowDownLeft className="h-6 w-6 text-red-600 dark:text-red-400" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Spent This Month</p>
-                  <div className="flex items-center space-x-2">
-                    <p className="text-2xl font-bold text-foreground">
-                      {summaryLoading || computingMonthlySpent ? (
-                        <span className="text-base text-muted-foreground">{computingMonthlySpent ? 'Calculating...' : 'Loading...'}</span>
-                      ) : (() => {
-                        const serverValue = billingSummary?.totalSpentThisMonth;
-                        const displayValue = (computedMonthlySpent ?? serverValue ?? 0);
-                        return formatCurrencyValue(displayValue);
-                      })()}
-                    </p>
-                    {monthlySpentDiscrepancy && (
-                      <span title="Data discrepancy detected between server summary and local calculation" className="inline-flex items-center text-yellow-600 dark:text-yellow-400">
-                        <AlertTriangle className="h-5 w-5" />
-                      </span>
-                    )}
-                  </div>
-                  {monthlySpentError && (
-                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">{monthlySpentError}</p>
-                  )}
-                  {!monthlySpentError && computedMonthlySpent !== null && billingSummary && (
-                    <p className="mt-1 text-xs text-muted-foreground">Calculated from current-month debits</p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                  <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">VPS Active Hours</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {uptimeLoading ? (
-                      <span className="text-base text-muted-foreground">Loading...</span>
-                    ) : vpsUptimeData ? (
-                      `${vpsUptimeData.totalActiveHours.toLocaleString('en-US', {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0
-                      })}h`
-                    ) : (
-                      '0h'
-                    )}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Wallet className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+          <DollarSign className="absolute bottom-10 right-20 h-24 w-24 -rotate-6" />
         </div>
+      </div>
 
-        {/* Add Funds Section */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Add Funds to Wallet</CardTitle>
-          </CardHeader>
-          <CardContent>
+      {/* Wallet Overview - Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Wallet Balance</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {formatCurrencyValue(walletBalance)}
+                </p>
+                <p className="text-xs text-muted-foreground">Available funds</p>
+              </div>
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Wallet className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">This Month</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {summaryLoading ? (
+                    <span className="text-base text-muted-foreground">Loading...</span>
+                  ) : billingSummary ? (
+                    formatCurrencyValue(billingSummary.monthlyEstimate)
+                  ) : (
+                    formatCurrencyValue(0)
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">Estimated cost</p>
+              </div>
+              <div className="rounded-lg bg-primary/10 p-3">
+                <ArrowUpRight className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Spent This Month</p>
+                <div className="flex items-center space-x-2">
+                  <p className="text-3xl font-bold tracking-tight">
+                    {summaryLoading || computingMonthlySpent ? (
+                      <span className="text-base text-muted-foreground">{computingMonthlySpent ? 'Calc...' : 'Loading...'}</span>
+                    ) : (() => {
+                      const serverValue = billingSummary?.totalSpentThisMonth;
+                      const displayValue = (computedMonthlySpent ?? serverValue ?? 0);
+                      return formatCurrencyValue(displayValue);
+                    })()}
+                  </p>
+                  {monthlySpentDiscrepancy && (
+                    <span title="Data discrepancy detected" className="inline-flex items-center text-destructive">
+                      <AlertTriangle className="h-5 w-5" />
+                    </span>
+                  )}
+                </div>
+                {monthlySpentError ? (
+                  <p className="text-xs text-destructive">{monthlySpentError}</p>
+                ) : !monthlySpentError && computedMonthlySpent !== null && billingSummary ? (
+                  <p className="text-xs text-muted-foreground">From current month</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Total spent</p>
+                )}
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <ArrowDownLeft className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">VPS Active Hours</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {uptimeLoading ? (
+                    <span className="text-base text-muted-foreground">Loading...</span>
+                  ) : vpsUptimeData ? (
+                    `${vpsUptimeData.totalActiveHours.toLocaleString('en-US', {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0
+                    })}h`
+                  ) : (
+                    '0h'
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">Total runtime</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <Clock className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Add Funds Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Add Funds to Wallet</CardTitle>
+          <CardDescription>Top up your wallet balance using PayPal</CardDescription>
+        </CardHeader>
+        <CardContent>
           <div className="flex items-center space-x-4">
             <div className="flex-1 max-w-xs">
               <label htmlFor="amount" className="sr-only">Amount</label>
@@ -753,7 +795,7 @@ const Billing: React.FC = () => {
               </div>
             ) : uptimeError ? (
               <div className="text-center py-8">
-                <p className="text-red-600 dark:text-red-400 mb-4">{uptimeError}</p>
+                <p className="text-destructive mb-4">{uptimeError}</p>
                 <button
                   onClick={loadVPSUptimeData}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
@@ -817,10 +859,10 @@ const Billing: React.FC = () => {
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                 vps.status === 'running' 
-                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' 
+                                  ? 'bg-primary/10 text-primary border border-primary/20' 
                                   : vps.status === 'stopped'
-                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+                                  ? 'bg-muted text-muted-foreground'
+                                  : 'bg-muted text-muted-foreground'
                               }`}>
                                 {vps.status.charAt(0).toUpperCase() + vps.status.slice(1)}
                               </span>
@@ -851,10 +893,10 @@ const Billing: React.FC = () => {
                           <h5 className="text-sm font-medium text-foreground">{vps.label}</h5>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                             vps.status === 'running' 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' 
+                              ? 'bg-primary/10 text-primary border border-primary/20' 
                               : vps.status === 'stopped'
-                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
-                              : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+                              ? 'bg-muted text-muted-foreground'
+                              : 'bg-muted text-muted-foreground'
                           }`}>
                             {vps.status.charAt(0).toUpperCase() + vps.status.slice(1)}
                           </span>
@@ -962,11 +1004,11 @@ const Billing: React.FC = () => {
                         className="flex items-center justify-between py-3 px-3 -mx-3 border-b border-border border last:border-b-0 rounded-md cursor-pointer hover:bg-secondary/80/50 transition-colors"
                       >
                         <div className="flex items-center">
-                          <div className={`p-2 rounded-lg ${transaction.type === 'credit' ? 'bg-green-100 dark:bg-green-900/20' : 'bg-red-100 dark:bg-red-900/20'}`}>
+                          <div className={`p-2 rounded-lg ${transaction.type === 'credit' ? 'bg-primary/10' : 'bg-muted/50'}`}>
                             {transaction.type === 'credit' ? (
-                              <ArrowUpRight className="h-4 w-4 text-green-600 dark:text-green-400" />
+                              <ArrowUpRight className="h-4 w-4 text-primary" />
                             ) : (
-                              <ArrowDownLeft className="h-4 w-4 text-red-600 dark:text-red-400" />
+                              <ArrowDownLeft className="h-4 w-4 text-foreground" />
                             )}
                           </div>
                           <div className="ml-3">
@@ -975,7 +1017,7 @@ const Billing: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className={`text-sm font-medium ${transaction.type === 'credit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <p className={`text-sm font-medium ${transaction.type === 'credit' ? 'text-primary' : 'text-foreground'}`}>
                             {transaction.type === 'credit' ? '+' : '-'}{formatCurrencyValue(transaction.amount)}
                           </p>
                           <p className="text-xs text-muted-foreground">
@@ -1046,7 +1088,7 @@ const Billing: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              transaction.type === 'credit' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                              transaction.type === 'credit' ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-muted/50 text-foreground'
                             }`}>
                               {transaction.type === 'credit' ? 'Credit' : 'Debit'}
                             </span>
@@ -1238,7 +1280,6 @@ const Billing: React.FC = () => {
             )}
           </CardContent>
         </Card>
-      </div>
     </div>
   );
 };
