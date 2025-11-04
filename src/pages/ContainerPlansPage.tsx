@@ -125,16 +125,16 @@ const ContainerPlansPage: React.FC = () => {
 
       {/* Current Subscription */}
       {currentSubscription && (
-        <Card className="mb-8 border-green-200 bg-green-50">
+        <Card className="mb-8 border-primary/20 bg-primary/5">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-green-800">Current Subscription</CardTitle>
-                <CardDescription className="text-green-600">
+                <CardTitle>Current Subscription</CardTitle>
+                <CardDescription>
                   You are currently subscribed to: {currentSubscription.plan?.name}
                 </CardDescription>
               </div>
-              <Badge variant="secondary" className="bg-green-100 text-green-800">
+              <Badge variant="default">
                 Active
               </Badge>
             </div>
@@ -142,14 +142,14 @@ const ContainerPlansPage: React.FC = () => {
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-600">Monthly Cost</p>
-                <p className="text-2xl font-bold text-green-800">
+                <p className="text-sm text-muted-foreground">Monthly Cost</p>
+                <p className="text-2xl font-bold">
                   {formatCurrency(currentSubscription.plan?.priceMonthly || 0)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-green-600">Next Billing Date</p>
-                <p className="font-medium text-green-800">
+                <p className="text-sm text-muted-foreground">Next Billing Date</p>
+                <p className="font-medium">
                   {new Date(currentSubscription.currentPeriodEnd).toLocaleDateString()}
                 </p>
               </div>
@@ -159,7 +159,6 @@ const ContainerPlansPage: React.FC = () => {
             <Button 
               variant="outline" 
               onClick={() => navigate('/containers')}
-              className="border-green-300 text-green-700 hover:bg-green-100"
             >
               Go to Container Dashboard
             </Button>
@@ -220,11 +219,11 @@ const ContainerPlansPage: React.FC = () => {
               return (
                 <Card 
                   key={plan.id} 
-                  className={`relative ${isCurrentPlan ? 'border-green-300 bg-green-50' : ''}`}
+                  className={`relative ${isCurrentPlan ? 'border-primary/50 bg-primary/5' : ''}`}
                 >
                   {isCurrentPlan && (
                     <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
-                      <Badge className="bg-green-600 text-white">
+                      <Badge variant="default">
                         <Check className="h-3 w-3 mr-1" />
                         Current Plan
                       </Badge>
@@ -243,28 +242,28 @@ const ContainerPlansPage: React.FC = () => {
                   <CardContent className="space-y-4">
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
-                        <Cpu className="h-4 w-4 text-blue-600" />
+                        <Cpu className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">
                           {formatResource(plan.maxCpuCores, 'CPU Core')}
                         </span>
                       </div>
                       
                       <div className="flex items-center gap-3">
-                        <MemoryStick className="h-4 w-4 text-green-600" />
+                        <MemoryStick className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">
                           {formatResource(plan.maxMemoryGb, 'GB Memory')}
                         </span>
                       </div>
                       
                       <div className="flex items-center gap-3">
-                        <HardDrive className="h-4 w-4 text-purple-600" />
+                        <HardDrive className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">
                           {formatResource(plan.maxStorageGb, 'GB Storage')}
                         </span>
                       </div>
                       
                       <div className="flex items-center gap-3">
-                        <Container className="h-4 w-4 text-orange-600" />
+                        <Container className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">
                           {formatResource(plan.maxContainers, 'Container')}
                         </span>
@@ -285,7 +284,7 @@ const ContainerPlansPage: React.FC = () => {
                     {isCurrentPlan ? (
                       <Button 
                         variant="outline" 
-                        className="w-full border-green-300 text-green-700"
+                        className="w-full"
                         onClick={() => navigate('/containers')}
                       >
                         Manage Containers

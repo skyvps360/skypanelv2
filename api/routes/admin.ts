@@ -2357,6 +2357,53 @@ router.get(
   }
 );
 
+// Get all organizations with their members
+router.get(
+  "/organizations",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("list_organizations"),
+  async (_req: Request, res: Response) => {
+    try {
+      const result = await query(
+        `SELECT 
+          org.id,
+          org.name,
+          org.slug,
+          org.owner_id,
+          org.created_at,
+          org.updated_at,
+          owner.name AS owner_name,
+          owner.email AS owner_email,
+          COUNT(DISTINCT om.user_id) AS member_count,
+          COALESCE(
+            jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'userId', mem.id,
+                'userName', mem.name,
+                'userEmail', mem.email,
+                'role', om.role,
+                'userRole', mem.role,
+                'joinedAt', om.created_at
+              )
+            ) FILTER (WHERE mem.id IS NOT NULL),
+            '[]'::jsonb
+          ) AS members
+        FROM organizations org
+        LEFT JOIN users owner ON owner.id = org.owner_id
+        LEFT JOIN organization_members om ON om.organization_id = org.id
+        LEFT JOIN users mem ON mem.id = om.user_id
+        GROUP BY org.id, owner.id
+        ORDER BY org.created_at DESC`
+      );
+      res.json({ organizations: result.rows || [] });
+    } catch (err: any) {
+      console.error("Admin organizations list error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch organizations" });
+    }
+  }
+);
+
 // Get detailed user information by ID
 router.get(
   "/users/:id",

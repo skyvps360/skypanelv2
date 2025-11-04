@@ -1117,6 +1117,25 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
     
     try {
       await easypanelService.createProject(easypanelProjectName);
+      
+      // Grant the organization's Easypanel user access to this project
+      const subscriptionResult = await query(
+        'SELECT easypanel_user_id FROM container_subscriptions WHERE organization_id = $1 AND status = $2',
+        [organizationId, 'active']
+      );
+      
+      if (subscriptionResult.rows.length > 0 && subscriptionResult.rows[0].easypanel_user_id) {
+        try {
+          await easypanelService.updateProjectAccess(
+            easypanelProjectName,
+            subscriptionResult.rows[0].easypanel_user_id,
+            true
+          );
+        } catch (accessError) {
+          console.error('Failed to grant user access to project:', accessError);
+          // Don't fail the entire operation if access grant fails
+        }
+      }
     } catch (easypanelError) {
       console.error('Failed to create project in Easypanel:', easypanelError);
       return res.status(500).json({

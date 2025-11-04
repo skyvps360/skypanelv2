@@ -5,6 +5,9 @@
 
 import { query, transaction } from '../lib/database.js';
 import { PayPalService } from './paypalService.js';
+import { easypanelService } from './easypanelService.js';
+import { encryptSecret } from '../lib/crypto.js';
+import crypto from 'crypto';
 
 export interface ContainerPlan {
   id: string;
@@ -394,21 +397,75 @@ export class ContainerPlanService {
           throw new Error('Failed to deduct subscription fee from wallet');
         }
 
+        // Get organization and user details for Easypanel account
+        const orgUserResult = await client.query(`
+          SELECT u.id, u.email, o.name as org_name
+          FROM users u
+          JOIN organizations o ON o.id = u.organization_id
+          WHERE u.organization_id = $1 AND u.role = 'owner'
+          LIMIT 1
+        `, [organizationId]);
+
+        if (orgUserResult.rows.length === 0) {
+          throw new Error('Organization owner not found');
+        }
+
+        const orgOwner = orgUserResult.rows[0];
+        const easypanelUserEmail = orgOwner.email;
+        
+        // Generate a secure random password for the Easypanel user
+        const easypanelPassword = crypto.randomBytes(32).toString('base64');
+        const encryptedPassword = encryptSecret(easypanelPassword);
+
+        // Create Easypanel user (non-admin)
+        let easypanelUser;
+        try {
+          easypanelUser = await easypanelService.createUser(easypanelUserEmail, easypanelPassword, false);
+        } catch (error: any) {
+          console.error('Failed to create Easypanel user:', error);
+          throw new Error(`Failed to create Easypanel user account: ${error.message || 'Unknown error'}`);
+        }
+
         // Create subscription
         const now = new Date();
         const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
 
         const subscriptionResult = await client.query(`
           INSERT INTO container_subscriptions (
-            organization_id, plan_id, status, current_period_start, current_period_end
+            organization_id, plan_id, status, current_period_start, current_period_end,
+            easypanel_user_id, easypanel_user_email, easypanel_password_encrypted
           )
-          VALUES ($1, $2, 'active', $3, $4)
+          VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
           RETURNING 
             id, organization_id, plan_id, status, 
-            current_period_start, current_period_end, created_at, updated_at
-        `, [organizationId, planId, now, periodEnd]);
+            current_period_start, current_period_end, created_at, updated_at,
+            easypanel_user_id, easypanel_user_email
+        `, [organizationId, planId, now, periodEnd, easypanelUser.id, easypanelUserEmail, encryptedPassword]);
 
         const subscription = subscriptionResult.rows[0];
+
+        // Create an initial project for the user
+        const initialProjectName = `${orgOwner.org_name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-project`.substring(0, 50);
+        
+        try {
+          // Create project in Easypanel
+          await easypanelService.createProject(initialProjectName);
+          
+          // Grant the user access to the project
+          await easypanelService.updateProjectAccess(initialProjectName, easypanelUser.id, true);
+
+          // Store the project in our database
+          await client.query(`
+            INSERT INTO container_projects (
+              organization_id, subscription_id, project_name, easypanel_project_name, status
+            )
+            VALUES ($1, $2, $3, $4, 'active')
+          `, [organizationId, subscription.id, initialProjectName, initialProjectName]);
+        } catch (error: any) {
+          console.error('Failed to create initial Easypanel project:', error);
+          // Don't fail the entire subscription if project creation fails
+          // The user can create projects later
+        }
 
         // Create initial billing cycle
         await client.query(`

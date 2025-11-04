@@ -148,34 +148,35 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
           title: "Compute",
           url: "/vps",
           icon: Server,
-          isActive: isVpsActive || isContainersActive,
+          isActive: isVpsActive,
           items: [
             {
               title: "VPS",
               url: "/vps",
               isActive: isVpsActive,
             },
+          ],
+        },
+        {
+          title: "Containers",
+          url: "/containers",
+          icon: Container,
+          isActive: isContainersActive,
+          items: [
             {
-              title: "Containers",
+              title: "Dashboard",
               url: "/containers",
-              isActive: isContainersActive,
-              items: [
-                {
-                  title: "Dashboard",
-                  url: "/containers",
-                  isActive: pathname === "/containers",
-                },
-                {
-                  title: "Templates",
-                  url: "/containers/templates",
-                  isActive: pathname === "/containers/templates",
-                },
-                {
-                  title: "Plans",
-                  url: "/containers/plans",
-                  isActive: pathname === "/containers/plans",
-                },
-              ],
+              isActive: pathname === "/containers",
+            },
+            {
+              title: "Templates",
+              url: "/containers/templates",
+              isActive: pathname === "/containers/templates",
+            },
+            {
+              title: "Plans",
+              url: "/containers/plans",
+              isActive: pathname === "/containers/plans",
             },
           ],
         },
@@ -215,6 +216,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
       isSshKeysActive,
       isVpsActive,
       isContainersActive,
+      pathname,
     ],
   );
 

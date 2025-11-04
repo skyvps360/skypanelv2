@@ -504,6 +504,76 @@ class EasypanelService {
       throw error;
     }
   }
+
+  /**
+   * Update project access for a user
+   */
+  async updateProjectAccess(projectName: string, userId: string, active: boolean): Promise<void> {
+    try {
+      await this.makeRequest('projects.updateAccess', {
+        body: { 
+          projectName,
+          userId,
+          active
+        }
+      });
+    } catch (error) {
+      console.error(`Error updating access for user ${userId} on project ${projectName}:`, error);
+      throw error;
+    }
+  }
+
+  // ============================================================
+  // User Management Methods
+  // ============================================================
+
+  /**
+   * Create a new Easypanel user
+   */
+  async createUser(email: string, password: string, admin: boolean = false): Promise<{ id: string; email: string }> {
+    try {
+      const data = await this.makeRequest('users.createUser', {
+        body: { 
+          email,
+          password,
+          admin
+        }
+      });
+
+      return {
+        id: data.id || data.email,
+        email: data.email || email
+      };
+    } catch (error) {
+      console.error(`Error creating Easypanel user ${email}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * List all Easypanel users
+   */
+  async listUsers(): Promise<Array<{ id: string; email: string; admin: boolean }>> {
+    try {
+      const data = await this.makeRequest('users.listUsers', {
+        method: 'GET'
+      });
+
+      if (!Array.isArray(data)) {
+        return [];
+      }
+
+      return data.map((user: any) => ({
+        id: user.id || user.email,
+        email: user.email || '',
+        admin: user.admin || false
+      }));
+    } catch (error) {
+      console.error('Error listing Easypanel users:', error);
+      throw error;
+    }
+  }
+
   // ============================================================
   // App Service Management Methods
   // ============================================================

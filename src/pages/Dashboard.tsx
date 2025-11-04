@@ -13,7 +13,6 @@ import {
   Plus,
   ArrowUpRight,
   ShieldCheck,
-  Clock,
   Compass
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,7 +23,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { PageHeader, StatsGrid, ContentCard } from '@/components/layouts';
 import { getMonthlySpendWithFallback } from '../lib/billingUtils';
 import { MonthlyResetIndicator } from '@/components/Dashboard/MonthlyResetIndicator';
 import { formatCurrency } from '@/lib/formatters';
@@ -258,32 +256,6 @@ const Dashboard: React.FC = () => {
     }).format(date);
   }, []);
 
-  const getActivityIcon = useCallback((type: string) => {
-    switch (type) {
-      case 'vps':
-        return <Server className="h-4 w-4" />;
-      case 'billing':
-        return <Wallet className="h-4 w-4" />;
-      case 'support':
-        return <AlertTriangle className="h-4 w-4" />;
-      default:
-        return <ActivityIcon className="h-4 w-4" />;
-    }
-  }, []);
-
-  const getStatusAccent = useCallback((status: string) => {
-    switch (status) {
-      case 'success':
-        return 'border-green-500/60 bg-green-500/10 text-green-500';
-      case 'warning':
-        return 'border-yellow-500/60 bg-yellow-500/10 text-yellow-500';
-      case 'error':
-        return 'border-red-500/60 bg-red-500/10 text-red-500';
-      default:
-        return 'border-primary/60 bg-primary/10 text-primary';
-    }
-  }, []);
-
   const handleVpsClick = useCallback((vpsId: string) => {
     navigate(`/vps/${vpsId}`);
   }, [navigate]);
@@ -294,19 +266,28 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div className="rounded-3xl border bg-card/60 p-8">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="mt-2 h-5 w-64" />
-          <Skeleton className="mt-6 h-10 w-32" />
+      <div className="space-y-6">
+        <div className="rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+          <Skeleton className="h-6 w-32 mb-3" />
+          <Skeleton className="h-10 w-3/4 mb-2" />
+          <Skeleton className="h-5 w-2/3" />
+          <div className="mt-6 flex gap-3">
+            <Skeleton className="h-11 w-32" />
+            <Skeleton className="h-11 w-32" />
+          </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[1, 2, 3, 4].map((item) => (
-            <Card key={item}>
-              <CardContent className="space-y-4 p-6">
-                <Skeleton className="h-12 w-12 rounded-xl" />
-                <Skeleton className="h-5 w-24" />
-                <Skeleton className="h-8 w-20" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-9 w-32" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                  <Skeleton className="h-12 w-12 rounded-lg" />
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -316,322 +297,357 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-3xl border border-border bg-card p-8 md:p-10">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <PageHeader
-            title={user?.firstName ? `Good to see you, ${user.firstName}.` : 'SkyPanel command center'}
-            description="Deploy and manage infrastructure across your providers with live telemetry, unified billing, and proactive insights."
-            badge={{ text: "Welcome back", variant: "secondary" }}
-            actions={
-              <>
-                <Button asChild>
-                  <Link to="/vps">
-                    <Plus className="mr-2 h-4 w-4" />Launch VPS
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to="/billing">
-                    View billing
-                    <ArrowUpRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </>
-            }
-          />
-          <Card className="w-full max-w-sm border-border bg-card">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base font-semibold text-muted-foreground">
-                Platform pulse
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Wallet balance</p>
-                <p className="mt-1 text-2xl font-bold tracking-tight">{formatCurrency(walletBalance)}</p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Monthly spend</span>
-                  <span className="font-medium text-foreground">{formatCurrency(monthlySpend)}</span>
-                </div>
-                <MonthlyResetIndicator monthlySpend={monthlySpend} />
-              </div>
-              <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>Last payment</span>
-                  <span className="font-medium text-foreground">
-                    {lastPayment?.amount ? formatCurrency(lastPayment.amount) : '—'}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {lastPayment?.date ? `Processed ${formatTimestamp(lastPayment.date)}` : 'No payments recorded yet.'}
-                </p>
-              </div>
-              {heroStats.topInstance && (
-                <div className="rounded-xl border border-border bg-card p-4 text-sm">
-                  <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
-                    Top load VPS
-                    <span className="inline-flex items-center gap-1 text-primary">
-                      <TrendingUp className="h-3 w-3" />
-                      {((heroStats.topInstance.metrics?.cpu?.last ?? heroStats.topInstance.cpu) ?? 0).toFixed(1)}%
-                    </span>
-                  </div>
-                  <p className="mt-1 font-medium text-foreground">{heroStats.topInstance.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {heroStats.topInstance.plan} • {heroStats.topInstance.location || 'Unknown region'}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-        
-        {/* Quick Stats */}
-        <div className="mt-8 flex flex-wrap gap-3 text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2">
-            <Server className="h-4 w-4 text-primary" />
-            {heroStats.running} active
-          </span>
-          <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-amber-400">
-            <AlertTriangle className="h-4 w-4" />
-            {heroStats.flagged} attention
-          </span>
-          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            Avg CPU {heroStats.averageCpu !== null ? `${heroStats.averageCpu.toFixed(1)}%` : 'n/a'}
-          </span>
-        </div>
-      </section>
-
-      <StatsGrid
-        columns={3}
-        stats={[
-          {
-            label: "VPS instances",
-            value: vpsInstances.length,
-            description: "Across all connected providers",
-            icon: <Server className="h-6 w-6" />
-          },
-          {
-            label: "Wallet balance",
-            value: formatCurrency(walletBalance),
-            description: "Ready to deploy infrastructure",
-            icon: <Wallet className="h-6 w-6" />
-          },
-          {
-            label: "Monthly spend",
-            value: formatCurrency(monthlySpend),
-            description: "Resets at the start of each cycle",
-            icon: <TrendingUp className="h-6 w-6" />
-          }
-        ]}
-      />
-
-      <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <ContentCard
-          title="VPS fleet"
-          description="Live signal across your most recent deployments."
-          headerAction={
-            <Button variant="outline" size="sm" asChild>
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <div className="mb-2">
+            <Badge variant="secondary" className="mb-3">
+              Welcome back
+            </Badge>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            {user?.firstName ? `Good to see you, ${user.firstName}.` : 'Welcome to SkyPanel'}
+          </h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Deploy and manage infrastructure across your providers with live telemetry, unified billing, and proactive insights.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button asChild size="lg">
               <Link to="/vps">
-                Manage instances
+                <Plus className="mr-2 h-4 w-4" />
+                Launch VPS
+              </Link>
+            </Button>
+            <Button variant="outline" size="lg" asChild>
+              <Link to="/billing">
+                View billing
                 <ArrowUpRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-          }
-        >
-          <div className="space-y-4">
-            {vpsInstances.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-muted p-10 text-center">
-                <Server className="mb-3 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm font-medium">No instances yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Provision your first VPS to see live health and provider telemetry here.
-                </p>
-                <Button asChild size="sm" className="mt-4">
-                  <Link to="/vps">
-                    <Plus className="mr-2 h-4 w-4" />Deploy VPS
-                  </Link>
-                </Button>
-              </div>
-            ) : (
-              vpsInstances.slice(0, 5).map((vps) => {
-                const cpuLoad = Math.min(100, Math.max(0, vps.metrics?.cpu?.last ?? vps.cpu ?? 0));
-                const inbound = vps.metrics?.network?.inbound?.last ?? null;
-                const outbound = vps.metrics?.network?.outbound?.last ?? null;
-
-                return (
-                  <button
-                    key={vps.id}
-                    type="button"
-                    onClick={() => handleVpsClick(vps.id)}
-                    className="w-full rounded-2xl border border-muted bg-background p-5 text-left transition hover:border-primary/40 hover:bg-primary/5"
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">{vps.name}</span>
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
-                              vps.status === 'running'
-                                ? 'bg-emerald-500/10 text-emerald-500'
-                                : vps.status === 'stopped'
-                                ? 'bg-muted text-muted-foreground'
-                                : 'bg-amber-500/10 text-amber-500'
-                            }`}
-                          >
-                            {vps.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {vps.plan || 'Unassigned plan'} • {vps.location || 'Unknown region'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{vps.ip || 'IP pending'}</p>
-                      </div>
-                      <div className="flex w-full flex-col gap-3 sm:w-64">
-                        <div>
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>CPU load</span>
-                            <span className="font-medium text-foreground">{cpuLoad.toFixed(1)}%</span>
-                          </div>
-                          <Progress value={cpuLoad} className="mt-1 h-2" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <ArrowUpRight className="h-3 w-3 text-primary" />
-                            {inbound !== null ? `${inbound.toFixed(2)} Mb/s in` : 'Inbound n/a'}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Compass className="h-3 w-3 text-primary" />
-                            {outbound !== null ? `${outbound.toFixed(2)} Mb/s out` : 'Outbound n/a'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-
-            {vpsInstances.length > 5 && (
-              <div className="pt-2 text-right text-xs">
-                <Link to="/vps" className="text-primary hover:underline">
-                  View all {vpsInstances.length} instances
-                </Link>
-              </div>
-            )}
           </div>
-        </ContentCard>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Server className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+          <Wallet className="absolute bottom-10 right-20 h-24 w-24 -rotate-6" />
+        </div>
+      </div>
 
-        <div className="grid gap-6">
-          <ContentCard title="Billing snapshot">
-            <div className="space-y-5 text-sm">
-              <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                <div className="flex items-center justify-between text-xs uppercase tracking-wide text-primary">
-                  Spend this cycle
-                  <span className="text-foreground">{formatCurrency(monthlySpend)}</span>
-                </div>
-                <div className="mt-3 space-y-1">
-                  <p className="text-xs text-muted-foreground">Cycle resets with billing service each hour.</p>
-                  <Button variant="secondary" size="sm" className="mt-2" asChild>
-                    <Link to="/billing">Open billing workspace</Link>
-                  </Button>
-                </div>
+      {/* Key Metrics Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">VPS Instances</p>
+                <p className="text-3xl font-bold tracking-tight">{vpsInstances.length}</p>
+                <p className="text-xs text-muted-foreground">Across all providers</p>
               </div>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Wallet balance</span>
-                  <span className="font-medium text-foreground">{formatCurrency(walletBalance)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Last payment</span>
-                  <span className="font-medium text-foreground">
-                    {lastPayment?.date ? formatTimestamp(lastPayment.date) : '—'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Last payment amount</span>
-                  <span className="font-medium text-foreground">
-                    {lastPayment?.amount ? formatCurrency(lastPayment.amount) : '—'}
-                  </span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-muted bg-muted/20 p-4 text-xs text-muted-foreground">
-                <Clock className="mr-2 inline h-4 w-4 align-middle text-primary" />
-                Hourly billing engine reconciles usage at the top of each hour.
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Server className="h-6 w-6 text-primary" />
               </div>
             </div>
-          </ContentCard>
+          </CardContent>
+        </Card>
 
-          <ContentCard
-            title="Quick actions"
-            description="Fast paths for the workflows you visit the most."
-          >
-            <div className="space-y-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Wallet Balance</p>
+                <p className="text-3xl font-bold tracking-tight">{formatCurrency(walletBalance)}</p>
+                <p className="text-xs text-muted-foreground">Ready to deploy infrastructure</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <Wallet className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Monthly Spend</p>
+                <p className="text-3xl font-bold tracking-tight">{formatCurrency(monthlySpend)}</p>
+                <MonthlyResetIndicator monthlySpend={monthlySpend} />
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <TrendingUp className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Last Payment</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {lastPayment?.amount ? formatCurrency(lastPayment.amount) : '—'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {lastPayment?.date ? formatTimestamp(lastPayment.date) : 'No payments yet'}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <ActivityIcon className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Status Overview */}
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline" className="gap-2 px-3 py-1.5">
+          <div className="h-2 w-2 rounded-full bg-primary" />
+          {heroStats.running} active
+        </Badge>
+        {heroStats.flagged > 0 && (
+          <Badge variant="secondary" className="gap-2 px-3 py-1.5">
+            <AlertTriangle className="h-3 w-3" />
+            {heroStats.flagged} attention
+          </Badge>
+        )}
+        {heroStats.averageCpu !== null && (
+          <Badge variant="outline" className="gap-2 px-3 py-1.5">
+            <TrendingUp className="h-3 w-3" />
+            Avg CPU {heroStats.averageCpu.toFixed(1)}%
+          </Badge>
+        )}
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* VPS Fleet - Takes 2 columns */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div>
+              <CardTitle>VPS Fleet</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Live signal across your deployments</p>
+            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/vps">
+                Manage all
+                <ArrowUpRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {vpsInstances.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 text-center">
+                  <div className="rounded-full bg-muted p-4">
+                    <Server className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="mt-4 text-sm font-semibold">No instances yet</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Deploy your first VPS to see live metrics
+                  </p>
+                  <Button asChild size="sm" className="mt-4">
+                    <Link to="/vps">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Deploy VPS
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                vpsInstances.slice(0, 5).map((vps) => {
+                  const cpuLoad = Math.min(100, Math.max(0, vps.metrics?.cpu?.last ?? vps.cpu ?? 0));
+                  const inbound = vps.metrics?.network?.inbound?.last ?? null;
+                  const outbound = vps.metrics?.network?.outbound?.last ?? null;
+
+                  return (
+                    <button
+                      key={vps.id}
+                      type="button"
+                      onClick={() => handleVpsClick(vps.id)}
+                      className="group w-full rounded-lg border bg-card p-4 text-left transition-all hover:border-primary/50 hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold group-hover:text-primary">{vps.name}</h4>
+                            <Badge
+                              variant={
+                                vps.status === 'running'
+                                  ? 'default'
+                                  : vps.status === 'stopped'
+                                  ? 'secondary'
+                                  : 'outline'
+                              }
+                            >
+                              {vps.status}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>{vps.plan || 'Unassigned'}</span>
+                            <span>•</span>
+                            <span>{vps.location || 'Unknown region'}</span>
+                            <span>•</span>
+                            <span>{vps.ip || 'IP pending'}</span>
+                          </div>
+                        </div>
+                        <div className="w-32 space-y-2 text-right">
+                          <div>
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">CPU</span>
+                              <span className="font-semibold">{cpuLoad.toFixed(1)}%</span>
+                            </div>
+                            <Progress value={cpuLoad} className="h-1.5" />
+                          </div>
+                          <div className="flex justify-end gap-3 text-[10px] text-muted-foreground">
+                            {inbound !== null && (
+                              <div className="flex items-center gap-1">
+                                <ArrowUpRight className="h-3 w-3" />
+                                {inbound.toFixed(1)}
+                              </div>
+                            )}
+                            {outbound !== null && (
+                              <div className="flex items-center gap-1">
+                                <Compass className="h-3 w-3" />
+                                {outbound.toFixed(1)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+
+              {vpsInstances.length > 5 && (
+                <Button variant="ghost" size="sm" className="w-full" asChild>
+                  <Link to="/vps">
+                    View all {vpsInstances.length} instances
+                    <ArrowUpRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sidebar - Quick Actions & Activity */}
+        <div className="space-y-6">
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
               {quickActions.map((action) => (
                 <Link
                   key={action.title}
                   to={action.to}
-                  className="flex items-start gap-3 rounded-2xl border border-muted/60 bg-background/80 p-4 transition hover:border-primary/50 hover:bg-primary/5"
+                  className="group flex items-center gap-3 rounded-lg border bg-card p-3 transition-all hover:border-primary/50 hover:bg-accent"
                 >
-                  <span className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <div className="rounded-md bg-primary/10 p-2 text-primary group-hover:bg-primary group-hover:text-primary-foreground">
                     {action.icon}
-                  </span>
-                  <span className="flex-1">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      {action.title}
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="mt-1 block text-xs text-muted-foreground">{action.description}</span>
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </ContentCard>
-        </div>
-      </section>
-
-      <ContentCard title="Recent activity">
-        <div>
-          {recentActivity.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-muted p-10 text-center text-sm text-muted-foreground">
-              <ActivityIcon className="mb-3 h-8 w-8" />
-              Activity will appear here after your next deployment or billing event.
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {recentActivity.map((activity, index) => (
-                <div key={activity.id} className="relative pl-6">
-                  {index !== recentActivity.length - 1 && (
-                    <span className="absolute left-2 top-6 h-full w-px bg-border" aria-hidden />
-                  )}
-                  <span
-                    className={`absolute left-0 top-2 flex h-4 w-4 items-center justify-center rounded-full border ${getStatusAccent(activity.status)}`}
-                    aria-hidden
-                  >
-                    {getActivityIcon(activity.type)}
-                  </span>
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm font-medium text-foreground">{activity.message}</p>
-                    <span className="text-xs text-muted-foreground">{formatTimestamp(activity.timestamp)}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {activity.type === 'billing' && 'Billing event'}
-                    {activity.type === 'vps' && 'VPS event'}
-                    {activity.type === 'support' && 'Support update'}
-                  </p>
-                </div>
-              ))}
-              <div className="text-right text-xs">
-                <Link to="/activity" className="text-primary hover:underline">
-                  View all activity
+                  <div className="flex-1">
+                    <p className="text-sm font-medium group-hover:text-primary">{action.title}</p>
+                    <p className="text-xs text-muted-foreground">{action.description}</p>
+                  </div>
+                  <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                 </Link>
-              </div>
-            </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Top Instance Card */}
+          {heroStats.topInstance && (
+            <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Highest Load
+                  </CardTitle>
+                  <Badge variant="outline" className="gap-1">
+                    <TrendingUp className="h-3 w-3" />
+                    {((heroStats.topInstance.metrics?.cpu?.last ?? heroStats.topInstance.cpu) ?? 0).toFixed(1)}%
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <h3 className="font-semibold">{heroStats.topInstance.name}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {heroStats.topInstance.plan} • {heroStats.topInstance.location || 'Unknown'}
+                </p>
+              </CardContent>
+            </Card>
           )}
         </div>
-      </ContentCard>
+      </div>
+
+      {/* Recent Activity */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>Recent Activity</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Track your platform events</p>
+          </div>
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/activity">
+              View all
+              <ArrowUpRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {recentActivity.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 text-center">
+              <div className="rounded-full bg-muted p-4">
+                <ActivityIcon className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="mt-4 text-sm text-muted-foreground">
+                Activity will appear here after your next deployment or billing event
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentActivity.slice(0, 8).map((activity, index) => (
+                <div key={activity.id} className="relative flex gap-4 pl-6">
+                  {index !== recentActivity.length - 1 && (
+                    <span className="absolute left-2 top-6 h-full w-px bg-border" />
+                  )}
+                  <div
+                    className={`absolute left-0 top-2 flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                      activity.status === 'success'
+                        ? 'border-primary bg-primary/10'
+                        : activity.status === 'warning'
+                        ? 'border-muted-foreground bg-muted'
+                        : activity.status === 'error'
+                        ? 'border-destructive bg-destructive/10'
+                        : 'border-primary bg-primary/10'
+                    }`}
+                  />
+                  <div className="flex flex-1 flex-col gap-1 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{activity.message}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {activity.type === 'billing' && 'Billing event'}
+                        {activity.type === 'vps' && 'VPS event'}
+                        {activity.type === 'support' && 'Support update'}
+                        {!['billing', 'vps', 'support'].includes(activity.type) && 'System event'}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatTimestamp(activity.timestamp)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

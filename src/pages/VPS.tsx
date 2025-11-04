@@ -2019,8 +2019,8 @@ const VPS: React.FC = () => {
                   )}
                 </p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 text-purple-500">
-                <DollarSign className="h-6 w-6" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50">
+                <DollarSign className="h-6 w-6 text-foreground" />
               </div>
             </CardContent>
           </Card>
@@ -2121,7 +2121,7 @@ const VPS: React.FC = () => {
                     onClick={() => handleBulkAction("boot")}
                     variant="secondary"
                     size="sm"
-                    className="text-green-700 bg-green-100 border-green-300 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/30 min-h-[44px] touch-manipulation flex-1 sm:flex-none"
+                    className="min-h-[44px] touch-manipulation flex-1 sm:flex-none"
                     disabled={selectedInstances.every(
                       (instance) => instance.status === "running"
                     )}
@@ -2134,7 +2134,7 @@ const VPS: React.FC = () => {
                     onClick={() => handleBulkAction("shutdown")}
                     variant="secondary"
                     size="sm"
-                    className="text-orange-700 bg-orange-100 border-orange-300 hover:bg-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800 dark:hover:bg-orange-900/30 min-h-[44px] touch-manipulation flex-1 sm:flex-none"
+                    className="min-h-[44px] touch-manipulation flex-1 sm:flex-none"
                     disabled={selectedInstances.every(
                       (instance) => instance.status === "stopped"
                     )}

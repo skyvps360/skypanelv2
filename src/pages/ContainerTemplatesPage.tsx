@@ -316,15 +316,8 @@ const ContainerTemplatesPage: React.FC = () => {
       <div className="mb-8 space-y-2">
         <h1 className="text-3xl font-bold">Container Templates</h1>
         <p className="text-muted-foreground">
-          Browse curated application blueprints powered by Easypanel and launch services with minimal configuration.
+          Browse curated application blueprints and launch services with minimal configuration.
         </p>
-        <Alert className="max-w-3xl">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Templates are sourced from your SkyPanel workspace and deployed through the configured Easypanel API connection.
-            Enable or edit templates from the admin area to control what appears here.
-          </AlertDescription>
-        </Alert>
       </div>
 
       {templatesQuery.isError && (
@@ -343,7 +336,7 @@ const ContainerTemplatesPage: React.FC = () => {
           <CardHeader>
             <CardTitle>No templates available</CardTitle>
             <CardDescription>
-              Administrators can enable templates from the container settings panel. Check back soon for quick deployment options.
+              Check back soon for quick deployment options.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -364,7 +357,7 @@ const ContainerTemplatesPage: React.FC = () => {
               <CardHeader>
                 <CardTitle>Subscription Usage</CardTitle>
                 <CardDescription>
-                  Review Easypanel-backed resource quotas before launching new template deployments.
+                  Review resource quotas before launching new template deployments.
                 </CardDescription>
               </CardHeader>
               <CardContent>
