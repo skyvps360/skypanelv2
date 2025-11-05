@@ -19,9 +19,9 @@ SkyPanelV2 is an open-source control plane for cloud service providing offering 
 - **Secure access**: JWT auth, impersonation support, SSH WebSocket bridge for VPS consoles, and centrally managed rate limiting.
 - **Team collaboration**: Multi-tenant organizations, role-based routing, and auditable activity logs across the stack.
 - **Mention Of Brand Name**: Use of consistant brand name definable by `.env` secret.
-- **White Label i.e hiding of digitalocean easypanel & linode**: mentions of linode, digitalocean, or easypanel will not be seen to clients.
+- **White Label i.e hiding of digitalocean dokploy & linode**: mentions of linode, digitalocean, or dokploy will not be seen to clients.
 - **Providers**: offering the applicaiton admin to define the actual provider i.e linode/digitalocean names via the admin dashboard.
-- **Easypanel**: If easypanel is not defined in the `/admin#easypanel-config` it will not allow the use of containers or selling containers to clients. 
+- **Dokploy**: If dokploy is not defined in the `/admin#dokploy-config` it will not allow the use of containers or selling containers to clients. 
 - **DESIGN**: WHEN DEVELOPING AND SPEAKING ABOUT APPLICAITON SPEAK ABOUT APPLICATION IN A  customer-facing for your cloud hosting business.
  
 ## Architecture Snapshot

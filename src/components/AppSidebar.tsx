@@ -136,13 +136,13 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             title: "Platform Settings",
             icon: Settings,
             url: `/admin#platform`,
-            isActive: ["platform", "theme", "faq-management", "contact-management", "easypanel-config"].includes(activeAnchor),
+            isActive: ["platform", "theme", "faq-management", "contact-management", "dokploy-config"].includes(activeAnchor),
             items: [
               { title: "Theme", url: `/admin#theme`, isActive: activeAnchor === "theme" },
               { title: "FAQ Management", url: `/admin#faq-management`, isActive: activeAnchor === "faq-management" },
               { title: "Contact Management", url: `/admin#contact-management`, isActive: activeAnchor === "contact-management" },
               { title: "Rate Limiting", url: `/admin#rate-limiting`, isActive: activeAnchor === "rate-limiting" },
-              { title: "Easypanel Config", url: `/admin#easypanel-config`, isActive: activeAnchor === "easypanel-config" },
+              { title: "Dokploy Config", url: `/admin#dokploy-config`, isActive: activeAnchor === "dokploy-config" },
             ],
           },
           {

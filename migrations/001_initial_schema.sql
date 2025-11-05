@@ -1431,7 +1431,7 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================
--- Container as a Service (CaaS) Schema - Easypanel Integration
+-- Container as a Service (CaaS) Schema - Dokploy Integration
 -- ============================================================
 
 -- Container plans table
@@ -1480,11 +1480,9 @@ CREATE TABLE IF NOT EXISTS container_subscriptions (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     plan_id UUID NOT NULL REFERENCES container_plans(id) ON DELETE RESTRICT,
     status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'cancelled')),
-  easypanel_user_id VARCHAR(255),
-  easypanel_user_email VARCHAR(255),
-  easypanel_password_encrypted TEXT,
     current_period_start TIMESTAMP WITH TIME ZONE NOT NULL,
     current_period_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -1495,7 +1493,7 @@ CREATE TABLE IF NOT EXISTS container_projects (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     subscription_id UUID NOT NULL REFERENCES container_subscriptions(id) ON DELETE CASCADE,
     project_name VARCHAR(255) NOT NULL,
-    easypanel_project_name VARCHAR(255) NOT NULL,
+    dokploy_project_id VARCHAR(255),
     status VARCHAR(50) DEFAULT 'active',
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -1508,7 +1506,8 @@ CREATE TABLE IF NOT EXISTS container_services (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     project_id UUID NOT NULL REFERENCES container_projects(id) ON DELETE CASCADE,
     service_name VARCHAR(255) NOT NULL,
-    easypanel_service_name VARCHAR(255) NOT NULL,
+    dokploy_application_id VARCHAR(255),
+    dokploy_environment_id VARCHAR(255),
     service_type VARCHAR(50) NOT NULL CHECK (service_type IN ('app', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis', 'wordpress', 'box', 'compose')),
     status VARCHAR(50) DEFAULT 'deploying',
     cpu_limit DECIMAL(5,2),
@@ -1548,8 +1547,8 @@ CREATE TABLE IF NOT EXISTS container_billing_cycles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Easypanel configuration table
-CREATE TABLE IF NOT EXISTS easypanel_config (
+-- Dokploy configuration table
+CREATE TABLE IF NOT EXISTS dokploy_config (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     api_url VARCHAR(500) NOT NULL,
     api_key_encrypted TEXT NOT NULL,
@@ -1563,11 +1562,12 @@ CREATE TABLE IF NOT EXISTS easypanel_config (
 -- Container-related indexes for performance optimization
 CREATE INDEX IF NOT EXISTS idx_container_subscriptions_org_id ON container_subscriptions(organization_id);
 CREATE INDEX IF NOT EXISTS idx_container_subscriptions_status ON container_subscriptions(status);
-CREATE INDEX IF NOT EXISTS idx_container_subscriptions_easypanel_user 
-ON container_subscriptions(easypanel_user_id);
 CREATE INDEX IF NOT EXISTS idx_container_projects_org_id ON container_projects(organization_id);
 CREATE INDEX IF NOT EXISTS idx_container_projects_subscription_id ON container_projects(subscription_id);
+CREATE INDEX IF NOT EXISTS idx_container_projects_dokploy_project ON container_projects(dokploy_project_id);
 CREATE INDEX IF NOT EXISTS idx_container_services_project_id ON container_services(project_id);
+CREATE INDEX IF NOT EXISTS idx_container_services_dokploy_app ON container_services(dokploy_application_id);
+CREATE INDEX IF NOT EXISTS idx_container_services_dokploy_env ON container_services(dokploy_environment_id);
 CREATE INDEX IF NOT EXISTS idx_container_services_status ON container_services(status);
 CREATE INDEX IF NOT EXISTS idx_container_billing_cycles_subscription_id ON container_billing_cycles(subscription_id);
 CREATE INDEX IF NOT EXISTS idx_container_billing_cycles_org_id ON container_billing_cycles(organization_id);
@@ -1599,71 +1599,7 @@ CREATE TRIGGER update_container_billing_cycles_updated_at
 BEFORE UPDATE ON container_billing_cycles
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_easypanel_config_updated_at
-BEFORE UPDATE ON easypanel_config
+CREATE TRIGGER update_dokploy_config_updated_at
+BEFORE UPDATE ON dokploy_config
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Seed: WordPress container template
-INSERT INTO container_templates (
-  template_name,
-  display_name,
-  description,
-  category,
-  template_schema,
-  enabled,
-  display_order
-) VALUES (
-  'wordpress',
-  'WordPress',
-  'Popular content management system with integrated MySQL/MariaDB database and automatic PHP configuration. Perfect for blogs, websites, and web applications.',
-  'CMS',
-  '{
-    "services": [
-      {
-        "name": "wordpress",
-        "type": "app",
-        "configuration": {
-          "source": {
-            "type": "image",
-            "image": "wordpress:latest"
-          },
-          "env": "WORDPRESS_DB_HOST=$(PROJECT_NAME)_wordpress-db\\nWORDPRESS_DB_USER=mariadb\\nWORDPRESS_DB_PASSWORD={{RANDOM_PASSWORD}}\\nWORDPRESS_DB_NAME=$(PROJECT_NAME)",
-          "domains": [
-            {
-              "host": "$(EASYPANEL_DOMAIN)",
-              "port": 80
-            }
-          ],
-          "mounts": [
-            {
-              "type": "volume",
-              "name": "data",
-              "mountPath": "/var/www/html"
-            },
-            {
-              "type": "file",
-              "content": "upload_max_filesize = 100M\\npost_max_size = 100M\\n",
-              "mountPath": "/usr/local/etc/php/conf.d/custom.ini"
-            }
-          ]
-        }
-      },
-      {
-        "name": "wordpress-db",
-        "type": "mariadb",
-        "configuration": {
-          "password": "{{RANDOM_PASSWORD}}"
-        }
-      }
-    ]
-  }'::jsonb,
-  TRUE,
-  10
-)
-ON CONFLICT (template_name) DO UPDATE SET
-  display_name = EXCLUDED.display_name,
-  description = EXCLUDED.description,
-  category = EXCLUDED.category,
-  template_schema = EXCLUDED.template_schema,
-  display_order = EXCLUDED.display_order,
-  updated_at = NOW();

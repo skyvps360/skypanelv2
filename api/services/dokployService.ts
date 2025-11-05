@@ -203,6 +203,64 @@ class DokployService {
   }
 
   /**
+   * Normalize various Dokploy project payload shapes into a consistent structure
+   */
+  private normalizeProjectPayload(rawProject: any): DokployProject | null {
+    if (!rawProject) {
+      return null;
+    }
+
+    const source = typeof rawProject.project === 'object' && rawProject.project !== null
+      ? rawProject.project
+      : rawProject;
+
+    if (!source || typeof source !== 'object') {
+      return null;
+    }
+
+    const rawId = source.projectId ?? source.id ?? source._id ?? source.uuid ?? source.slug ?? null;
+    const resolvedName = source.name ?? source.projectName ?? source.slug ?? (typeof rawId === 'string' ? rawId : null);
+
+    if (!resolvedName) {
+      return null;
+    }
+
+    const projectId = rawId ? String(rawId) : String(resolvedName);
+
+    return {
+      projectId,
+      name: String(resolvedName),
+      description: source.description ?? '',
+      createdAt: source.createdAt ?? source.created_at ?? new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Extract an array of project payloads from flexible Dokploy responses
+   */
+  private extractProjectArray(payload: any): any[] {
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+
+    if (payload && typeof payload === 'object') {
+      if (Array.isArray(payload.projects)) {
+        return payload.projects;
+      }
+
+      if (Array.isArray(payload.data)) {
+        return payload.data;
+      }
+
+      if (Array.isArray(payload.items)) {
+        return payload.items;
+      }
+    }
+
+    return [];
+  }
+
+  /**
    * Get decrypted API key
    */
   private async getApiKey(): Promise<string> {
@@ -241,13 +299,43 @@ class DokployService {
       throw createConfigError('Dokploy not configured');
     }
 
+    return this.normalizeBaseUrl(config.apiUrl);
+  }
+
+  /**
+   * Normalize Dokploy base URL
+   */
+  private normalizeBaseUrl(url: string): string {
+    let baseUrl = url.trim();
+
+    if (!baseUrl) {
+      throw createConfigError('Dokploy API URL is required');
+    }
+
     // Remove trailing slashes
-    let baseUrl = config.apiUrl.replace(/\/+$/, '');
-    
-    // Remove /api if it's already in the URL
+    baseUrl = baseUrl.replace(/\/+$/, '');
+
+    // Remove trailing /api segment if provided
     baseUrl = baseUrl.replace(/\/api$/, '');
-    
+
     return baseUrl;
+  }
+
+  /**
+   * Resolve request context using stored or override configuration
+   */
+  private async resolveRequestContext(override?: { apiUrl: string; apiKey: string }): Promise<{ baseUrl: string; apiKey: string }> {
+    if (override?.apiUrl && override?.apiKey) {
+      return {
+        baseUrl: this.normalizeBaseUrl(override.apiUrl),
+        apiKey: override.apiKey.trim(),
+      };
+    }
+
+    const baseUrl = await this.getBaseUrl();
+    const apiKey = await this.getApiKey();
+
+    return { baseUrl, apiKey };
   }
 
   /**
@@ -257,14 +345,14 @@ class DokployService {
     method?: string;
     body?: any;
     queryParams?: Record<string, string>;
+    overrideConfig?: { apiUrl: string; apiKey: string };
   } = {}): Promise<any> {
-    const baseUrl = await this.getBaseUrl();
-    const apiKey = await this.getApiKey();
+    const { method = 'POST', body, queryParams, overrideConfig } = options;
 
-    const { method = 'POST', body, queryParams } = options;
+    const { baseUrl, apiKey } = await this.resolveRequestContext(overrideConfig);
 
     const headers: Record<string, string> = {
-      'Authorization': apiKey,
+      'x-api-key': apiKey,
       'Content-Type': 'application/json',
     };
 
@@ -295,8 +383,17 @@ class DokployService {
         throw new Error(errorMessage);
       }
 
-      const data = await response.json();
-      return data;
+      const rawText = await response.text();
+
+      if (!rawText) {
+        return {};
+      }
+
+      try {
+        return JSON.parse(rawText);
+      } catch {
+        return rawText;
+      }
     } catch (error: any) {
       console.error(`Dokploy API request failed for ${endpoint}:`, error);
       
@@ -312,14 +409,15 @@ class DokployService {
   /**
    * Test connection to Dokploy API
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(override?: { apiUrl: string; apiKey: string }): Promise<{ success: boolean; message?: string }> {
     try {
       // Use project.all as a simple test endpoint
-      await this.makeRequest('project.all', { method: 'GET' });
-      return true;
+      await this.makeRequest('project.all', { method: 'GET', overrideConfig: override });
+      return { success: true };
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Dokploy connection test failed';
       console.error('Dokploy connection test failed:', error);
-      return false;
+      return { success: false, message };
     }
   }
 
@@ -333,17 +431,12 @@ class DokployService {
   async listProjects(): Promise<DokployProject[]> {
     try {
       const data = await this.makeRequest('project.all', { method: 'GET' });
-      
-      if (!Array.isArray(data)) {
-        return [];
-      }
 
-      return data.map((project: any) => ({
-        projectId: project.projectId || '',
-        name: project.name || '',
-        description: project.description || '',
-        createdAt: project.createdAt || new Date().toISOString(),
-      }));
+      const projectPayloads = this.extractProjectArray(data);
+
+      return projectPayloads
+        .map((project: any) => this.normalizeProjectPayload(project))
+        .filter((project): project is DokployProject => project !== null);
     } catch (error) {
       console.error('Error listing Dokploy projects:', error);
       throw error;
@@ -360,11 +453,15 @@ class DokployService {
         queryParams: { projectId }
       });
 
+      const normalized = this.normalizeProjectPayload(data) ?? {
+        projectId,
+        name: typeof data === 'string' ? projectId : (data?.name ?? ''),
+        description: typeof data === 'string' ? '' : (data?.description ?? ''),
+        createdAt: (data?.createdAt ?? data?.created_at ?? new Date().toISOString()),
+      };
+
       return {
-        projectId: data.projectId || projectId,
-        name: data.name || '',
-        description: data.description || '',
-        createdAt: data.createdAt || new Date().toISOString(),
+        ...normalized,
         env: {}, // Dokploy handles env at application level
         services: [], // Services are applications in Dokploy
       };
@@ -386,11 +483,33 @@ class DokployService {
         }
       });
 
+      const normalized = this.normalizeProjectPayload(data);
+
+      if (normalized?.projectId) {
+        return normalized;
+      }
+
+      // Fallback: attempt to locate the project by name
+      try {
+        const projects = await this.listProjects();
+        const matchingProject = projects.find(project => project.name === projectName);
+
+        if (matchingProject) {
+          return matchingProject;
+        }
+      } catch (listError) {
+        console.warn('Unable to verify Dokploy project after creation:', listError);
+      }
+
+      console.warn('Dokploy project created but response lacked project identifier. Using fallback identifier.', {
+        projectName,
+      });
+
       return {
-        projectId: data.projectId || '',
-        name: data.name || projectName,
-        description: data.description || '',
-        createdAt: data.createdAt || new Date().toISOString(),
+        projectId: projectName,
+        name: projectName,
+        description: description || '',
+        createdAt: new Date().toISOString(),
       };
     } catch (error) {
       console.error(`Error creating Dokploy project ${projectName}:`, error);
@@ -484,6 +603,19 @@ class DokployService {
     }
   }
 
+  /**
+   * Ensure a default environment exists for the project
+   */
+  async ensureDefaultEnvironment(projectId: string, name: string = 'production'): Promise<DokployEnvironment> {
+    const environments = await this.getProjectEnvironments(projectId);
+
+    if (environments.length > 0) {
+      return environments[0];
+    }
+
+    return this.createEnvironment(projectId, name, `${name} environment`);
+  }
+
   // ============================================================
   // Application Management Methods
   // ============================================================
@@ -512,6 +644,300 @@ class DokployService {
       };
     } catch (error) {
       console.error(`Error creating application ${config.serviceName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Configure docker image/provider for an application
+   */
+  async configureDockerProvider(applicationId: string, options: { image: string; username?: string; password?: string; registryUrl?: string }): Promise<void> {
+    try {
+      await this.makeRequest('application.saveDockerProvider', {
+        body: {
+          applicationId,
+          dockerImage: options.image,
+          username: options.username || null,
+          password: options.password || null,
+          registryUrl: options.registryUrl || null,
+        }
+      });
+    } catch (error) {
+      console.error(`Error configuring docker provider for application ${applicationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Persist environment variables for an application
+   */
+  async saveApplicationEnvironment(applicationId: string, env: Record<string, string> | string, options?: { buildArgs?: Record<string, string>; buildSecrets?: Record<string, string> }): Promise<void> {
+    const envString = typeof env === 'string'
+      ? env
+      : Object.entries(env)
+          .map(([key, value]) => `${key}=${value}`)
+          .join('\n');
+
+    try {
+      await this.makeRequest('application.saveEnvironment', {
+        body: {
+          applicationId,
+          env: envString || null,
+          buildArgs: options?.buildArgs
+            ? Object.entries(options.buildArgs).map(([k, v]) => `${k}=${v}`).join('\n')
+            : null,
+          buildSecrets: options?.buildSecrets
+            ? Object.entries(options.buildSecrets).map(([k, v]) => `${k}=${v}`).join('\n')
+            : null,
+        }
+      });
+    } catch (error) {
+      console.error(`Error saving environment for application ${applicationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update application resources (CPU/Memory) and metadata
+   */
+  async updateApplicationSettings(applicationId: string, options: {
+    name: string;
+    appName?: string;
+    description?: string;
+    cpuLimit?: number | string;
+    cpuReservation?: number | string;
+    memoryLimit?: number | string;
+    memoryReservation?: number | string;
+  }): Promise<void> {
+    const payload: Record<string, any> = {
+      applicationId,
+      name: options.name,
+      appName: options.appName || options.name,
+      description: options.description || null,
+    };
+
+    if (options.cpuLimit !== undefined) {
+      payload.cpuLimit = String(options.cpuLimit);
+    }
+
+    if (options.cpuReservation !== undefined) {
+      payload.cpuReservation = String(options.cpuReservation);
+    }
+
+    if (options.memoryLimit !== undefined) {
+      payload.memoryLimit = String(options.memoryLimit);
+    }
+
+    if (options.memoryReservation !== undefined) {
+      payload.memoryReservation = String(options.memoryReservation);
+    }
+
+    try {
+      await this.makeRequest('application.update', {
+        body: payload,
+      });
+    } catch (error) {
+      console.error(`Error updating application ${applicationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a mount for an application
+   */
+  async createApplicationMount(applicationId: string, mount: {
+    type: 'bind' | 'volume' | 'file';
+    mountPath: string;
+    volumeName?: string;
+    hostPath?: string;
+    content?: string;
+    filePath?: string;
+  }): Promise<void> {
+    try {
+      await this.makeRequest('mounts.create', {
+        body: {
+          type: mount.type,
+          mountPath: mount.mountPath,
+          volumeName: mount.volumeName || null,
+          hostPath: mount.hostPath || null,
+          content: mount.content || null,
+          filePath: mount.filePath || null,
+          serviceId: applicationId,
+          serviceType: 'application',
+        }
+      });
+    } catch (error) {
+      console.error(`Error creating mount for application ${applicationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a MariaDB service
+   */
+  async createMariadbService(environmentId: string, config: {
+    serviceName: string;
+    databaseName: string;
+    databaseUser: string;
+    databasePassword: string;
+    rootPassword: string;
+    dockerImage?: string;
+    description?: string;
+  }): Promise<{ serviceId: string }> {
+    try {
+      const data = await this.makeRequest('mariadb.create', {
+        body: {
+          name: config.serviceName,
+          appName: config.serviceName,
+          databaseRootPassword: config.rootPassword,
+          environmentId,
+          databaseName: config.databaseName,
+          databaseUser: config.databaseUser,
+          databasePassword: config.databasePassword,
+          dockerImage: config.dockerImage || null,
+          description: config.description || null,
+          serverId: null,
+        }
+      });
+
+      const serviceId = data?.mariadbId || data?.serviceId || data?.id || config.serviceName;
+      return { serviceId: String(serviceId) };
+    } catch (error) {
+      console.error(`Error creating MariaDB service ${config.serviceName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a MySQL service
+   */
+  async createMysqlService(environmentId: string, config: {
+    serviceName: string;
+    databaseName: string;
+    databaseUser: string;
+    databasePassword: string;
+    rootPassword: string;
+    dockerImage?: string;
+    description?: string;
+  }): Promise<{ serviceId: string }> {
+    try {
+      const data = await this.makeRequest('mysql.create', {
+        body: {
+          name: config.serviceName,
+          appName: config.serviceName,
+          environmentId,
+          databaseName: config.databaseName,
+          databaseUser: config.databaseUser,
+          databasePassword: config.databasePassword,
+          databaseRootPassword: config.rootPassword,
+          dockerImage: config.dockerImage || null,
+          description: config.description || null,
+          serverId: null,
+        }
+      });
+
+      const serviceId = data?.mysqlId || data?.serviceId || data?.id || config.serviceName;
+      return { serviceId: String(serviceId) };
+    } catch (error) {
+      console.error(`Error creating MySQL service ${config.serviceName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a Postgres service
+   */
+  async createPostgresService(environmentId: string, config: {
+    serviceName: string;
+    databaseName: string;
+    databaseUser: string;
+    databasePassword: string;
+    dockerImage?: string;
+    description?: string;
+  }): Promise<{ serviceId: string }> {
+    try {
+      const data = await this.makeRequest('postgres.create', {
+        body: {
+          name: config.serviceName,
+          appName: config.serviceName,
+          databaseName: config.databaseName,
+          databaseUser: config.databaseUser,
+          databasePassword: config.databasePassword,
+          dockerImage: config.dockerImage || null,
+          environmentId,
+          description: config.description || null,
+          serverId: null,
+        }
+      });
+
+      const serviceId = data?.postgresId || data?.serviceId || data?.id || config.serviceName;
+      return { serviceId: String(serviceId) };
+    } catch (error) {
+      console.error(`Error creating Postgres service ${config.serviceName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a Mongo service
+   */
+  async createMongoService(environmentId: string, config: {
+    serviceName: string;
+    password: string;
+    database?: string;
+    user?: string;
+    dockerImage?: string;
+    description?: string;
+  }): Promise<{ serviceId: string }> {
+    try {
+      const data = await this.makeRequest('mongo.create', {
+        body: {
+          name: config.serviceName,
+          appName: config.serviceName,
+          password: config.password,
+          database: config.database || config.serviceName,
+          user: config.user || 'mongo',
+          environmentId,
+          dockerImage: config.dockerImage || null,
+          description: config.description || null,
+          serverId: null,
+        }
+      });
+
+      const serviceId = data?.mongoId || data?.serviceId || data?.id || config.serviceName;
+      return { serviceId: String(serviceId) };
+    } catch (error) {
+      console.error(`Error creating Mongo service ${config.serviceName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a Redis service
+   */
+  async createRedisService(environmentId: string, config: {
+    serviceName: string;
+    password?: string;
+    dockerImage?: string;
+    description?: string;
+  }): Promise<{ serviceId: string }> {
+    try {
+      const data = await this.makeRequest('redis.create', {
+        body: {
+          name: config.serviceName,
+          appName: config.serviceName,
+          password: config.password || '',
+          environmentId,
+          dockerImage: config.dockerImage || null,
+          description: config.description || null,
+          serverId: null,
+        }
+      });
+
+      const serviceId = data?.redisId || data?.serviceId || data?.id || config.serviceName;
+      return { serviceId: String(serviceId) };
+    } catch (error) {
+      console.error(`Error creating Redis service ${config.serviceName}:`, error);
       throw error;
     }
   }

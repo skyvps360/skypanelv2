@@ -59,7 +59,7 @@
 ## White-Label & Branding
 - **Environment Variables:** `COMPANY_NAME`, `COMPANY_BRAND_NAME`, `VITE_COMPANY_NAME`, `COMPANY_LOGO_URL` control branding; `src/lib/brand.ts` exports resolved values.
 - **Theme System:** Admin can configure themes via `/admin#theme-manager`; stored in `theme_presets` table; `themeService.ts` manages CRUD; CSS variables applied via `ThemeContext`.
-- **Provider Hiding:** Mentions of "Linode", "DigitalOcean", "Easypanel" not exposed to clients; admins define labels via `/admin#providers` and `/admin#easypanel-config`.
+- **Provider Hiding:** Mentions of "Linode", "DigitalOcean", "Dokploy" not exposed to clients; admins define labels via `/admin#providers` and `/admin#dokploy-config`.
 
 ## Common Pitfalls
 - **Missing .js Extensions:** ESM requires explicit `.js` in imports; TypeScript will compile without them but runtime will fail.

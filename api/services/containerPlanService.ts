@@ -6,8 +6,6 @@
 import { query, transaction } from '../lib/database.js';
 import { PayPalService } from './paypalService.js';
 import { dokployService } from './dokployService.js';
-import { encryptSecret } from '../lib/crypto.js';
-import crypto from 'crypto';
 
 export interface ContainerPlan {
   id: string;
@@ -574,9 +572,9 @@ export class ContainerPlanService {
         const monthlyPrice = parseFloat(subscription.price_monthly);
         const refundAmount = Number(((daysRemaining / totalDays) * monthlyPrice).toFixed(2));
 
-        // Get all Easypanel projects for this organization
+        // Get all Dokploy projects for this organization
         const projectsResult = await client.query(`
-          SELECT project_name, easypanel_project_name
+          SELECT id, project_name, dokploy_project_id
           FROM container_projects
           WHERE organization_id = $1
         `, [subscription.organization_id]);
@@ -584,21 +582,28 @@ export class ContainerPlanService {
         const projects = projectsResult.rows;
         let projectsDeleted = 0;
 
-        // Delete all Easypanel projects via API
+        // Delete all Dokploy projects via API and remove local records
         if (projects.length > 0) {
           for (const project of projects) {
             try {
-              await easypanelService.destroyProject(project.easypanel_project_name);
-              
+              if (project.dokploy_project_id) {
+                await dokployService.destroyProject(project.dokploy_project_id);
+              } else {
+                console.warn('Dokploy project missing remote identifier, skipping API deletion', {
+                  projectId: project.id,
+                  projectName: project.project_name,
+                });
+              }
+
               // Remove from database
               await client.query(`
                 DELETE FROM container_projects
-                WHERE easypanel_project_name = $1 AND organization_id = $2
-              `, [project.easypanel_project_name, subscription.organization_id]);
+                WHERE id = $1 AND organization_id = $2
+              `, [project.id, subscription.organization_id]);
               
               projectsDeleted++;
             } catch (error) {
-              console.error(`Failed to delete project ${project.easypanel_project_name}:`, error);
+              console.error(`Failed to delete Dokploy project ${project.dokploy_project_id || project.project_name}:`, error);
               // Continue with other projects even if one fails
             }
           }
@@ -606,7 +611,6 @@ export class ContainerPlanService {
 
         // Credit wallet with refund if amount > 0
         if (refundAmount > 0) {
-          const PayPalService = (await import('./paypalService.js')).PayPalService;
           const refundSuccess = await PayPalService.addFundsToWallet(
             subscription.organization_id,
             refundAmount,

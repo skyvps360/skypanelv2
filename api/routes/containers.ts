@@ -3,29 +3,18 @@ import { authenticateToken, requireOrganization, requireAdmin, AuthenticatedRequ
 import { query } from '../lib/database.js';
 import { encryptSecret, decryptSecret } from '../lib/crypto.js';
 import { easypanelService, type EasypanelConfig } from '../services/easypanelService.js';
-import { dokployService, type DokployConfig } from '../services/dokployService.js';
+import { dokployService } from '../services/dokployService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { ContainerPlanService } from '../services/containerPlanService.js';
 import { ResourceQuotaService } from '../services/resourceQuotaService.js';
 import { ContainerTemplateService } from '../services/containerTemplateService.js';
+import { templateDeploymentService } from '../services/templateDeploymentService.js';
 import { 
   ContainerServiceError, 
   formatErrorResponse, 
   ERROR_CODES 
 } from '../lib/containerErrors.js';
-import {
-  validateEasypanelConfig,
-  validateCreateProject,
-  validateProjectNameParam,
-  validateServiceNameParam,
-  validateDeployAppService,
-  validateDeployDatabaseService,
-  validateDeployTemplateService,
-  validateUpdateEnvironment,
-  validateUpdateResources,
-  validateCreateContainerPlan,
-  validateCreateContainerTemplate,
-} from '../middleware/containerValidation.js';
+import { validateEasypanelConfig, validateCreateContainerPlan } from '../middleware/containerValidation.js';
 
 const router = express.Router();
 
@@ -36,7 +25,7 @@ router.use(authenticateToken, requireOrganization);
 const requireAdminRole = requireAdmin;
 
 // Global error handler for container routes
-function handleContainerError(error: any, req: Request, res: Response, next: any) {
+function handleContainerError(error: any, req: Request, res: Response, _next: any) {
   console.error('Container route error:', error);
 
   if (error instanceof ContainerServiceError) {
@@ -227,7 +216,7 @@ router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedReq
       // Test the connection with provided credentials
       try {
         // Normalize URL
-        let baseUrl = urlToTest.replace(/\/+$/, '').replace(/\/api\/trpc$/, '');
+        const baseUrl = urlToTest.replace(/\/+$/, '').replace(/\/api\/trpc$/, '');
         const testUrl = `${baseUrl}/api/trpc/projects.listProjects`;
         
         const response = await fetch(testUrl, {
@@ -531,16 +520,22 @@ router.post('/admin/dokploy/config', requireAdminRole, validateEasypanelConfig, 
  */
 router.post('/admin/dokploy/config/test', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
   try {
-    // Test current configuration
-    const connectionTest = await dokployService.testConnection();
+    const { apiUrl, apiKey } = req.body || {};
+    const trimmedUrl = typeof apiUrl === 'string' ? apiUrl.trim() : '';
+    const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+
+    const shouldOverride = Boolean(trimmedUrl && trimmedKey);
+    const connectionTest = await dokployService.testConnection(
+      shouldOverride ? { apiUrl: trimmedUrl, apiKey: trimmedKey } : undefined
+    );
     
-    if (connectionTest) {
+    if (connectionTest.success) {
       // Update connection status in database if config exists
       const existingResult = await query(
         'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
       );
 
-      if (existingResult.rows.length > 0) {
+      if (existingResult.rows.length > 0 && !shouldOverride) {
         await query(
           `UPDATE dokploy_config 
            SET connection_status = 'connected', last_connection_test = NOW()
@@ -555,7 +550,7 @@ router.post('/admin/dokploy/config/test', requireAdminRole, async (req: Authenti
         eventType: 'container.config.test',
         entityType: 'dokploy_config',
         entityId: null,
-        metadata: { status: 'success' }
+        metadata: { status: 'success', override: shouldOverride }
       });
 
       dokployService.resetConfigCache();
@@ -570,7 +565,7 @@ router.post('/admin/dokploy/config/test', requireAdminRole, async (req: Authenti
         'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
       );
 
-      if (existingResult.rows.length > 0) {
+      if (existingResult.rows.length > 0 && !shouldOverride) {
         await query(
           `UPDATE dokploy_config 
            SET connection_status = 'failed', last_connection_test = NOW()
@@ -583,7 +578,7 @@ router.post('/admin/dokploy/config/test', requireAdminRole, async (req: Authenti
 
       res.status(500).json({
         success: false,
-        message: 'Dokploy connection test failed'
+        message: connectionTest.message || 'Dokploy connection test failed'
       });
     }
   } catch (error) {
@@ -593,7 +588,10 @@ router.post('/admin/dokploy/config/test', requireAdminRole, async (req: Authenti
         'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
       );
 
-      if (existingResult.rows.length > 0) {
+      const { apiUrl = '', apiKey = '' } = req.body || {};
+      const usedOverride = Boolean(apiUrl?.trim() && apiKey?.trim());
+
+      if (existingResult.rows.length > 0 && !usedOverride) {
         await query(
           `UPDATE dokploy_config 
            SET connection_status = 'failed', last_connection_test = NOW()
@@ -604,7 +602,6 @@ router.post('/admin/dokploy/config/test', requireAdminRole, async (req: Authenti
     } catch (dbError) {
       console.error('Failed to update connection status:', dbError);
     }
-
     dokployService.resetConfigCache();
     next(error);
   }
@@ -2363,7 +2360,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
     // Create database service in Easypanel based on type
     try {
       switch (databaseType) {
-        case 'postgres':
+        case 'postgres': {
           const postgresConfig = {
             serviceName: dokployApplicationId,
             password: defaultPassword,
@@ -2373,7 +2370,8 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
           };
           await easypanelService.createPostgresService(project.dokploy_project_id, postgresConfig);
           break;
-        case 'mysql':
+        }
+        case 'mysql': {
           const mysqlConfig = {
             serviceName: dokployApplicationId,
             password: defaultPassword,
@@ -2383,7 +2381,8 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
           };
           await easypanelService.createMysqlService(project.dokploy_project_id, mysqlConfig);
           break;
-        case 'mariadb':
+        }
+        case 'mariadb': {
           const mariadbConfig = {
             serviceName: dokployApplicationId,
             password: defaultPassword,
@@ -2393,7 +2392,8 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
           };
           await easypanelService.createMariadbService(project.dokploy_project_id, mariadbConfig);
           break;
-        case 'mongo':
+        }
+        case 'mongo': {
           const mongoConfig = {
             serviceName: dokployApplicationId,
             password: defaultPassword,
@@ -2403,7 +2403,8 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
           };
           await easypanelService.createMongoService(project.dokploy_project_id, mongoConfig);
           break;
-        case 'redis':
+        }
+        case 'redis': {
           const redisConfig = {
             serviceName: dokployApplicationId,
             password: credentials?.password, // Redis password is optional
@@ -2411,6 +2412,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
           };
           await easypanelService.createRedisService(project.dokploy_project_id, redisConfig);
           break;
+        }
         default:
           throw new Error(`Unsupported database type: ${databaseType}`);
       }
@@ -2601,31 +2603,40 @@ router.post('/projects/:projectName/services/template', async (req: Authenticate
       });
     }
 
-    // Prepare template deployment configuration
-    const dokployApplicationId = `${serviceName}`;
-    const deploymentSchema = {
-      ...template.template_schema,
-      serviceName: dokployApplicationId,
-      ...templateConfig
-    };
-
-    // Deploy from template in Easypanel
+    // Deploy template via Dokploy
+    let deploymentResult;
     try {
-      await easypanelService.createFromTemplate(
-        project.dokploy_project_id, 
-        templateName, 
-        deploymentSchema
-      );
-    } catch (easypanelError) {
-      console.error('Failed to deploy from template in Easypanel:', easypanelError);
+      deploymentResult = await templateDeploymentService.deployTemplate({
+        projectId: project.dokploy_project_id,
+        projectName: project.project_name,
+        organizationId,
+        primaryServiceName: serviceName,
+        template: {
+          id: template.id,
+          templateName: template.template_name,
+          displayName: template.display_name,
+          description: template.description,
+          category: template.category,
+          templateSchema: template.template_schema,
+          enabled: template.enabled,
+          displayOrder: template.display_order,
+          createdAt: template.created_at,
+          updatedAt: template.updated_at,
+        },
+        overrides: templateConfig || undefined,
+      });
+    } catch (deploymentError) {
+      console.error('Failed to deploy template via Dokploy:', deploymentError);
       return res.status(500).json({
         error: {
-          code: 'EASYPANEL_TEMPLATE_DEPLOY_FAILED',
-          message: 'Failed to deploy from template in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          code: 'DOKPLOY_TEMPLATE_DEPLOY_FAILED',
+          message: 'Failed to deploy template using Dokploy',
+          details: deploymentError instanceof Error ? deploymentError.message : 'Unknown error'
         }
       });
     }
+
+    const dokployApplicationId = deploymentResult.primaryApplicationId;
 
     // Create service record in database
     const insertResult = await query(
@@ -2642,9 +2653,10 @@ router.post('/projects/:projectName/services/template', async (req: Authenticate
         resourceRequirement.memoryGb,
         resourceRequirement.storageGb,
         JSON.stringify({
-          templateName: templateName,
-          templateConfig: templateConfig,
-          deploymentSchema: deploymentSchema
+          templateName,
+          templateConfig,
+          deployedServices: deploymentResult.deployedServices,
+          contextSnapshot: deploymentResult.context,
         })
       ]
     );
@@ -3314,15 +3326,6 @@ router.put('/projects/:projectName/services/:serviceName/resources', async (req:
       containerCount: 0 // Not changing container count
     };
 
-    // Get current usage excluding this service
-    const currentUsage = await ResourceQuotaService.calculateCurrentUsage(organizationId);
-    const usageWithoutThisService = {
-      cpuCores: currentUsage.cpuCores - (service.cpu_limit || 0),
-      memoryGb: currentUsage.memoryGb - (service.memory_limit_gb || 0),
-      storageGb: currentUsage.storageGb - (service.storage_limit_gb || 0),
-      containerCount: currentUsage.containerCount
-    };
-
     // Check if new resources would exceed quotas
     const quotaCheck = await ResourceQuotaService.checkQuotaAvailability(organizationId, {
       cpuCores: newResourceRequirement.cpuCores - (service.cpu_limit || 0),
@@ -3989,8 +3992,8 @@ router.get('/admin/subscriptions', requireAdminRole, async (req: AuthenticatedRe
     const { status, organizationId, planId, limit = 50, offset = 0 } = req.query;
 
     // Build dynamic query based on filters
-    let whereConditions = [];
-    let queryParams = [];
+    const whereConditions = [];
+    const queryParams = [];
     let paramIndex = 1;
 
     if (status) {
@@ -4124,8 +4127,8 @@ router.get('/admin/services', requireAdminRole, async (req: AuthenticatedRequest
     } = req.query;
 
     // Build dynamic query based on filters
-    let whereConditions = ['cp.status = $1']; // Only active projects
-    let queryParams = ['active'];
+    const whereConditions = ['cp.status = $1']; // Only active projects
+    const queryParams = ['active'];
     let paramIndex = 2;
 
     if (organizationId) {
