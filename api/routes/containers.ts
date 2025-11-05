@@ -3,6 +3,7 @@ import { authenticateToken, requireOrganization, requireAdmin, AuthenticatedRequ
 import { query } from '../lib/database.js';
 import { encryptSecret, decryptSecret } from '../lib/crypto.js';
 import { easypanelService, type EasypanelConfig } from '../services/easypanelService.js';
+import { dokployService, type DokployConfig } from '../services/dokployService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { ContainerPlanService } from '../services/containerPlanService.js';
 import { ResourceQuotaService } from '../services/resourceQuotaService.js';
@@ -399,6 +400,212 @@ router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedReq
     }
 
     easypanelService.resetConfigCache();
+    next(error);
+  }
+});
+
+// ============================================================
+// Dokploy Configuration Routes
+// ============================================================
+
+/**
+ * GET /api/containers/admin/dokploy/config
+ * Get Dokploy configuration
+ * Admin only
+ */
+router.get('/admin/dokploy/config', requireAdminRole, async (_req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const summary = await dokployService.getConfigSummary();
+
+    if (!summary) {
+      return res.json({
+        config: {
+          apiUrl: '',
+          hasApiKey: false,
+          lastConnectionTest: null,
+          connectionStatus: null,
+          source: 'none'
+        }
+      });
+    }
+
+    let normalizedStatus: string | null = null;
+    if (summary.connectionStatus === 'connected') {
+      normalizedStatus = 'success';
+    } else if (summary.connectionStatus === 'failed') {
+      normalizedStatus = 'failed';
+    } else if (summary.connectionStatus) {
+      normalizedStatus = summary.connectionStatus;
+    }
+
+    res.json({
+      config: {
+        apiUrl: summary.apiUrl,
+        hasApiKey: summary.hasApiKey,
+        lastConnectionTest: summary.lastConnectionTest,
+        connectionStatus: normalizedStatus,
+        source: summary.source
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/admin/dokploy/config
+ * Update Dokploy configuration with encryption
+ * Admin only
+ */
+router.post('/admin/dokploy/config', requireAdminRole, validateEasypanelConfig, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { apiUrl, apiKey } = req.body;
+
+    // Check if configuration already exists
+    const existingResult = await query(
+      'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+    );
+
+    if (existingResult.rows.length > 0) {
+      // Update existing configuration
+      const updateFields = ['api_url = $1', 'updated_at = NOW()'];
+      const updateValues: any[] = [apiUrl];
+      
+      // Only update API key if provided
+      if (apiKey) {
+        const encryptedApiKey = encryptSecret(apiKey);
+        updateFields.push(`api_key_encrypted = $${updateValues.length + 1}`);
+        updateValues.push(encryptedApiKey);
+      }
+      
+      updateValues.push(existingResult.rows[0].id);
+      
+      await query(
+        `UPDATE dokploy_config 
+         SET ${updateFields.join(', ')}
+         WHERE id = $${updateValues.length}`,
+        updateValues
+      );
+    } else {
+      // Create new configuration - API key is required for new configs
+      if (!apiKey) {
+        return res.status(400).json({
+          error: {
+            message: 'API key is required for new configuration'
+          }
+        });
+      }
+      
+      const encryptedApiKey = encryptSecret(apiKey);
+      await query(
+        `INSERT INTO dokploy_config (api_url, api_key_encrypted, active)
+         VALUES ($1, $2, true)`,
+        [apiUrl, encryptedApiKey]
+      );
+    }
+
+    // Log the configuration update
+    dokployService.resetConfigCache();
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'container.config.update',
+      entityType: 'dokploy_config',
+      entityId: null,
+      metadata: { apiUrl }
+    });
+
+    res.json({
+      success: true,
+      message: 'Dokploy configuration updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/admin/dokploy/config/test
+ * Test Dokploy connection
+ * Admin only
+ */
+router.post('/admin/dokploy/config/test', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    // Test current configuration
+    const connectionTest = await dokployService.testConnection();
+    
+    if (connectionTest) {
+      // Update connection status in database if config exists
+      const existingResult = await query(
+        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+      );
+
+      if (existingResult.rows.length > 0) {
+        await query(
+          `UPDATE dokploy_config 
+           SET connection_status = 'connected', last_connection_test = NOW()
+           WHERE id = $1`,
+          [existingResult.rows[0].id]
+        );
+      }
+
+      await logActivity({
+        userId: req.user!.id,
+        organizationId: req.user!.organizationId!,
+        eventType: 'container.config.test',
+        entityType: 'dokploy_config',
+        entityId: null,
+        metadata: { status: 'success' }
+      });
+
+      dokployService.resetConfigCache();
+      
+      res.json({
+        success: true,
+        message: 'Dokploy connection test successful'
+      });
+    } else {
+      // Update connection status to failed
+      const existingResult = await query(
+        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+      );
+
+      if (existingResult.rows.length > 0) {
+        await query(
+          `UPDATE dokploy_config 
+           SET connection_status = 'failed', last_connection_test = NOW()
+           WHERE id = $1`,
+          [existingResult.rows[0].id]
+        );
+      }
+
+      dokployService.resetConfigCache();
+
+      res.status(500).json({
+        success: false,
+        message: 'Dokploy connection test failed'
+      });
+    }
+  } catch (error) {
+    // Update connection status on error
+    try {
+      const existingResult = await query(
+        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+      );
+
+      if (existingResult.rows.length > 0) {
+        await query(
+          `UPDATE dokploy_config 
+           SET connection_status = 'failed', last_connection_test = NOW()
+           WHERE id = $1`,
+          [existingResult.rows[0].id]
+        );
+      }
+    } catch (dbError) {
+      console.error('Failed to update connection status:', dbError);
+    }
+
+    dokployService.resetConfigCache();
     next(error);
   }
 });

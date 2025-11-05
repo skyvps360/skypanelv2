@@ -468,6 +468,10 @@ export interface EasypanelConfigResponse {
   source?: 'db' | 'env' | 'none';
 }
 
+// Dokploy uses the same config structure as Easypanel
+export type DokployConfigRequest = EasypanelConfigRequest;
+export type DokployConfigResponse = EasypanelConfigResponse;
+
 export interface ConnectionTestResponse {
   success: boolean;
   message: string;
