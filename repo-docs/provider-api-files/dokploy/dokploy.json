@@ -7,7 +7,7 @@
     },
     "servers": [
         {
-            "url": "http://app.dokploy.com/api"
+            "url": "https://client.deployments.skyvps360.xyz/api"
         }
     ],
     "paths": {
@@ -1319,7 +1319,8 @@
                                 "required": [
                                     "applicationId",
                                     "owner",
-                                    "githubId"
+                                    "githubId",
+                                    "enableSubmodules"
                                 ],
                                 "additionalProperties": false
                             }
@@ -1408,7 +1409,8 @@
                                     "gitlabRepository",
                                     "gitlabId",
                                     "gitlabProjectId",
-                                    "gitlabPathNamespace"
+                                    "gitlabPathNamespace",
+                                    "enableSubmodules"
                                 ],
                                 "additionalProperties": false
                             }
@@ -1487,7 +1489,8 @@
                                     "bitbucketOwner",
                                     "bitbucketRepository",
                                     "bitbucketId",
-                                    "applicationId"
+                                    "applicationId",
+                                    "enableSubmodules"
                                 ],
                                 "additionalProperties": false
                             }
@@ -1566,7 +1569,8 @@
                                     "giteaBuildPath",
                                     "giteaOwner",
                                     "giteaRepository",
-                                    "giteaId"
+                                    "giteaId",
+                                    "enableSubmodules"
                                 ],
                                 "additionalProperties": false
                             }
@@ -1696,7 +1700,8 @@
                                     }
                                 },
                                 "required": [
-                                    "applicationId"
+                                    "applicationId",
+                                    "enableSubmodules"
                                 ],
                                 "additionalProperties": false
                             }
@@ -21113,7 +21118,7 @@
         }
     ],
     "externalDocs": {
-        "url": "http://app.dokploy.com/api/settings.getOpenApiDocument"
+        "url": "https://client.deployments.skyvps360.xyz/api/settings.getOpenApiDocument"
     },
     "security": [
         {
