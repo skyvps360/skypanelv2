@@ -54,7 +54,7 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import ContainerPlansManagement from "./admin/ContainerPlansManagement";
 import ContainerTemplatesManagement from "./admin/ContainerTemplatesManagement";
 import ContainerMonitoring from "./admin/ContainerMonitoring";
-import DokployConfig from "./admin/DokployConfig";
+import CaasConfig from "./admin/CaasConfig";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -148,7 +148,7 @@ type AdminSection =
   | "rate-limiting"
   | "faq-management"
   | "platform"
-  | "dokploy-config"
+  | "caas-config"
   | "contact-management";
 
 const ADMIN_SECTIONS: AdminSection[] = [
@@ -169,7 +169,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "rate-limiting",
   "faq-management",
   "platform",
-  "dokploy-config",
+  "caas-config",
   "contact-management",
 ];
 
@@ -4974,8 +4974,8 @@ const Admin: React.FC = () => {
           <ContainerMonitoring />
         </SectionPanel>
         
-        <SectionPanel section="dokploy-config" activeSection={activeTab}>
-          <DokployConfig />
+        <SectionPanel section="caas-config" activeSection={activeTab}>
+          <CaasConfig />
         </SectionPanel>
       </div>
 
