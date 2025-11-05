@@ -55,6 +55,7 @@ import ContainerPlansManagement from "./admin/ContainerPlansManagement";
 import ContainerTemplatesManagement from "./admin/ContainerTemplatesManagement";
 import ContainerMonitoring from "./admin/ContainerMonitoring";
 import EasypanelConfig from "./admin/EasypanelConfig";
+import DokployConfig from "./admin/DokployConfig";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -149,6 +150,7 @@ type AdminSection =
   | "faq-management"
   | "platform"
   | "easypanel-config"
+  | "dokploy-config"
   | "contact-management";
 
 const ADMIN_SECTIONS: AdminSection[] = [
@@ -170,6 +172,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "faq-management",
   "platform",
   "easypanel-config",
+  "dokploy-config",
   "contact-management",
 ];
 
@@ -4976,6 +4979,10 @@ const Admin: React.FC = () => {
 
         <SectionPanel section="easypanel-config" activeSection={activeTab}>
           <EasypanelConfig />
+        </SectionPanel>
+        
+        <SectionPanel section="dokploy-config" activeSection={activeTab}>
+          <DokployConfig />
         </SectionPanel>
       </div>
 

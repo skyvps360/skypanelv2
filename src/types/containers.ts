@@ -1,6 +1,6 @@
 /**
  * Container Types
- * Type definitions for Easypanel Container as a Service (CaaS) integration
+ * Type definitions for Dokploy Container as a Service (CaaS) integration
  */
 
 // ============================================================================
@@ -39,7 +39,7 @@ export interface ContainerProject {
   organizationId: string;
   subscriptionId: string;
   projectName: string;
-  easypanelProjectName: string;
+  dokployProjectId: string;
   status: string;
   metadata: Record<string, any>;
   services?: ContainerService[];
@@ -51,7 +51,7 @@ export interface ContainerService {
   id: string;
   projectId: string;
   serviceName: string;
-  easypanelServiceName: string;
+  dokployApplicationId: string;
   serviceType: 'app' | 'postgres' | 'mysql' | 'mariadb' | 'mongo' | 'redis' | 'wordpress' | 'box' | 'compose';
   status: string;
   cpuLimit?: number;
@@ -125,7 +125,7 @@ export interface ValidationResult {
 }
 
 // ============================================================================
-// Easypanel API Types
+// Dokploy API Types (for backward compatibility)
 // ============================================================================
 
 export interface EasypanelUser {
@@ -467,6 +467,10 @@ export interface EasypanelConfigResponse {
   lastConnectionTest?: string;
   source?: 'db' | 'env' | 'none';
 }
+
+// Dokploy uses the same config structure as Easypanel
+export type DokployConfigRequest = EasypanelConfigRequest;
+export type DokployConfigResponse = EasypanelConfigResponse;
 
 export interface ConnectionTestResponse {
   success: boolean;

@@ -5,7 +5,7 @@
 
 import { query, transaction } from '../lib/database.js';
 import { PayPalService } from './paypalService.js';
-import { easypanelService } from './easypanelService.js';
+import { dokployService } from './dokployService.js';
 import { encryptSecret } from '../lib/crypto.js';
 import crypto from 'crypto';
 
@@ -445,7 +445,7 @@ export class ContainerPlanService {
           throw new Error('Failed to deduct subscription fee from wallet');
         }
 
-        // Get organization and owner user details for Easypanel account
+        // Get organization and owner user details
         const orgUserResult = await client.query(`
           SELECT u.id, u.email, o.name as org_name
           FROM organizations o
@@ -459,88 +459,58 @@ export class ContainerPlanService {
         }
 
         const orgOwner = orgUserResult.rows[0];
-        const easypanelUserEmail = orgOwner.email;
         
-        // Find or create Easypanel user
-        let easypanelUser;
-        let easypanelPassword: string | null = null;
-        let encryptedPassword: string | null = null;
-
-        try {
-          // First, try to find existing user by email
-          easypanelUser = await easypanelService.findUserByEmail(easypanelUserEmail);
-          
-          if (easypanelUser) {
-            console.log(`Found existing Easypanel user for email ${easypanelUserEmail} with ID: ${easypanelUser.id}`);
-            // User already exists, no password needed (they use their own credentials)
-          } else {
-            // User doesn't exist, create a new one
-            console.log(`Creating new Easypanel user for email ${easypanelUserEmail}`);
-            easypanelPassword = crypto.randomBytes(32).toString('base64');
-            encryptedPassword = encryptSecret(easypanelPassword);
-            
-            easypanelUser = await easypanelService.createUser(easypanelUserEmail, easypanelPassword, false);
-            console.log(`Created new Easypanel user with ID: ${easypanelUser.id}`);
-          }
-        } catch (error: any) {
-          console.error('Failed to find or create Easypanel user:', error);
-          throw new Error(`Failed to set up Easypanel user account: ${error.message || 'Unknown error'}`);
-        }
-
+        // NOTE: Dokploy doesn't support user creation like Easypanel did
+        // We only create projects directly for the organization
+        
         // Create subscription
         const now = new Date();
         const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
 
         const subscriptionResult = await client.query(`
           INSERT INTO container_subscriptions (
-            organization_id, plan_id, status, current_period_start, current_period_end,
-            easypanel_user_id, easypanel_user_email, easypanel_password_encrypted
+            organization_id, plan_id, status, current_period_start, current_period_end
           )
-          VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)
+          VALUES ($1, $2, 'active', $3, $4)
           RETURNING 
             id, organization_id, plan_id, status, 
-            current_period_start, current_period_end, created_at, updated_at,
-            easypanel_user_id, easypanel_user_email
-        `, [organizationId, planId, now, periodEnd, easypanelUser.id, easypanelUserEmail, encryptedPassword]);
+            current_period_start, current_period_end, created_at, updated_at
+        `, [organizationId, planId, now, periodEnd]);
 
         const subscription = subscriptionResult.rows[0];
 
-        // Create an initial project for the user
+        // Create an initial project for the organization using Dokploy
         const initialProjectName = `${orgOwner.org_name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-project`.substring(0, 50);
         
         let projectCreated = false;
+        let dokployProjectId: string | null = null;
         try {
-          console.log(`Creating initial project "${initialProjectName}" for Easypanel user ID: ${easypanelUser.id}`);
+          console.log(`Creating initial project "${initialProjectName}" for organization ${organizationId}`);
           
-          // Create project in Easypanel
-          await easypanelService.createProject(initialProjectName);
+          // Create project in Dokploy (no user creation needed)
+          const dokployProject = await dokployService.createProject(
+            initialProjectName, 
+            `Project for ${orgOwner.org_name}`
+          );
           projectCreated = true;
-          console.log(`Successfully created project "${initialProjectName}"`);
+          dokployProjectId = dokployProject.projectId;
+          console.log(`Successfully created Dokploy project "${initialProjectName}" with ID: ${dokployProjectId}`);
         } catch (error: any) {
-          console.error('Failed to create initial Easypanel project in Easypanel:', error);
+          console.error('Failed to create initial Dokploy project:', error);
         }
 
-        // Store the project in our database if creation succeeded, even if access grant fails
-        if (projectCreated) {
+        // Store the project in our database if creation succeeded
+        if (projectCreated && dokployProjectId) {
           try {
             await client.query(`
               INSERT INTO container_projects (
-                organization_id, subscription_id, project_name, easypanel_project_name, status
+                organization_id, subscription_id, project_name, dokploy_project_id, status
               )
               VALUES ($1, $2, $3, $4, 'active')
-            `, [organizationId, subscription.id, initialProjectName, initialProjectName]);
+            `, [organizationId, subscription.id, initialProjectName, dokployProjectId]);
             console.log(`Successfully stored project in database for organization ${organizationId}`);
           } catch (dbErr) {
             console.error('Failed to store project in database:', dbErr);
-          }
-
-          // Grant the user access to the project, but do not block on failure
-          try {
-            console.log(`Granting access to user ${easypanelUser.id} (${easypanelUserEmail}) for project "${initialProjectName}"`);
-            await easypanelService.updateProjectAccess(initialProjectName, easypanelUser.id, true);
-            console.log(`Successfully granted project access to user ${easypanelUser.id}`);
-          } catch (accessError) {
-            console.error('Failed to grant user access to project:', accessError);
           }
         }
 

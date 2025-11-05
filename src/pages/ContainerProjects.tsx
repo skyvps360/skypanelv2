@@ -130,7 +130,7 @@ export default function ContainerProjects() {
             Projects
           </h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">
-            Manage your Easypanel container projects. Each project can contain multiple services and applications.
+            Manage your Dokploy container projects. Each project can contain multiple services and applications.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button onClick={() => navigate('/containers/projects/new')} size="lg">

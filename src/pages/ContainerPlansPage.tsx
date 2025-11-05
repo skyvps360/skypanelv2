@@ -142,7 +142,7 @@ const ContainerPlansPage: React.FC = () => {
             Container Plans
           </h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">
-            Choose a container plan to start deploying and managing containerized applications with Easypanel.
+            Choose a container plan to start deploying and managing containerized applications with Dokploy.
           </p>
           {currentSubscription && (
             <div className="mt-6 flex flex-wrap gap-3">

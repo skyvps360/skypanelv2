@@ -3,6 +3,7 @@ import { authenticateToken, requireOrganization, requireAdmin, AuthenticatedRequ
 import { query } from '../lib/database.js';
 import { encryptSecret, decryptSecret } from '../lib/crypto.js';
 import { easypanelService, type EasypanelConfig } from '../services/easypanelService.js';
+import { dokployService, type DokployConfig } from '../services/dokployService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { ContainerPlanService } from '../services/containerPlanService.js';
 import { ResourceQuotaService } from '../services/resourceQuotaService.js';
@@ -399,6 +400,212 @@ router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedReq
     }
 
     easypanelService.resetConfigCache();
+    next(error);
+  }
+});
+
+// ============================================================
+// Dokploy Configuration Routes
+// ============================================================
+
+/**
+ * GET /api/containers/admin/dokploy/config
+ * Get Dokploy configuration
+ * Admin only
+ */
+router.get('/admin/dokploy/config', requireAdminRole, async (_req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const summary = await dokployService.getConfigSummary();
+
+    if (!summary) {
+      return res.json({
+        config: {
+          apiUrl: '',
+          hasApiKey: false,
+          lastConnectionTest: null,
+          connectionStatus: null,
+          source: 'none'
+        }
+      });
+    }
+
+    let normalizedStatus: string | null = null;
+    if (summary.connectionStatus === 'connected') {
+      normalizedStatus = 'success';
+    } else if (summary.connectionStatus === 'failed') {
+      normalizedStatus = 'failed';
+    } else if (summary.connectionStatus) {
+      normalizedStatus = summary.connectionStatus;
+    }
+
+    res.json({
+      config: {
+        apiUrl: summary.apiUrl,
+        hasApiKey: summary.hasApiKey,
+        lastConnectionTest: summary.lastConnectionTest,
+        connectionStatus: normalizedStatus,
+        source: summary.source
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/admin/dokploy/config
+ * Update Dokploy configuration with encryption
+ * Admin only
+ */
+router.post('/admin/dokploy/config', requireAdminRole, validateEasypanelConfig, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { apiUrl, apiKey } = req.body;
+
+    // Check if configuration already exists
+    const existingResult = await query(
+      'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+    );
+
+    if (existingResult.rows.length > 0) {
+      // Update existing configuration
+      const updateFields = ['api_url = $1', 'updated_at = NOW()'];
+      const updateValues: any[] = [apiUrl];
+      
+      // Only update API key if provided
+      if (apiKey) {
+        const encryptedApiKey = encryptSecret(apiKey);
+        updateFields.push(`api_key_encrypted = $${updateValues.length + 1}`);
+        updateValues.push(encryptedApiKey);
+      }
+      
+      updateValues.push(existingResult.rows[0].id);
+      
+      await query(
+        `UPDATE dokploy_config 
+         SET ${updateFields.join(', ')}
+         WHERE id = $${updateValues.length}`,
+        updateValues
+      );
+    } else {
+      // Create new configuration - API key is required for new configs
+      if (!apiKey) {
+        return res.status(400).json({
+          error: {
+            message: 'API key is required for new configuration'
+          }
+        });
+      }
+      
+      const encryptedApiKey = encryptSecret(apiKey);
+      await query(
+        `INSERT INTO dokploy_config (api_url, api_key_encrypted, active)
+         VALUES ($1, $2, true)`,
+        [apiUrl, encryptedApiKey]
+      );
+    }
+
+    // Log the configuration update
+    dokployService.resetConfigCache();
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'container.config.update',
+      entityType: 'dokploy_config',
+      entityId: null,
+      metadata: { apiUrl }
+    });
+
+    res.json({
+      success: true,
+      message: 'Dokploy configuration updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/admin/dokploy/config/test
+ * Test Dokploy connection
+ * Admin only
+ */
+router.post('/admin/dokploy/config/test', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    // Test current configuration
+    const connectionTest = await dokployService.testConnection();
+    
+    if (connectionTest) {
+      // Update connection status in database if config exists
+      const existingResult = await query(
+        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+      );
+
+      if (existingResult.rows.length > 0) {
+        await query(
+          `UPDATE dokploy_config 
+           SET connection_status = 'connected', last_connection_test = NOW()
+           WHERE id = $1`,
+          [existingResult.rows[0].id]
+        );
+      }
+
+      await logActivity({
+        userId: req.user!.id,
+        organizationId: req.user!.organizationId!,
+        eventType: 'container.config.test',
+        entityType: 'dokploy_config',
+        entityId: null,
+        metadata: { status: 'success' }
+      });
+
+      dokployService.resetConfigCache();
+      
+      res.json({
+        success: true,
+        message: 'Dokploy connection test successful'
+      });
+    } else {
+      // Update connection status to failed
+      const existingResult = await query(
+        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+      );
+
+      if (existingResult.rows.length > 0) {
+        await query(
+          `UPDATE dokploy_config 
+           SET connection_status = 'failed', last_connection_test = NOW()
+           WHERE id = $1`,
+          [existingResult.rows[0].id]
+        );
+      }
+
+      dokployService.resetConfigCache();
+
+      res.status(500).json({
+        success: false,
+        message: 'Dokploy connection test failed'
+      });
+    }
+  } catch (error) {
+    // Update connection status on error
+    try {
+      const existingResult = await query(
+        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
+      );
+
+      if (existingResult.rows.length > 0) {
+        await query(
+          `UPDATE dokploy_config 
+           SET connection_status = 'failed', last_connection_test = NOW()
+           WHERE id = $1`,
+          [existingResult.rows[0].id]
+        );
+      }
+    } catch (dbError) {
+      console.error('Failed to update connection status:', dbError);
+    }
+
+    dokployService.resetConfigCache();
     next(error);
   }
 });
@@ -1117,7 +1324,7 @@ router.get('/projects', async (req: AuthenticatedRequest, res: Response) => {
       organizationId: row.organization_id,
       subscriptionId: row.subscription_id,
       projectName: row.project_name,
-      easypanelProjectName: row.easypanel_project_name,
+      dokployProjectId: row.dokploy_project_id,
       status: row.status,
       metadata: row.metadata || {},
       serviceCount: parseInt(row.service_count) || 0,
@@ -1197,10 +1404,10 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
     }
 
     // Create project in Easypanel
-    const easypanelProjectName = `${organizationId.substring(0, 8)}-${projectName}`;
+    const dokployProjectId = `${organizationId.substring(0, 8)}-${projectName}`;
     
     try {
-      await easypanelService.createProject(easypanelProjectName);
+      await easypanelService.createProject(dokployProjectId);
       
       // Grant the organization's Easypanel user access to this project
       const subscriptionResult = await query(
@@ -1211,7 +1418,7 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
       if (subscriptionResult.rows.length > 0 && subscriptionResult.rows[0].easypanel_user_id) {
         try {
           await easypanelService.updateProjectAccess(
-            easypanelProjectName,
+            dokployProjectId,
             subscriptionResult.rows[0].easypanel_user_id,
             true
           );
@@ -1233,10 +1440,10 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
 
     // Create project record in database
     const insertResult = await query(
-      `INSERT INTO container_projects (organization_id, subscription_id, project_name, easypanel_project_name, status, metadata)
+      `INSERT INTO container_projects (organization_id, subscription_id, project_name, dokploy_project_id, status, metadata)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [organizationId, subscription.id, projectName, easypanelProjectName, 'active', {}]
+      [organizationId, subscription.id, projectName, dokployProjectId, 'active', {}]
     );
 
     const project = {
@@ -1244,7 +1451,7 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
       organizationId: insertResult.rows[0].organization_id,
       subscriptionId: insertResult.rows[0].subscription_id,
       projectName: insertResult.rows[0].project_name,
-      easypanelProjectName: insertResult.rows[0].easypanel_project_name,
+      dokployProjectId: insertResult.rows[0].dokploy_project_id,
       status: insertResult.rows[0].status,
       metadata: insertResult.rows[0].metadata || {},
       serviceCount: 0,
@@ -1261,7 +1468,7 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
       entityId: project.id,
       metadata: { 
         projectName: project.projectName,
-        easypanelProjectName: project.easypanelProjectName
+        dokployProjectId: project.dokployProjectId
       }
     });
 
@@ -1313,7 +1520,7 @@ router.get('/projects/:projectName', async (req: AuthenticatedRequest, res: Resp
     // Get project details from Easypanel
     let easypanelProject = null;
     try {
-      easypanelProject = await easypanelService.inspectProject(projectRow.easypanel_project_name);
+      easypanelProject = await easypanelService.inspectProject(projectRow.dokploy_project_id);
     } catch (easypanelError) {
       console.error('Failed to get project details from Easypanel:', easypanelError);
       // Continue without Easypanel data - project might be in database but not in Easypanel
@@ -1331,7 +1538,7 @@ router.get('/projects/:projectName', async (req: AuthenticatedRequest, res: Resp
       id: row.id,
       projectId: row.project_id,
       serviceName: row.service_name,
-      easypanelServiceName: row.easypanel_service_name,
+      dokployApplicationId: row.dokploy_application_id,
       serviceType: row.service_type,
       status: row.status,
       cpuLimit: row.cpu_limit,
@@ -1347,7 +1554,7 @@ router.get('/projects/:projectName', async (req: AuthenticatedRequest, res: Resp
       organizationId: projectRow.organization_id,
       subscriptionId: projectRow.subscription_id,
       projectName: projectRow.project_name,
-      easypanelProjectName: projectRow.easypanel_project_name,
+      dokployProjectId: projectRow.dokploy_project_id,
       status: projectRow.status,
       metadata: projectRow.metadata || {},
       serviceCount: parseInt(projectRow.service_count) || 0,
@@ -1414,7 +1621,7 @@ router.delete('/projects/:projectName', async (req: AuthenticatedRequest, res: R
 
     // Delete project from Easypanel
     try {
-      await easypanelService.destroyProject(project.easypanel_project_name);
+      await easypanelService.destroyProject(project.dokploy_project_id);
     } catch (easypanelError) {
       console.error('Failed to delete project from Easypanel:', easypanelError);
       // Continue with database deletion even if Easypanel deletion fails
@@ -1438,7 +1645,7 @@ router.delete('/projects/:projectName', async (req: AuthenticatedRequest, res: R
       entityId: project.id,
       metadata: { 
         projectName: project.project_name,
-        easypanelProjectName: project.easypanel_project_name
+        dokployProjectId: project.dokploy_project_id
       }
     });
 
@@ -1508,7 +1715,7 @@ router.put('/projects/:projectName/env', async (req: AuthenticatedRequest, res: 
 
     // Update environment variables in Easypanel
     try {
-      await easypanelService.updateProjectEnv(project.easypanel_project_name, environmentVariables);
+      await easypanelService.updateProjectEnv(project.dokploy_project_id, environmentVariables);
     } catch (easypanelError) {
       console.error('Failed to update project environment in Easypanel:', easypanelError);
       return res.status(500).json({
@@ -1605,7 +1812,7 @@ router.get('/projects/:projectName/services', async (req: AuthenticatedRequest, 
     let easypanelServices = [];
     try {
       const easypanelProject = await easypanelService.listProjectsAndServices();
-      const projectData = easypanelProject.find(p => p.name === project.easypanel_project_name);
+      const projectData = easypanelProject.find(p => p.name === project.dokploy_project_id);
       if (projectData && projectData.services) {
         easypanelServices = projectData.services;
       }
@@ -1616,13 +1823,13 @@ router.get('/projects/:projectName/services', async (req: AuthenticatedRequest, 
 
     // Merge database and Easypanel data
     const services = servicesResult.rows.map(row => {
-      const easypanelService = easypanelServices.find(es => es.name === row.easypanel_service_name);
+      const easypanelService = easypanelServices.find(es => es.name === row.dokploy_application_id);
       
       return {
         id: row.id,
         projectId: row.project_id,
         serviceName: row.service_name,
-        easypanelServiceName: row.easypanel_service_name,
+        dokployApplicationId: row.dokploy_application_id,
         serviceType: row.service_type,
         status: easypanelService?.status || row.status,
         cpuLimit: row.cpu_limit,
@@ -1639,7 +1846,7 @@ router.get('/projects/:projectName/services', async (req: AuthenticatedRequest, 
       project: {
         id: project.id,
         projectName: project.project_name,
-        easypanelProjectName: project.easypanel_project_name
+        dokployProjectId: project.dokploy_project_id
       },
       services
     });
@@ -1702,8 +1909,8 @@ router.get('/projects/:projectName/services/:serviceName', async (req: Authentic
     try {
       if (serviceRow.service_type === 'app') {
         easypanelServiceDetail = await easypanelService.inspectAppService(
-          project.easypanel_project_name, 
-          serviceRow.easypanel_service_name
+          project.dokploy_project_id, 
+          serviceRow.dokploy_application_id
         );
       }
       // For database services, we might need different inspection methods
@@ -1717,7 +1924,7 @@ router.get('/projects/:projectName/services/:serviceName', async (req: Authentic
       id: serviceRow.id,
       projectId: serviceRow.project_id,
       serviceName: serviceRow.service_name,
-      easypanelServiceName: serviceRow.easypanel_service_name,
+      dokployApplicationId: serviceRow.dokploy_application_id,
       serviceType: serviceRow.service_type,
       status: serviceRow.status,
       cpuLimit: serviceRow.cpu_limit,
@@ -1728,7 +1935,7 @@ router.get('/projects/:projectName/services/:serviceName', async (req: Authentic
       project: {
         id: project.id,
         projectName: project.project_name,
-        easypanelProjectName: project.easypanel_project_name
+        dokployProjectId: project.dokploy_project_id
       },
       createdAt: serviceRow.created_at,
       updatedAt: serviceRow.updated_at
@@ -1809,7 +2016,7 @@ router.get('/projects/:projectName/services/:serviceName/logs', async (req: Auth
     
     try {
       // Get Docker containers for this service to retrieve logs
-      const containers = await easypanelService.getDockerContainers(service.easypanel_service_name);
+      const containers = await easypanelService.getDockerContainers(service.dokploy_application_id);
       
       if (containers && containers.length > 0) {
         // For now, we'll return container information
@@ -1843,8 +2050,8 @@ router.get('/projects/:projectName/services/:serviceName/logs', async (req: Auth
     let serviceError = null;
     try {
       serviceError = await easypanelService.getServiceError(
-        project.easypanel_project_name, 
-        service.easypanel_service_name
+        project.dokploy_project_id, 
+        service.dokploy_application_id
       );
     } catch (errorCheckError) {
       console.error('Failed to check service errors:', errorCheckError);
@@ -1963,9 +2170,9 @@ router.post('/projects/:projectName/services/app', async (req: AuthenticatedRequ
     }
 
     // Prepare app service configuration
-    const easypanelServiceName = `${serviceName}`;
+    const dokployApplicationId = `${serviceName}`;
     const appConfig = {
-      serviceName: easypanelServiceName,
+      serviceName: dokployApplicationId,
       source: source,
       env: env || {},
       domains: domains || [],
@@ -1976,7 +2183,7 @@ router.post('/projects/:projectName/services/app', async (req: AuthenticatedRequ
 
     // Create app service in Easypanel
     try {
-      await easypanelService.createAppService(project.easypanel_project_name, appConfig);
+      await easypanelService.createAppService(project.dokploy_project_id, appConfig);
     } catch (easypanelError) {
       console.error('Failed to create app service in Easypanel:', easypanelError);
       return res.status(500).json({
@@ -1990,13 +2197,13 @@ router.post('/projects/:projectName/services/app', async (req: AuthenticatedRequ
 
     // Create service record in database
     const insertResult = await query(
-      `INSERT INTO container_services (project_id, service_name, easypanel_service_name, service_type, status, cpu_limit, memory_limit_gb, storage_limit_gb, configuration)
+      `INSERT INTO container_services (project_id, service_name, dokploy_application_id, service_type, status, cpu_limit, memory_limit_gb, storage_limit_gb, configuration)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         project.id,
         serviceName,
-        easypanelServiceName,
+        dokployApplicationId,
         'app',
         'deploying',
         resourceRequirement.cpuCores,
@@ -2010,7 +2217,7 @@ router.post('/projects/:projectName/services/app', async (req: AuthenticatedRequ
       id: insertResult.rows[0].id,
       projectId: insertResult.rows[0].project_id,
       serviceName: insertResult.rows[0].service_name,
-      easypanelServiceName: insertResult.rows[0].easypanel_service_name,
+      dokployApplicationId: insertResult.rows[0].dokploy_application_id,
       serviceType: insertResult.rows[0].service_type,
       status: insertResult.rows[0].status,
       cpuLimit: insertResult.rows[0].cpu_limit,
@@ -2148,7 +2355,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
     }
 
     // Prepare database service configuration
-    const easypanelServiceName = `${serviceName}`;
+    const dokployApplicationId = `${serviceName}`;
     
     // Generate default password if not provided
     const defaultPassword = credentials?.password || `${serviceName}_${Math.random().toString(36).substring(2, 15)}`;
@@ -2158,51 +2365,51 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
       switch (databaseType) {
         case 'postgres':
           const postgresConfig = {
-            serviceName: easypanelServiceName,
+            serviceName: dokployApplicationId,
             password: defaultPassword,
             database: credentials?.database || serviceName,
             user: credentials?.user || 'postgres',
             resources: resources || {}
           };
-          await easypanelService.createPostgresService(project.easypanel_project_name, postgresConfig);
+          await easypanelService.createPostgresService(project.dokploy_project_id, postgresConfig);
           break;
         case 'mysql':
           const mysqlConfig = {
-            serviceName: easypanelServiceName,
+            serviceName: dokployApplicationId,
             password: defaultPassword,
             database: credentials?.database || serviceName,
             user: credentials?.user || 'mysql',
             resources: resources || {}
           };
-          await easypanelService.createMysqlService(project.easypanel_project_name, mysqlConfig);
+          await easypanelService.createMysqlService(project.dokploy_project_id, mysqlConfig);
           break;
         case 'mariadb':
           const mariadbConfig = {
-            serviceName: easypanelServiceName,
+            serviceName: dokployApplicationId,
             password: defaultPassword,
             database: credentials?.database || serviceName,
             user: credentials?.user || 'mariadb',
             resources: resources || {}
           };
-          await easypanelService.createMariadbService(project.easypanel_project_name, mariadbConfig);
+          await easypanelService.createMariadbService(project.dokploy_project_id, mariadbConfig);
           break;
         case 'mongo':
           const mongoConfig = {
-            serviceName: easypanelServiceName,
+            serviceName: dokployApplicationId,
             password: defaultPassword,
             database: credentials?.database || serviceName,
             user: credentials?.user || 'mongo',
             resources: resources || {}
           };
-          await easypanelService.createMongoService(project.easypanel_project_name, mongoConfig);
+          await easypanelService.createMongoService(project.dokploy_project_id, mongoConfig);
           break;
         case 'redis':
           const redisConfig = {
-            serviceName: easypanelServiceName,
+            serviceName: dokployApplicationId,
             password: credentials?.password, // Redis password is optional
             resources: resources || {}
           };
-          await easypanelService.createRedisService(project.easypanel_project_name, redisConfig);
+          await easypanelService.createRedisService(project.dokploy_project_id, redisConfig);
           break;
         default:
           throw new Error(`Unsupported database type: ${databaseType}`);
@@ -2220,13 +2427,13 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
 
     // Create service record in database
     const insertResult = await query(
-      `INSERT INTO container_services (project_id, service_name, easypanel_service_name, service_type, status, cpu_limit, memory_limit_gb, storage_limit_gb, configuration)
+      `INSERT INTO container_services (project_id, service_name, dokploy_application_id, service_type, status, cpu_limit, memory_limit_gb, storage_limit_gb, configuration)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         project.id,
         serviceName,
-        easypanelServiceName,
+        dokployApplicationId,
         databaseType,
         'deploying',
         resourceRequirement.cpuCores,
@@ -2249,7 +2456,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
       id: insertResult.rows[0].id,
       projectId: insertResult.rows[0].project_id,
       serviceName: insertResult.rows[0].service_name,
-      easypanelServiceName: insertResult.rows[0].easypanel_service_name,
+      dokployApplicationId: insertResult.rows[0].dokploy_application_id,
       serviceType: insertResult.rows[0].service_type,
       status: insertResult.rows[0].status,
       cpuLimit: insertResult.rows[0].cpu_limit,
@@ -2395,17 +2602,17 @@ router.post('/projects/:projectName/services/template', async (req: Authenticate
     }
 
     // Prepare template deployment configuration
-    const easypanelServiceName = `${serviceName}`;
+    const dokployApplicationId = `${serviceName}`;
     const deploymentSchema = {
       ...template.template_schema,
-      serviceName: easypanelServiceName,
+      serviceName: dokployApplicationId,
       ...templateConfig
     };
 
     // Deploy from template in Easypanel
     try {
       await easypanelService.createFromTemplate(
-        project.easypanel_project_name, 
+        project.dokploy_project_id, 
         templateName, 
         deploymentSchema
       );
@@ -2422,13 +2629,13 @@ router.post('/projects/:projectName/services/template', async (req: Authenticate
 
     // Create service record in database
     const insertResult = await query(
-      `INSERT INTO container_services (project_id, service_name, easypanel_service_name, service_type, status, cpu_limit, memory_limit_gb, storage_limit_gb, configuration)
+      `INSERT INTO container_services (project_id, service_name, dokploy_application_id, service_type, status, cpu_limit, memory_limit_gb, storage_limit_gb, configuration)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         project.id,
         serviceName,
-        easypanelServiceName,
+        dokployApplicationId,
         'app', // Templates typically deploy as app services
         'deploying',
         resourceRequirement.cpuCores,
@@ -2446,7 +2653,7 @@ router.post('/projects/:projectName/services/template', async (req: Authenticate
       id: insertResult.rows[0].id,
       projectId: insertResult.rows[0].project_id,
       serviceName: insertResult.rows[0].service_name,
-      easypanelServiceName: insertResult.rows[0].easypanel_service_name,
+      dokployApplicationId: insertResult.rows[0].dokploy_application_id,
       serviceType: insertResult.rows[0].service_type,
       status: insertResult.rows[0].status,
       cpuLimit: insertResult.rows[0].cpu_limit,
@@ -2538,8 +2745,8 @@ router.post('/projects/:projectName/services/:serviceName/start', async (req: Au
     // Start service in Easypanel
     try {
       await easypanelService.startAppService(
-        project.easypanel_project_name, 
-        service.easypanel_service_name
+        project.dokploy_project_id, 
+        service.dokploy_application_id
       );
     } catch (easypanelError) {
       console.error('Failed to start service in Easypanel:', easypanelError);
@@ -2638,8 +2845,8 @@ router.post('/projects/:projectName/services/:serviceName/stop', async (req: Aut
     // Stop service in Easypanel
     try {
       await easypanelService.stopAppService(
-        project.easypanel_project_name, 
-        service.easypanel_service_name
+        project.dokploy_project_id, 
+        service.dokploy_application_id
       );
     } catch (easypanelError) {
       console.error('Failed to stop service in Easypanel:', easypanelError);
@@ -2738,8 +2945,8 @@ router.post('/projects/:projectName/services/:serviceName/restart', async (req: 
     // Restart service in Easypanel
     try {
       await easypanelService.restartAppService(
-        project.easypanel_project_name, 
-        service.easypanel_service_name
+        project.dokploy_project_id, 
+        service.dokploy_application_id
       );
     } catch (easypanelError) {
       console.error('Failed to restart service in Easypanel:', easypanelError);
@@ -2838,8 +3045,8 @@ router.delete('/projects/:projectName/services/:serviceName', async (req: Authen
     // Delete service from Easypanel
     try {
       await easypanelService.destroyAppService(
-        project.easypanel_project_name, 
-        service.easypanel_service_name
+        project.dokploy_project_id, 
+        service.dokploy_application_id
       );
     } catch (easypanelError) {
       console.error('Failed to delete service from Easypanel:', easypanelError);
@@ -2864,7 +3071,7 @@ router.delete('/projects/:projectName/services/:serviceName', async (req: Authen
         projectName: project.project_name,
         serviceName: service.service_name,
         serviceType: service.service_type,
-        easypanelServiceName: service.easypanel_service_name
+        dokployApplicationId: service.dokploy_application_id
       }
     });
 
@@ -2952,8 +3159,8 @@ router.put('/projects/:projectName/services/:serviceName/env', async (req: Authe
     // Update environment variables in Easypanel
     try {
       await easypanelService.updateAppEnv(
-        project.easypanel_project_name, 
-        service.easypanel_service_name,
+        project.dokploy_project_id, 
+        service.dokploy_application_id,
         environmentVariables
       );
     } catch (easypanelError) {
@@ -3140,8 +3347,8 @@ router.put('/projects/:projectName/services/:serviceName/resources', async (req:
     // Update resources in Easypanel
     try {
       await easypanelService.updateAppResources(
-        project.easypanel_project_name, 
-        service.easypanel_service_name,
+        project.dokploy_project_id, 
+        service.dokploy_application_id,
         resources
       );
     } catch (easypanelError) {
@@ -3955,7 +4162,7 @@ router.get('/admin/services', requireAdminRole, async (req: AuthenticatedRequest
       SELECT 
         cs.*,
         cp.project_name,
-        cp.easypanel_project_name,
+        cp.dokploy_project_id,
         cp.organization_id,
         o.name as organization_name,
         sub.plan_id,
@@ -3989,7 +4196,7 @@ router.get('/admin/services', requireAdminRole, async (req: AuthenticatedRequest
       project: {
         id: row.project_id,
         projectName: row.project_name,
-        easypanelProjectName: row.easypanel_project_name,
+        dokployProjectId: row.dokploy_project_id,
         organizationId: row.organization_id
       },
       organization: {
@@ -4001,7 +4208,7 @@ router.get('/admin/services', requireAdminRole, async (req: AuthenticatedRequest
         planName: row.plan_name
       },
       serviceName: row.service_name,
-      easypanelServiceName: row.easypanel_service_name,
+      dokployApplicationId: row.dokploy_application_id,
       serviceType: row.service_type,
       status: row.status,
       resources: {

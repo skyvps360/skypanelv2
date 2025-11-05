@@ -1,6 +1,6 @@
 /**
  * Container Service for SkyPanelV2 Frontend
- * Handles Easypanel Container as a Service (CaaS) API interactions
+ * Handles Dokploy Container as a Service (CaaS) API interactions
  */
 
 import { apiClient } from '@/lib/api';
@@ -985,6 +985,82 @@ class ContainerService {
       };
     } catch (error: any) {
       console.error('Test Easypanel connection error:', error);
+      // Re-throw to let React Query handle it
+      throw error;
+    }
+  }
+
+  /**
+   * Get Dokploy configuration (admin)
+   */
+  async getDokployConfig(): Promise<{
+    success: boolean;
+    config?: EasypanelConfigResponse;
+    error?: string;
+  }> {
+    try {
+      const response = await apiClient.get<EasypanelConfigResponse | { config: EasypanelConfigResponse }>(
+        '/containers/admin/dokploy/config'
+      );
+
+      const configData =
+        response && typeof response === 'object' && 'config' in response
+          ? (response as { config: EasypanelConfigResponse }).config
+          : (response as EasypanelConfigResponse);
+      return {
+        success: true,
+        config: configData,
+      };
+    } catch (error) {
+      console.error('Get Dokploy config error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load Dokploy configuration',
+      };
+    }
+  }
+
+  /**
+   * Update Dokploy configuration (admin)
+   */
+  async updateDokployConfig(config: EasypanelConfigRequest): Promise<{
+    success: boolean;
+    message?: string;
+  }> {
+    try {
+      const response = await apiClient.post<{ success: boolean; message?: string }>('/containers/admin/dokploy/config', config);
+      if (response.success === false) {
+        throw new Error(response.message || 'Failed to update Dokploy configuration');
+      }
+      return {
+        success: true,
+        message: response.message,
+      };
+    } catch (error: any) {
+      console.error('Update Dokploy config error:', error);
+      // Re-throw to let React Query handle it
+      throw error;
+    }
+  }
+
+  /**
+   * Test Dokploy connection (admin)
+   */
+  async testDokployConnection(config?: EasypanelConfigRequest): Promise<{
+    success: boolean;
+    message?: string;
+  }> {
+    try {
+      const response = await apiClient.post<{success: boolean; message?: string}>('/containers/admin/dokploy/config/test', config || {});
+      if (response.success === false) {
+        throw new Error(response.message || 'Connection test failed');
+      }
+      return {
+        success: true,
+        message: response.message,
+      };
+    } catch (error: any) {
+      console.error('Test Dokploy connection error:', error);
       // Re-throw to let React Query handle it
       throw error;
     }
