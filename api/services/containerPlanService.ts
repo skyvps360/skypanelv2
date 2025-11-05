@@ -5,7 +5,7 @@
 
 import { query, transaction } from '../lib/database.js';
 import { PayPalService } from './paypalService.js';
-import { dokployService } from './dokployService.js';
+import { caasService } from './caasService.js';
 
 export interface ContainerPlan {
   id: string;
