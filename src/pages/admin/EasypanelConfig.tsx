@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, TestTube, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Save, TestTube, CheckCircle, XCircle, AlertCircle, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -234,11 +234,24 @@ export default function EasypanelConfig() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Easypanel Configuration</h1>
-        <p className="text-muted-foreground">
-          Configure connection to your Easypanel instance for container management
-        </p>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Container Platform
+          </Badge>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Easypanel Configuration
+          </h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Configure connection to your Easypanel instance for container management
+          </p>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Settings className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -494,46 +494,55 @@ const MarketplaceManager: React.FC<MarketplaceManagerProps> = ({ token }) => {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="rounded-full bg-primary/10 p-2 text-primary">
-            <Store className="h-5 w-5" />
-          </div>
-          <div>
-            <CardTitle className="text-lg font-semibold text-foreground">
-              Marketplace Controls
-            </CardTitle>
-            <CardDescription>
-              Allow or block marketplace applications for provisioning.
-            </CardDescription>
-          </div>
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Infrastructure
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Marketplace Controls
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Allow or block marketplace applications for provisioning
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (selectedProviderId) {
-                loadMarketplaceConfig(selectedProviderId);
-              }
-            }}
-            disabled={!selectedProviderId || loadingApps || saving}
-            className="gap-2"
-          >
-            <RefreshCw className={cn("h-4 w-4", loadingApps && "animate-spin")} />
-            Refresh
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={!selectedProviderId || saving || !hasChanges}
-            className="gap-2"
-          >
-            <ShieldCheck className="h-4 w-4" />
-            Save Changes
-          </Button>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Store className="absolute right-10 top-10 h-32 w-32 rotate-12" />
         </div>
-      </CardHeader>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Configuration</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (selectedProviderId) {
+                  loadMarketplaceConfig(selectedProviderId);
+                }
+              }}
+              disabled={!selectedProviderId || loadingApps || saving}
+              className="gap-2"
+            >
+              <RefreshCw className={cn("h-4 w-4", loadingApps && "animate-spin")} />
+              Refresh
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!selectedProviderId || saving || !hasChanges}
+              className="gap-2"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Save Changes
+            </Button>
+          </div>
+        </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-4">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch xl:justify-between">
@@ -1004,6 +1013,7 @@ const MarketplaceManager: React.FC<MarketplaceManagerProps> = ({ token }) => {
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 };
 

@@ -2621,26 +2621,38 @@ const Admin: React.FC = () => {
         </SectionPanel>
 
     <SectionPanel section="theme" activeSection={activeTab}>
-            <div className="bg-card shadow sm:rounded-lg">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <Palette className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <h2 className="text-lg font-medium text-foreground">
-                      Theme Manager
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      Choose a theme preset. Updates roll out to every user
-                      instantly.
-                    </p>
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {themeConfigLoading
-                    ? "Syncing..."
-                    : `Last updated: ${formattedThemeUpdatedAt}`}
-                </div>
-              </div>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Branding
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Theme Manager
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Choose a theme preset that updates instantly for all users
+          </p>
+          {!themeConfigLoading && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Last updated: {formattedThemeUpdatedAt}
+            </p>
+          )}
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Palette className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <div className="bg-card shadow sm:rounded-lg">
+        <div className="border-b border px-6 py-4">
+          <h3 className="text-lg font-medium text-foreground">Theme Presets</h3>
+          <p className="text-sm text-muted-foreground">
+            Apply a built-in palette for all users
+          </p>
+        </div>
               <div className="space-y-10 px-6 py-6">
                 <div>
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -2734,24 +2746,35 @@ const Admin: React.FC = () => {
     </SectionPanel>
 
     <SectionPanel section="vps-plans" activeSection={activeTab}>
-            <Card>
-              <CardHeader className="flex flex-col gap-4 border-b border-b-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                    <DollarSign className="h-5 w-5 text-muted-foreground" />
-                    VPS Plans
-                  </CardTitle>
-                  <CardDescription>
-                    Curate what customers see when provisioning infrastructure.
-                  </CardDescription>
-                </div>
-                <Button
-                  onClick={() => setShowAddVPSPlan(true)}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" /> Add VPS Plan
-                </Button>
-              </CardHeader>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10 flex items-start justify-between">
+          <div>
+            <Badge variant="secondary" className="mb-3">
+              Infrastructure
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+              VPS Plans
+            </h2>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              Curate what customers see when provisioning infrastructure
+            </p>
+          </div>
+          <Button onClick={() => setShowAddVPSPlan(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Add VPS Plan
+          </Button>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <DollarSign className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Plan Configuration</CardTitle>
+        </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-3">
                   <Label
@@ -3720,27 +3743,55 @@ const Admin: React.FC = () => {
     </SectionPanel>
 
     <SectionPanel section="rate-limiting" activeSection={activeTab}>
-            <RateLimitMonitoring token={token || ""} />
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Security
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Rate Limiting
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Monitor and manage API rate limits across the platform
+          </p>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Shield className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <RateLimitMonitoring token={token || ""} />
     </SectionPanel>
 
     <SectionPanel section="faq-management" activeSection={activeTab}>
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <HelpCircle className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">
-                    FAQ Management
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Manage FAQ categories, items, and latest updates displayed
-                    on the public FAQ page.
-                  </p>
-                </div>
-              </div>
-              <CategoryManager token={token || ""} />
-              <FAQItemManager token={token || ""} />
-              <UpdatesManager token={token || ""} />
-            </div>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Support
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            FAQ Management
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Manage FAQ categories, items, and latest updates for the public FAQ page
+          </p>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <HelpCircle className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <CategoryManager token={token || ""} />
+        <FAQItemManager token={token || ""} />
+        <UpdatesManager token={token || ""} />
+      </div>
     </SectionPanel>
 
     <SectionPanel section="platform" activeSection={activeTab}>
@@ -3885,70 +3936,86 @@ const Admin: React.FC = () => {
           section="contact-management"
           activeSection={activeTab}
         >
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <ClipboardList className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">
-                    Contact Management
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Manage contact page content including categories, contact
-                    methods, and availability schedules.
-                  </p>
-                </div>
-              </div>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Support
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Contact Management
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Manage contact page content, methods, and availability schedules
+          </p>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <ClipboardList className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
 
-              <Tabs defaultValue="categories" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
-                  <TabsTrigger value="categories">Categories</TabsTrigger>
-                  <TabsTrigger value="methods">Contact Methods</TabsTrigger>
-                  <TabsTrigger value="availability">Availability</TabsTrigger>
-                </TabsList>
+      <div className="space-y-6">
+        <Tabs defaultValue="categories" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
+            <TabsTrigger value="categories">Categories</TabsTrigger>
+            <TabsTrigger value="methods">Contact Methods</TabsTrigger>
+            <TabsTrigger value="availability">Availability</TabsTrigger>
+          </TabsList>
 
-                <TabsContent value="categories">
-                  <ContactCategoryManager token={token || ""} />
-                </TabsContent>
+          <TabsContent value="categories">
+            <ContactCategoryManager token={token || ""} />
+          </TabsContent>
 
-                <TabsContent value="methods">
-                  <ContactMethodManager token={token || ""} />
-                </TabsContent>
+          <TabsContent value="methods">
+            <ContactMethodManager token={token || ""} />
+          </TabsContent>
 
-                <TabsContent value="availability">
-                  <PlatformAvailabilityManager />
-                </TabsContent>
-              </Tabs>
-            </div>
+          <TabsContent value="availability">
+            <PlatformAvailabilityManager />
+          </TabsContent>
+        </Tabs>
+      </div>
     </SectionPanel>
 
     <SectionPanel section="stackscripts" activeSection={activeTab}>
-            <Card>
-              <CardHeader className="flex flex-col gap-4 border-b border-border pb-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <FileCode className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <CardTitle className="text-lg font-semibold text-foreground">
-                        Manage StackScripts
-                      </CardTitle>
-                      <CardDescription>
-                        Configure which scripts show up when organizations
-                        provision new VPS instances.
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={fetchStackscriptsAndConfigs}
-                    disabled={loadingStackscripts}
-                    className="gap-2"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    {loadingStackscripts ? "Refreshing…" : "Refresh"}
-                  </Button>
-                </div>
-              </CardHeader>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10 flex items-start justify-between">
+          <div>
+            <Badge variant="secondary" className="mb-3">
+              Automation
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+              StackScripts
+            </h2>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              Configure which scripts show up when provisioning new VPS instances
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchStackscriptsAndConfigs}
+            disabled={loadingStackscripts}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {loadingStackscripts ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <FileCode className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Available StackScripts</CardTitle>
+        </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="stackscript-search">
@@ -4126,28 +4193,40 @@ const Admin: React.FC = () => {
     </SectionPanel>
 
     <SectionPanel section="servers" activeSection={activeTab}>
-            <Card>
-              <CardHeader className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                    <ServerCog className="h-5 w-5 text-muted-foreground" />
-                    Servers
-                  </CardTitle>
-                  <CardDescription>
-                    Monitor VPS instances provisioned through the platform.
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={fetchServers}
-                  disabled={serversLoading}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  {serversLoading ? "Refreshing…" : "Refresh"}
-                </Button>
-              </CardHeader>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Infrastructure
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            VPS Servers
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Monitor and manage all VPS instances provisioned through the platform
+          </p>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <ServerCog className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Server List</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={fetchServers}
+            disabled={serversLoading}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {serversLoading ? "Refreshing…" : "Refresh"}
+          </Button>
+        </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
                   <div className="w-full xl:w-96">
@@ -4362,17 +4441,30 @@ const Admin: React.FC = () => {
     </SectionPanel>
 
     <SectionPanel section="networking" activeSection={activeTab}>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                  <Globe className="h-5 w-5 text-muted-foreground" />
-                  Networking Controls
-                </CardTitle>
-                <CardDescription>
-                  Configure reverse DNS defaults and other networking
-                  guardrails.
-                </CardDescription>
-              </CardHeader>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Network Configuration
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Networking Controls
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Configure reverse DNS defaults and IP address management settings
+          </p>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Globe className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Network Settings</CardTitle>
+        </CardHeader>
               <CardContent>
                 <Tabs
                   value={networkingTab}
@@ -4634,27 +4726,35 @@ const Admin: React.FC = () => {
     </SectionPanel>
 
     <SectionPanel section="providers" activeSection={activeTab}>
-            <Card>
-              <CardHeader className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <Settings className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <CardTitle className="text-lg font-semibold text-foreground">
-                      Service Providers
-                    </CardTitle>
-                    <CardDescription>
-                      Bring your own infrastructure credentials and control
-                      access centrally.
-                    </CardDescription>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => setShowAddProvider(true)}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" /> Add Provider
-                </Button>
-              </CardHeader>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10 flex items-start justify-between">
+          <div>
+            <Badge variant="secondary" className="mb-3">
+              Infrastructure
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+              Service Providers
+            </h2>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              Manage infrastructure provider credentials and access control
+            </p>
+          </div>
+          <Button onClick={() => setShowAddProvider(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Provider
+          </Button>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Settings className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Provider List</CardTitle>
+        </CardHeader>
               <CardContent className="px-0">
                 <div className="overflow-x-auto">
                   <DndContext

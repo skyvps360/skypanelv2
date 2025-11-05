@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Globe, RefreshCw, ShieldCheck, MapPin } from "lucide-react";
+import { RefreshCw, MapPin, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { buildApiUrl } from "@/lib/api";
@@ -313,20 +313,30 @@ export const RegionAccessManager: React.FC<RegionAccessManagerProps> = ({ token 
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="rounded-full bg-primary/10 p-2 text-primary">
-            <Globe className="h-5 w-5" />
-          </div>
-          <div>
-            <CardTitle className="text-lg font-semibold text-foreground">Region Controls</CardTitle>
-            <CardDescription>
-              Choose which data center regions are available when users provision new VPS instances.
-            </CardDescription>
-          </div>
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Infrastructure
+          </Badge>
+          <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Region Controls
+          </h2>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Choose which data center regions are available for VPS provisioning
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <MapPin className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Configuration</CardTitle>
           <Button
             variant="outline"
             size="sm"
@@ -341,8 +351,7 @@ export const RegionAccessManager: React.FC<RegionAccessManagerProps> = ({ token 
             <RefreshCw className={cn("h-4 w-4", loadingRegions && "animate-spin")} />
             Refresh
           </Button>
-        </div>
-      </CardHeader>
+        </CardHeader>
       <CardContent className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-col gap-2">
@@ -505,5 +514,6 @@ export const RegionAccessManager: React.FC<RegionAccessManagerProps> = ({ token 
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 };

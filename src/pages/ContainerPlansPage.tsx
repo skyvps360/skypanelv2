@@ -315,7 +315,7 @@ const ContainerPlansPage: React.FC = () => {
                             <Cpu className="h-4 w-4 text-primary" />
                           </div>
                           <span className="text-sm font-medium">
-                            {formatResource(plan.maxCpuCores, 'CPU Core')}
+                            {formatResource(plan.maxCpuCores, 'vCPU Core')}
                           </span>
                         </div>
                         
@@ -324,7 +324,7 @@ const ContainerPlansPage: React.FC = () => {
                             <MemoryStick className="h-4 w-4 text-primary" />
                           </div>
                           <span className="text-sm font-medium">
-                            {formatResource(plan.maxMemoryGb, 'GB Memory')}
+                            {plan.maxMemoryGb} GB Memory
                           </span>
                         </div>
                         
@@ -333,7 +333,7 @@ const ContainerPlansPage: React.FC = () => {
                             <HardDrive className="h-4 w-4 text-primary" />
                           </div>
                           <span className="text-sm font-medium">
-                            {formatResource(plan.maxStorageGb, 'GB Storage')}
+                            {plan.maxStorageGb} GB Storage
                           </span>
                         </div>
                         
@@ -343,6 +343,15 @@ const ContainerPlansPage: React.FC = () => {
                           </div>
                           <span className="text-sm font-medium">
                             {formatResource(plan.maxContainers, 'Container')}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 p-2 rounded-md bg-muted/30">
+                          <div className="rounded-md bg-primary/10 p-2">
+                            <Container className="h-4 w-4 text-primary" />
+                          </div>
+                          <span className="text-sm font-medium">
+                            {formatResource(plan.maxProjects, 'Project')}
                           </span>
                         </div>
                       </div>
