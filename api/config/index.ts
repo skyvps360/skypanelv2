@@ -45,6 +45,8 @@ export interface Config {
   COMPANY_BRAND_NAME: string;
   EASYPANEL_API_URL?: string;
   EASYPANEL_API_KEY?: string;
+  DOKPLOY_API_URL?: string;
+  DOKPLOY_API_KEY?: string;
 }
 
 /**
@@ -164,6 +166,8 @@ function getConfig(): Config {
       'SkyPanelV2',
     EASYPANEL_API_URL: process.env.EASYPANEL_API_URL,
     EASYPANEL_API_KEY: process.env.EASYPANEL_API_KEY,
+    DOKPLOY_API_URL: process.env.DOKPLOY_API_URL,
+    DOKPLOY_API_KEY: process.env.DOKPLOY_API_KEY,
   };
 
   // Debug logging
