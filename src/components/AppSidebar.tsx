@@ -187,9 +187,14 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               url: "/containers",
               isActive: pathname === "/containers",
             },
-            // Only show Templates if subscription is active
+            // Only show Projects and Templates if subscription is active
             ...(hasActiveContainerSubscription
               ? [
+                  {
+                    title: "Projects",
+                    url: "/containers/projects",
+                    isActive: pathname === "/containers/projects" || pathname.startsWith("/containers/projects/"),
+                  },
                   {
                     title: "Templates",
                     url: "/containers/templates",
@@ -241,7 +246,8 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
       isVpsActive,
       isContainersActive,
       pathname,
-    ],
+      hasActiveContainerSubscription,
+    ]
   );
 
   // Secondary navigation items
