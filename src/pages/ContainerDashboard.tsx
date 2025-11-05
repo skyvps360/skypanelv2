@@ -314,6 +314,10 @@ const ContainerDashboard: React.FC = () => {
               <Plus className="mr-2 h-4 w-4" />
               Create Project
             </Button>
+            <Button variant="outline" size="lg" onClick={() => navigate('/containers/projects')}>
+              <Server className="mr-2 h-4 w-4" />
+              View All Projects
+            </Button>
             {state.subscription?.status === 'active' && (
               <Button variant="outline" size="lg" asChild>
                 <Link to="/containers/templates">

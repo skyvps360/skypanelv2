@@ -900,17 +900,65 @@ class EasypanelService {
    */
   async createFromTemplate(projectName: string, templateName: string, schema: TemplateSchema): Promise<void> {
     try {
+      // Generate random password for database services
+      const randomPassword = this.generateRandomPassword();
+
+      // Transform our schema format to Easypanel's expected format
+      // Our format: { services: [{ name, type, configuration }] }
+      // Easypanel format: { services: [{ type, data: { serviceName, ... } }] }
+      const transformedSchema = {
+        services: schema.services.map(service => {
+          const config = { ...service.configuration };
+          
+          // Replace password placeholders
+          if (config.password && typeof config.password === 'string') {
+            config.password = config.password.replace(/\{\{RANDOM_PASSWORD\}\}/g, randomPassword);
+          }
+          
+          // Replace environment variable placeholders
+          if (config.env && typeof config.env === 'string') {
+            config.env = config.env.replace(/\{\{RANDOM_PASSWORD\}\}/g, randomPassword);
+          }
+          
+          return {
+            type: service.type,
+            data: {
+              serviceName: service.name,
+              ...config
+            }
+          };
+        })
+      };
+
+      console.log('Deploying template to Easypanel:', {
+        projectName,
+        templateName,
+        transformedSchema: JSON.stringify(transformedSchema, null, 2)
+      });
+
       await this.makeRequest('templates.createFromSchema', {
         body: {
+          name: templateName,
           projectName,
-          templateName,
-          schema
+          schema: transformedSchema
         }
       });
     } catch (error) {
       console.error(`Error creating service from template ${templateName} in project ${projectName}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Generate a random password for database services
+   */
+  private generateRandomPassword(): string {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let password = '';
+    for (let i = 0; i < 16; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
   }
 
   /**

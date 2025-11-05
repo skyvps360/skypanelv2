@@ -1616,47 +1616,47 @@ INSERT INTO container_templates (
   'wordpress',
   'WordPress',
   'Popular content management system with integrated MySQL/MariaDB database and automatic PHP configuration. Perfect for blogs, websites, and web applications.',
-    'CMS',
-    '{
-      "services": [
-        {
-          "name": "wordpress",
-          "type": "app",
-          "configuration": {
-            "source": {
-              "type": "image",
-              "image": "wordpress:latest"
-            },
-            "domains": [
-              {
-                "host": "$(EASYPANEL_DOMAIN)",
-                "port": 80
-              }
-            ],
-            "mounts": [
-              {
-                "type": "volume",
-                "name": "data",
-                "mountPath": "/var/www/html"
-              }
-            ],
-            "env": {
-              "WORDPRESS_DB_HOST": "$(PROJECT_NAME)_wordpress-db",
-              "WORDPRESS_DB_USER": "mariadb",
-              "WORDPRESS_DB_PASSWORD": "$(MYSQL_PASSWORD)",
-              "WORDPRESS_DB_NAME": "$(PROJECT_NAME)"
+  'CMS',
+  '{
+    "services": [
+      {
+        "name": "wordpress",
+        "type": "app",
+        "configuration": {
+          "source": {
+            "type": "image",
+            "image": "wordpress:latest"
+          },
+          "env": "WORDPRESS_DB_HOST=$(PROJECT_NAME)_wordpress-db\\nWORDPRESS_DB_USER=mariadb\\nWORDPRESS_DB_PASSWORD={{RANDOM_PASSWORD}}\\nWORDPRESS_DB_NAME=$(PROJECT_NAME)",
+          "domains": [
+            {
+              "host": "$(EASYPANEL_DOMAIN)",
+              "port": 80
             }
-          }
-        },
-        {
-          "name": "wordpress-db",
-          "type": "mariadb",
-          "configuration": {
-            "password": "$(MYSQL_PASSWORD)"
-          }
+          ],
+          "mounts": [
+            {
+              "type": "volume",
+              "name": "data",
+              "mountPath": "/var/www/html"
+            },
+            {
+              "type": "file",
+              "content": "upload_max_filesize = 100M\\npost_max_size = 100M\\n",
+              "mountPath": "/usr/local/etc/php/conf.d/custom.ini"
+            }
+          ]
         }
-      ]
-    }'::jsonb,
+      },
+      {
+        "name": "wordpress-db",
+        "type": "mariadb",
+        "configuration": {
+          "password": "{{RANDOM_PASSWORD}}"
+        }
+      }
+    ]
+  }'::jsonb,
   TRUE,
   10
 )
