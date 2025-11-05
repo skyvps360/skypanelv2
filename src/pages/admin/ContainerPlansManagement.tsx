@@ -1,17 +1,27 @@
 import React, { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2, Power, PowerOff, Package } from 'lucide-react'
+import { Plus, Edit, Trash2, Power, PowerOff, Package, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { containerService } from '@/services/containerService'
 import type { ContainerPlan, CreateContainerPlanRequest, UpdateContainerPlanRequest } from '@/types/containers'
+import { DataTable } from '@/components/data-table/data-table'
+import type { ColumnDef } from '@tanstack/react-table'
+import { formatCurrency } from '@/lib/formatters'
 
 interface PlanFormData {
   name: string
@@ -225,6 +235,134 @@ export default function ContainerPlansManagement() {
   
   const queryClient = useQueryClient()
 
+  const columns: ColumnDef<ContainerPlan>[] = [
+    {
+      accessorKey: 'name',
+      header: 'Plan Name',
+      cell: ({ row }) => (
+        <div className="max-w-[180px]">
+          <div className="font-medium">{row.original.name}</div>
+          <div className="text-sm text-muted-foreground truncate">{row.original.description}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'priceMonthly',
+      header: 'Price',
+      cell: ({ row }) => (
+        <div className="font-medium">
+          {formatCurrency(row.getValue('priceMonthly'))}/mo
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'maxCpuCores',
+      header: 'CPU',
+      cell: ({ row }) => (
+        <div className="text-sm">{row.getValue('maxCpuCores')} cores</div>
+      ),
+    },
+    {
+      accessorKey: 'maxMemoryGb',
+      header: 'RAM',
+      cell: ({ row }) => (
+        <div className="text-sm">{row.getValue('maxMemoryGb')} GB</div>
+      ),
+    },
+    {
+      accessorKey: 'maxStorageGb',
+      header: 'Storage',
+      cell: ({ row }) => (
+        <div className="text-sm">{row.getValue('maxStorageGb')} GB</div>
+      ),
+    },
+    {
+      accessorKey: 'maxContainers',
+      header: 'Containers',
+      cell: ({ row }) => (
+        <div className="text-sm">{row.getValue('maxContainers')}</div>
+      ),
+    },
+    {
+      accessorKey: 'maxProjects',
+      header: 'Projects',
+      cell: ({ row }) => (
+        <div className="text-sm">{row.getValue('maxProjects')}</div>
+      ),
+    },
+    {
+      accessorKey: 'active',
+      header: 'Status',
+      cell: ({ row }) => (
+        <Badge variant={row.getValue('active') ? 'default' : 'secondary'}>
+          {row.getValue('active') ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'createdAt',
+      header: 'Created',
+      cell: ({ row }) => (
+        <div className="text-sm text-muted-foreground">
+          {new Date(row.getValue('createdAt')).toLocaleDateString()}
+        </div>
+      ),
+    },
+    {
+      id: 'actions',
+      header: () => <div className="text-right">Actions</div>,
+      cell: ({ row }) => {
+        const plan = row.original
+        
+        return (
+          <div className="flex items-center justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                  <span className="sr-only">Open menu</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleEditPlan(plan)}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Plan
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => togglePlanMutation.mutate({ id: plan.id, active: !plan.active })}
+                  disabled={togglePlanMutation.isPending}
+                >
+                  {plan.active ? (
+                    <>
+                      <PowerOff className="mr-2 h-4 w-4" />
+                      Deactivate
+                    </>
+                  ) : (
+                    <>
+                      <Power className="mr-2 h-4 w-4" />
+                      Activate
+                    </>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={() => handleDeletePlan(plan)}
+                  disabled={deletePlanMutation.isPending}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Plan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )
+      },
+    },
+  ]
+
   const { data: plansResponse, isLoading } = useQuery({
     queryKey: ['admin', 'container-plans'],
     queryFn: containerService.getAllPlans
@@ -380,10 +518,6 @@ export default function ContainerPlansManagement() {
     updatePlanMutation.mutate({ id: editingPlan.id, data: planData })
   }
 
-  const handleTogglePlan = (plan: ContainerPlan) => {
-    togglePlanMutation.mutate({ id: plan.id, active: !plan.active })
-  }
-
   const handleDeletePlan = (plan: ContainerPlan) => {
     setDeletingPlan(plan)
     setIsDeleteDialogOpen(true)
@@ -397,13 +531,6 @@ export default function ContainerPlansManagement() {
   const resetForm = () => {
     setFormData(initialFormData)
     setFormErrors({})
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
   }
 
   // Memoize form handlers to prevent recreating them on every render
@@ -507,103 +634,18 @@ export default function ContainerPlansManagement() {
           <CardTitle>Container Plans</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Resources</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {plans.map((plan) => (
-                  <TableRow key={plan.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{plan.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {plan.description}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">
-                        {formatCurrency(plan.priceMonthly)}/month
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm space-y-1">
-                        <div>{plan.maxCpuCores} CPU cores</div>
-                        <div>{plan.maxMemoryGb} GB RAM</div>
-                        <div>{plan.maxStorageGb} GB storage</div>
-                        <div>{plan.maxContainers} containers</div>
-                        <div>{plan.maxProjects} projects</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={plan.active ? 'default' : 'secondary'}>
-                        {plan.active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(plan.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleTogglePlan(plan)}
-                          disabled={togglePlanMutation.isPending}
-                          title={plan.active ? 'Deactivate plan' : 'Activate plan'}
-                        >
-                          {plan.active ? (
-                            <PowerOff className="h-4 w-4" />
-                          ) : (
-                            <Power className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditPlan(plan)}
-                          title="Edit plan"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeletePlan(plan)}
-                          disabled={deletePlanMutation.isPending}
-                          title="Delete plan"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {plans.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
-                      <div className="text-muted-foreground">
-                        No container plans found. Create your first plan to get started.
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
+          <DataTable
+            columns={columns}
+            data={plans}
+            isLoading={isLoading}
+            emptyState={
+              <div className="text-center py-12">
+                <p className="text-muted-foreground mb-4">
+                  No container plans found. Create your first plan to get started.
+                </p>
+              </div>
+            }
+          />
         </CardContent>
       </Card>
 
