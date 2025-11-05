@@ -495,7 +495,7 @@ const ProjectDetail: React.FC = () => {
         <div className="flex gap-2">
           <Dialog open={envDialogOpen} onOpenChange={setEnvDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" size="lg" className="h-10">
                 <Settings className="mr-2 h-4 w-4" />
                 Environment
               </Button>
@@ -564,14 +564,14 @@ const ProjectDetail: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          <Button onClick={() => setDeployModalOpen(true)}>
+          <Button onClick={() => setDeployModalOpen(true)} size="lg" className="h-10">
             <Plus className="mr-2 h-4 w-4" />
             Deploy Service
           </Button>
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={!canDeleteProject}>
+              <Button variant="destructive" size="lg" className="h-10" disabled={!canDeleteProject}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete
               </Button>
@@ -666,10 +666,6 @@ const ProjectDetail: React.FC = () => {
               Containerized applications running in this project.
             </p>
           </div>
-          <Button onClick={() => navigate(`/containers/projects/${projectName}/deploy`)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Deploy Service
-          </Button>
         </CardHeader>
         <CardContent>
           {state.services.length === 0 ? (
@@ -680,7 +676,7 @@ const ProjectDetail: React.FC = () => {
                 Deploy your first service to start running containerized applications.
               </p>
               <Button 
-                onClick={() => navigate(`/containers/projects/${projectName}/deploy`)} 
+                onClick={() => setDeployModalOpen(true)} 
                 size="sm" 
                 className="mt-4"
               >

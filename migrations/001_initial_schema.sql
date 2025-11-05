@@ -1444,6 +1444,7 @@ CREATE TABLE IF NOT EXISTS container_plans (
     max_memory_gb INTEGER NOT NULL,
     max_storage_gb INTEGER NOT NULL,
     max_containers INTEGER NOT NULL,
+    max_projects INTEGER NOT NULL DEFAULT 1,
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -1455,6 +1456,9 @@ CREATE TABLE IF NOT EXISTS container_subscriptions (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     plan_id UUID NOT NULL REFERENCES container_plans(id) ON DELETE RESTRICT,
     status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'cancelled')),
+  easypanel_user_id VARCHAR(255),
+  easypanel_user_email VARCHAR(255),
+  easypanel_password_encrypted TEXT,
     current_period_start TIMESTAMP WITH TIME ZONE NOT NULL,
     current_period_end TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -1535,6 +1539,8 @@ CREATE TABLE IF NOT EXISTS easypanel_config (
 -- Container-related indexes for performance optimization
 CREATE INDEX IF NOT EXISTS idx_container_subscriptions_org_id ON container_subscriptions(organization_id);
 CREATE INDEX IF NOT EXISTS idx_container_subscriptions_status ON container_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_container_subscriptions_easypanel_user 
+ON container_subscriptions(easypanel_user_id);
 CREATE INDEX IF NOT EXISTS idx_container_projects_org_id ON container_projects(organization_id);
 CREATE INDEX IF NOT EXISTS idx_container_projects_subscription_id ON container_projects(subscription_id);
 CREATE INDEX IF NOT EXISTS idx_container_services_project_id ON container_services(project_id);
@@ -1572,3 +1578,107 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_easypanel_config_updated_at
 BEFORE UPDATE ON easypanel_config
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Seed: WordPress container template
+INSERT INTO container_templates (
+  template_name,
+  display_name,
+  description,
+  category,
+  template_schema,
+  enabled,
+  display_order
+) VALUES (
+  'wordpress',
+  'WordPress',
+  'Popular content management system with integrated MySQL/MariaDB database and automatic PHP configuration. Perfect for blogs, websites, and web applications.',
+  'CMS',
+  '{
+    "services": [
+      {
+        "name": "wordpress",
+        "type": "wordpress",
+        "configuration": {
+          "database": {
+            "serviceName": "wordpress-db",
+            "type": "mysql",
+            "version": "8.0"
+          },
+          "php": {
+            "version": "8.2",
+            "extensions": [
+              "gd",
+              "mysqli",
+              "opcache",
+              "zip",
+              "intl",
+              "mbstring",
+              "curl",
+              "xml",
+              "imagick"
+            ],
+            "config": {
+              "upload_max_filesize": "256M",
+              "post_max_size": "256M",
+              "memory_limit": "256M",
+              "max_execution_time": "300"
+            }
+          },
+          "nginx": {
+            "config": "# WordPress Nginx configuration\nclient_max_body_size 256M;\nfastcgi_buffers 16 16k;\nfastcgi_buffer_size 32k;"
+          },
+          "resources": {
+            "cpuLimit": 1.0,
+            "memoryLimit": 1024,
+            "memoryReservation": 512
+          },
+          "env": {
+            "WORDPRESS_DB_HOST": "wordpress-db:3306",
+            "WORDPRESS_DB_NAME": "wordpress",
+            "WORDPRESS_TABLE_PREFIX": "wp_"
+          },
+          "mounts": [
+            {
+              "type": "volume",
+              "name": "wordpress-data",
+              "mountPath": "/var/www/html"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wordpress-db",
+        "type": "mysql",
+        "configuration": {
+          "version": "8.0",
+          "database": "wordpress",
+          "user": "wordpress",
+          "resources": {
+            "cpuLimit": 0.5,
+            "memoryLimit": 512,
+            "memoryReservation": 256
+          },
+          "mounts": [
+            {
+              "type": "volume",
+              "name": "wordpress-db-data",
+              "mountPath": "/var/lib/mysql"
+            }
+          ],
+          "advanced": {
+            "config": "# MySQL configuration for WordPress\nmax_allowed_packet=256M\ninnodb_buffer_pool_size=256M\ninnodb_log_file_size=64M"
+          }
+        }
+      }
+    ]
+  }'::jsonb,
+  TRUE,
+  10
+)
+ON CONFLICT (template_name) DO UPDATE SET
+  display_name = EXCLUDED.display_name,
+  description = EXCLUDED.description,
+  category = EXCLUDED.category,
+  template_schema = EXCLUDED.template_schema,
+  display_order = EXCLUDED.display_order,
+  updated_at = NOW();
