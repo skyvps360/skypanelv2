@@ -5,11 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import { containerService } from '@/services/containerService'
 import type { ContainerPlan, CreateContainerPlanRequest, UpdateContainerPlanRequest } from '@/types/containers'
@@ -121,7 +120,8 @@ const PlanForm = React.memo(({
         <Input
           id="maxCpuCores"
           type="number"
-          min="1"
+          step="0.1"
+          min="0.1"
           value={formData.maxCpuCores}
           onChange={onCpuCoresChange}
           placeholder="2"
@@ -136,7 +136,8 @@ const PlanForm = React.memo(({
         <Input
           id="maxMemoryGb"
           type="number"
-          min="1"
+          step="0.1"
+          min="0.1"
           value={formData.maxMemoryGb}
           onChange={onMemoryChange}
           placeholder="4"
@@ -216,7 +217,9 @@ const PlanForm = React.memo(({
 export default function ContainerPlansManagement() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [editingPlan, setEditingPlan] = useState<ContainerPlan | null>(null)
+  const [deletingPlan, setDeletingPlan] = useState<ContainerPlan | null>(null)
   const [formData, setFormData] = useState<PlanFormData>(initialFormData)
   const [formErrors, setFormErrors] = useState<Partial<PlanFormData>>({})
   
@@ -269,6 +272,20 @@ export default function ContainerPlansManagement() {
     }
   })
 
+  const deletePlanMutation = useMutation({
+    mutationFn: containerService.deletePlan,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'container-plans'] })
+      setIsDeleteDialogOpen(false)
+      setDeletingPlan(null)
+      toast.success('Container plan deleted successfully')
+    },
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.error?.message || 'Failed to delete plan'
+      toast.error(errorMessage)
+    }
+  })
+
   const validateForm = (data: PlanFormData): boolean => {
     const errors: Partial<PlanFormData> = {}
 
@@ -285,14 +302,14 @@ export default function ContainerPlansManagement() {
       errors.priceMonthly = 'Valid price is required'
     }
 
-    const cpuCores = parseInt(data.maxCpuCores)
-    if (isNaN(cpuCores) || cpuCores < 1) {
-      errors.maxCpuCores = 'CPU cores must be at least 1'
+    const cpuCores = parseFloat(data.maxCpuCores)
+    if (isNaN(cpuCores) || cpuCores < 0.1) {
+      errors.maxCpuCores = 'CPU cores must be at least 0.1'
     }
 
-    const memory = parseInt(data.maxMemoryGb)
-    if (isNaN(memory) || memory < 1) {
-      errors.maxMemoryGb = 'Memory must be at least 1 GB'
+    const memory = parseFloat(data.maxMemoryGb)
+    if (isNaN(memory) || memory < 0.1) {
+      errors.maxMemoryGb = 'Memory must be at least 0.1 GB'
     }
 
     const storage = parseInt(data.maxStorageGb)
@@ -321,8 +338,8 @@ export default function ContainerPlansManagement() {
       name: formData.name.trim(),
       description: formData.description.trim(),
       priceMonthly: parseFloat(formData.priceMonthly),
-      maxCpuCores: parseInt(formData.maxCpuCores),
-      maxMemoryGb: parseInt(formData.maxMemoryGb),
+      maxCpuCores: parseFloat(formData.maxCpuCores),
+      maxMemoryGb: parseFloat(formData.maxMemoryGb),
       maxStorageGb: parseInt(formData.maxStorageGb),
       maxContainers: parseInt(formData.maxContainers),
       maxProjects: parseInt(formData.maxProjects)
@@ -353,8 +370,8 @@ export default function ContainerPlansManagement() {
       name: formData.name.trim(),
       description: formData.description.trim(),
       priceMonthly: parseFloat(formData.priceMonthly),
-      maxCpuCores: parseInt(formData.maxCpuCores),
-      maxMemoryGb: parseInt(formData.maxMemoryGb),
+      maxCpuCores: parseFloat(formData.maxCpuCores),
+      maxMemoryGb: parseFloat(formData.maxMemoryGb),
       maxStorageGb: parseInt(formData.maxStorageGb),
       maxContainers: parseInt(formData.maxContainers),
       maxProjects: parseInt(formData.maxProjects)
@@ -365,6 +382,16 @@ export default function ContainerPlansManagement() {
 
   const handleTogglePlan = (plan: ContainerPlan) => {
     togglePlanMutation.mutate({ id: plan.id, active: !plan.active })
+  }
+
+  const handleDeletePlan = (plan: ContainerPlan) => {
+    setDeletingPlan(plan)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const confirmDeletePlan = () => {
+    if (!deletingPlan) return
+    deletePlanMutation.mutate(deletingPlan.id)
   }
 
   const resetForm = () => {
@@ -523,6 +550,7 @@ export default function ContainerPlansManagement() {
                           size="sm"
                           onClick={() => handleTogglePlan(plan)}
                           disabled={togglePlanMutation.isPending}
+                          title={plan.active ? 'Deactivate plan' : 'Activate plan'}
                         >
                           {plan.active ? (
                             <PowerOff className="h-4 w-4" />
@@ -534,8 +562,18 @@ export default function ContainerPlansManagement() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEditPlan(plan)}
+                          title="Edit plan"
                         >
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeletePlan(plan)}
+                          disabled={deletePlanMutation.isPending}
+                          title="Delete plan"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </TableCell>
@@ -577,6 +615,39 @@ export default function ContainerPlansManagement() {
             onSubmit={handleUpdatePlan}
             isPending={updatePlanMutation.isPending}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Container Plan</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the plan "{deletingPlan?.name}"? 
+              This action cannot be undone.
+              {deletingPlan?.active && (
+                <span className="block mt-2 text-yellow-600 dark:text-yellow-500">
+                  Note: This plan is currently active. It can only be deleted if there are no active subscriptions.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end space-x-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={deletePlanMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeletePlan}
+              disabled={deletePlanMutation.isPending}
+            >
+              {deletePlanMutation.isPending ? 'Deleting...' : 'Delete Plan'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

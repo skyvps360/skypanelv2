@@ -202,6 +202,25 @@ class ContainerService {
     }
   }
 
+  /**
+   * Delete a container plan (admin)
+   */
+  async deletePlan(planId: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      await apiClient.delete(`/containers/admin/plans/${planId}`);
+      return { success: true };
+    } catch (error) {
+      console.error('Delete container plan error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete container plan',
+      };
+    }
+  }
+
   // ============================================================================
   // Subscription Management Methods
   // ============================================================================

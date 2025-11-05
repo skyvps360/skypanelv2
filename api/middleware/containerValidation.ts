@@ -361,10 +361,10 @@ export function validateCreateContainerPlan(req: Request, res: Response, next: N
   }
 
   // Validate resource limits
-  if (typeof maxCpuCores !== 'number' || maxCpuCores <= 0 || !Number.isInteger(maxCpuCores)) {
+  if (typeof maxCpuCores !== 'number' || maxCpuCores < 0.1) {
     errors.push({
       field: 'maxCpuCores',
-      message: 'Maximum CPU cores must be a positive integer',
+      message: 'Maximum CPU cores must be at least 0.1',
       value: maxCpuCores,
     });
   } else if (maxCpuCores > 64) {
@@ -375,7 +375,7 @@ export function validateCreateContainerPlan(req: Request, res: Response, next: N
     });
   }
 
-  if (typeof maxMemoryGb !== 'number' || maxMemoryGb <= 0) {
+  if (typeof maxMemoryGb !== 'number' || maxMemoryGb < 0.1) {
     errors.push({
       field: 'maxMemoryGb',
       message: 'Maximum memory must be a positive number',

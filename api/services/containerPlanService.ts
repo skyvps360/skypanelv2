@@ -354,6 +354,39 @@ export class ContainerPlanService {
   }
 
   /**
+   * Delete a container plan
+   * Only allows deletion if there are no active subscriptions
+   */
+  static async deletePlan(planId: string): Promise<void> {
+    try {
+      // Check for active subscriptions
+      const subscriptionCheck = await query(`
+        SELECT COUNT(*) as count
+        FROM container_subscriptions
+        WHERE plan_id = $1 AND status = 'active'
+      `, [planId]);
+
+      const activeSubscriptions = parseInt(subscriptionCheck.rows[0].count);
+      if (activeSubscriptions > 0) {
+        throw new Error(`Cannot delete plan with ${activeSubscriptions} active subscription(s). Please deactivate the plan instead.`);
+      }
+
+      // Delete the plan
+      const result = await query(`
+        DELETE FROM container_plans 
+        WHERE id = $1
+      `, [planId]);
+
+      if (result.rowCount === 0) {
+        throw new Error('Container plan not found');
+      }
+    } catch (error) {
+      console.error('Error deleting container plan:', error);
+      throw error instanceof Error ? error : new Error('Failed to delete container plan');
+    }
+  }
+
+  /**
    * Subscribe an organization to a container plan
    */
   static async subscribe(organizationId: string, planId: string): Promise<ContainerSubscription> {

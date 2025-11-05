@@ -514,15 +514,15 @@ router.put('/admin/plans/:id', requireAdminRole, async (req: AuthenticatedReques
       });
     }
 
-    if ((maxCpuCores !== undefined && (!Number.isInteger(maxCpuCores) || maxCpuCores <= 0)) ||
-        (maxMemoryGb !== undefined && (!Number.isInteger(maxMemoryGb) || maxMemoryGb <= 0)) ||
+    if ((maxCpuCores !== undefined && (typeof maxCpuCores !== 'number' || maxCpuCores <= 0)) ||
+        (maxMemoryGb !== undefined && (typeof maxMemoryGb !== 'number' || maxMemoryGb <= 0)) ||
         (maxStorageGb !== undefined && (!Number.isInteger(maxStorageGb) || maxStorageGb <= 0)) ||
         (maxContainers !== undefined && (!Number.isInteger(maxContainers) || maxContainers <= 0)) ||
         (maxProjects !== undefined && (!Number.isInteger(maxProjects) || maxProjects <= 0))) {
       return res.status(400).json({
         error: {
           code: 'INVALID_RESOURCE_LIMITS',
-          message: 'Resource limits must be positive integers'
+          message: 'CPU and Memory must be positive numbers, Storage/Containers/Projects must be positive integers'
         }
       });
     }
@@ -712,6 +712,86 @@ router.post('/admin/plans/:id/deactivate', requireAdminRole, async (req: Authent
       error: {
         code: 'PLAN_DEACTIVATE_FAILED',
         message: 'Failed to deactivate container plan'
+      }
+    });
+  }
+});
+
+/**
+ * DELETE /api/containers/admin/plans/:id
+ * Delete a container plan
+ * Only allows deletion if there are no active subscriptions
+ */
+router.delete('/admin/plans/:id', requireAdminRole, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_PLAN_ID',
+          message: 'Invalid plan ID format'
+        }
+      });
+    }
+
+    // Get plan details for logging before deletion
+    const plan = await ContainerPlanService.getPlan(id);
+    
+    if (!plan) {
+      return res.status(404).json({
+        error: {
+          code: 'PLAN_NOT_FOUND',
+          message: 'Container plan not found'
+        }
+      });
+    }
+
+    await ContainerPlanService.deletePlan(id);
+
+    // Log the plan deletion
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'container.plan.delete',
+      entityType: 'container_plan',
+      entityId: id,
+      metadata: { 
+        planName: plan.name
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Container plan deleted successfully'
+    });
+  } catch (error) {
+    console.error('Failed to delete container plan:', error);
+    
+    if (error instanceof Error && error.message.includes('not found')) {
+      return res.status(404).json({
+        error: {
+          code: 'PLAN_NOT_FOUND',
+          message: 'Container plan not found'
+        }
+      });
+    }
+
+    if (error instanceof Error && error.message.includes('active subscription')) {
+      return res.status(400).json({
+        error: {
+          code: 'PLAN_HAS_SUBSCRIPTIONS',
+          message: error.message
+        }
+      });
+    }
+
+    res.status(500).json({
+      error: {
+        code: 'PLAN_DELETE_FAILED',
+        message: 'Failed to delete container plan'
       }
     });
   }
