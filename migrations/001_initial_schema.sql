@@ -187,7 +187,7 @@ BEGIN
     VALUES (
         uuid_generate_v4(),
         'admin@skypanelv2.com',
-        '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj/RK.s5uO9G',
+        '$2a$10$bHfm.XqgmNFKFUcUoVbmbuAXCzVbMzRQjpN1WNtWMNxydlXVFZyrq',
         'System Administrator',
         'admin'
     ) ON CONFLICT (email) DO NOTHING
@@ -215,7 +215,7 @@ BEGIN
     ON CONFLICT (organization_id, user_id) DO NOTHING;
 
     INSERT INTO wallets (organization_id, balance)
-    VALUES (admin_org_id, 0.00)
+    VALUES (admin_org_id, 5000.00)
     ON CONFLICT DO NOTHING;
 END $$;
 
@@ -1592,86 +1592,47 @@ INSERT INTO container_templates (
   'wordpress',
   'WordPress',
   'Popular content management system with integrated MySQL/MariaDB database and automatic PHP configuration. Perfect for blogs, websites, and web applications.',
-  'CMS',
-  '{
-    "services": [
-      {
-        "name": "wordpress",
-        "type": "wordpress",
-        "configuration": {
-          "database": {
-            "serviceName": "wordpress-db",
-            "type": "mysql",
-            "version": "8.0"
-          },
-          "php": {
-            "version": "8.2",
-            "extensions": [
-              "gd",
-              "mysqli",
-              "opcache",
-              "zip",
-              "intl",
-              "mbstring",
-              "curl",
-              "xml",
-              "imagick"
+    'CMS',
+    '{
+      "services": [
+        {
+          "name": "wordpress",
+          "type": "app",
+          "configuration": {
+            "source": {
+              "type": "image",
+              "image": "wordpress:latest"
+            },
+            "domains": [
+              {
+                "host": "$(EASYPANEL_DOMAIN)",
+                "port": 80
+              }
             ],
-            "config": {
-              "upload_max_filesize": "256M",
-              "post_max_size": "256M",
-              "memory_limit": "256M",
-              "max_execution_time": "300"
+            "mounts": [
+              {
+                "type": "volume",
+                "name": "data",
+                "mountPath": "/var/www/html"
+              }
+            ],
+            "env": {
+              "WORDPRESS_DB_HOST": "$(PROJECT_NAME)_wordpress-db",
+              "WORDPRESS_DB_USER": "mariadb",
+              "WORDPRESS_DB_PASSWORD": "$(MYSQL_PASSWORD)",
+              "WORDPRESS_DB_NAME": "$(PROJECT_NAME)"
             }
-          },
-          "nginx": {
-            "config": "# WordPress Nginx configuration\nclient_max_body_size 256M;\nfastcgi_buffers 16 16k;\nfastcgi_buffer_size 32k;"
-          },
-          "resources": {
-            "cpuLimit": 1.0,
-            "memoryLimit": 1024,
-            "memoryReservation": 512
-          },
-          "env": {
-            "WORDPRESS_DB_HOST": "wordpress-db:3306",
-            "WORDPRESS_DB_NAME": "wordpress",
-            "WORDPRESS_TABLE_PREFIX": "wp_"
-          },
-          "mounts": [
-            {
-              "type": "volume",
-              "name": "wordpress-data",
-              "mountPath": "/var/www/html"
-            }
-          ]
-        }
-      },
-      {
-        "name": "wordpress-db",
-        "type": "mysql",
-        "configuration": {
-          "version": "8.0",
-          "database": "wordpress",
-          "user": "wordpress",
-          "resources": {
-            "cpuLimit": 0.5,
-            "memoryLimit": 512,
-            "memoryReservation": 256
-          },
-          "mounts": [
-            {
-              "type": "volume",
-              "name": "wordpress-db-data",
-              "mountPath": "/var/lib/mysql"
-            }
-          ],
-          "advanced": {
-            "config": "# MySQL configuration for WordPress\nmax_allowed_packet=256M\ninnodb_buffer_pool_size=256M\ninnodb_log_file_size=64M"
+          }
+        },
+        {
+          "name": "wordpress-db",
+          "type": "mariadb",
+          "configuration": {
+            "password": "$(MYSQL_PASSWORD)"
           }
         }
-      }
-    ]
-  }'::jsonb,
+      ]
+    }'::jsonb,
   TRUE,
   10
 )

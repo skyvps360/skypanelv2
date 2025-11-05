@@ -16,6 +16,7 @@ export interface ContainerPlan {
   maxMemoryGb: number;
   maxStorageGb: number;
   maxContainers: number;
+  maxProjects: number;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -307,6 +308,7 @@ export interface CreateContainerPlanRequest {
   maxMemoryGb: number;
   maxStorageGb: number;
   maxContainers: number;
+  maxProjects: number;
 }
 
 export interface UpdateContainerPlanRequest extends Partial<CreateContainerPlanRequest> {}

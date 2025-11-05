@@ -22,6 +22,7 @@ interface PlanFormData {
   maxMemoryGb: string
   maxStorageGb: string
   maxContainers: string
+  maxProjects: string
 }
 
 const initialFormData: PlanFormData = {
@@ -31,7 +32,8 @@ const initialFormData: PlanFormData = {
   maxCpuCores: '',
   maxMemoryGb: '',
   maxStorageGb: '',
-  maxContainers: ''
+  maxContainers: '',
+  maxProjects: '1'
 }
 
 interface PlanFormProps {
@@ -45,6 +47,7 @@ interface PlanFormProps {
   onMemoryChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   onStorageChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   onContainersChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onProjectsChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   onCancel: () => void
   onSubmit: () => void
   isPending: boolean
@@ -61,6 +64,7 @@ const PlanForm = React.memo(({
   onMemoryChange,
   onStorageChange,
   onContainersChange,
+  onProjectsChange,
   onCancel,
   onSubmit,
   isPending
@@ -175,6 +179,23 @@ const PlanForm = React.memo(({
       </div>
     </div>
 
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label htmlFor="maxProjects">Max Projects</Label>
+        <Input
+          id="maxProjects"
+          type="number"
+          min="1"
+          value={formData.maxProjects}
+          onChange={onProjectsChange}
+          placeholder="1"
+        />
+        {formErrors.maxProjects && (
+          <p className="text-sm text-red-500">{formErrors.maxProjects}</p>
+        )}
+      </div>
+    </div>
+
     <div className="flex justify-end space-x-2 pt-4">
       <Button
         variant="outline"
@@ -284,6 +305,11 @@ export default function ContainerPlansManagement() {
       errors.maxContainers = 'Container limit must be at least 1'
     }
 
+    const projects = parseInt(data.maxProjects)
+    if (isNaN(projects) || projects < 1) {
+      errors.maxProjects = 'Project limit must be at least 1'
+    }
+
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -298,7 +324,8 @@ export default function ContainerPlansManagement() {
       maxCpuCores: parseInt(formData.maxCpuCores),
       maxMemoryGb: parseInt(formData.maxMemoryGb),
       maxStorageGb: parseInt(formData.maxStorageGb),
-      maxContainers: parseInt(formData.maxContainers)
+      maxContainers: parseInt(formData.maxContainers),
+      maxProjects: parseInt(formData.maxProjects)
     }
 
     createPlanMutation.mutate(planData)
@@ -313,7 +340,8 @@ export default function ContainerPlansManagement() {
       maxCpuCores: plan.maxCpuCores.toString(),
       maxMemoryGb: plan.maxMemoryGb.toString(),
       maxStorageGb: plan.maxStorageGb.toString(),
-      maxContainers: plan.maxContainers.toString()
+      maxContainers: plan.maxContainers.toString(),
+      maxProjects: plan.maxProjects.toString()
     })
     setIsEditDialogOpen(true)
   }
@@ -328,7 +356,8 @@ export default function ContainerPlansManagement() {
       maxCpuCores: parseInt(formData.maxCpuCores),
       maxMemoryGb: parseInt(formData.maxMemoryGb),
       maxStorageGb: parseInt(formData.maxStorageGb),
-      maxContainers: parseInt(formData.maxContainers)
+      maxContainers: parseInt(formData.maxContainers),
+      maxProjects: parseInt(formData.maxProjects)
     }
 
     updatePlanMutation.mutate({ id: editingPlan.id, data: planData })
@@ -379,6 +408,10 @@ export default function ContainerPlansManagement() {
     setFormData(prev => ({ ...prev, maxContainers: e.target.value }))
   }, [])
 
+  const handleProjectsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, maxProjects: e.target.value }))
+  }, [])
+
   const handleCancel = useCallback(() => {
     if (isEditDialogOpen) {
       setIsEditDialogOpen(false)
@@ -421,6 +454,7 @@ export default function ContainerPlansManagement() {
               onMemoryChange={handleMemoryChange}
               onStorageChange={handleStorageChange}
               onContainersChange={handleContainersChange}
+              onProjectsChange={handleProjectsChange}
               onCancel={handleCancel}
               onSubmit={handleCreatePlan}
               isPending={createPlanMutation.isPending}
@@ -538,6 +572,7 @@ export default function ContainerPlansManagement() {
             onMemoryChange={handleMemoryChange}
             onStorageChange={handleStorageChange}
             onContainersChange={handleContainersChange}
+            onProjectsChange={handleProjectsChange}
             onCancel={handleCancel}
             onSubmit={handleUpdatePlan}
             isPending={updatePlanMutation.isPending}

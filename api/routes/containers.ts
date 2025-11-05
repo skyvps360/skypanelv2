@@ -445,7 +445,7 @@ router.get('/admin/plans', requireAdminRole, async (req: AuthenticatedRequest, r
  */
 router.post('/admin/plans', requireAdminRole, validateCreateContainerPlan, async (req: AuthenticatedRequest, res: Response, next: any) => {
   try {
-    const { name, description, priceMonthly, maxCpuCores, maxMemoryGb, maxStorageGb, maxContainers } = req.body;
+    const { name, description, priceMonthly, maxCpuCores, maxMemoryGb, maxStorageGb, maxContainers, maxProjects } = req.body;
 
     const plan = await ContainerPlanService.createPlan({
       name,
@@ -454,7 +454,8 @@ router.post('/admin/plans', requireAdminRole, validateCreateContainerPlan, async
       maxCpuCores,
       maxMemoryGb,
       maxStorageGb,
-      maxContainers
+      maxContainers,
+      maxProjects: maxProjects || 1
     });
 
     // Log the plan creation
@@ -470,7 +471,8 @@ router.post('/admin/plans', requireAdminRole, validateCreateContainerPlan, async
         maxCpuCores: plan.maxCpuCores,
         maxMemoryGb: plan.maxMemoryGb,
         maxStorageGb: plan.maxStorageGb,
-        maxContainers: plan.maxContainers
+        maxContainers: plan.maxContainers,
+        maxProjects: plan.maxProjects
       }
     });
 
@@ -489,7 +491,7 @@ router.post('/admin/plans', requireAdminRole, validateCreateContainerPlan, async
 router.put('/admin/plans/:id', requireAdminRole, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, priceMonthly, maxCpuCores, maxMemoryGb, maxStorageGb, maxContainers } = req.body;
+    const { name, description, priceMonthly, maxCpuCores, maxMemoryGb, maxStorageGb, maxContainers, maxProjects } = req.body;
 
     // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -515,7 +517,8 @@ router.put('/admin/plans/:id', requireAdminRole, async (req: AuthenticatedReques
     if ((maxCpuCores !== undefined && (!Number.isInteger(maxCpuCores) || maxCpuCores <= 0)) ||
         (maxMemoryGb !== undefined && (!Number.isInteger(maxMemoryGb) || maxMemoryGb <= 0)) ||
         (maxStorageGb !== undefined && (!Number.isInteger(maxStorageGb) || maxStorageGb <= 0)) ||
-        (maxContainers !== undefined && (!Number.isInteger(maxContainers) || maxContainers <= 0))) {
+        (maxContainers !== undefined && (!Number.isInteger(maxContainers) || maxContainers <= 0)) ||
+        (maxProjects !== undefined && (!Number.isInteger(maxProjects) || maxProjects <= 0))) {
       return res.status(400).json({
         error: {
           code: 'INVALID_RESOURCE_LIMITS',
@@ -531,7 +534,8 @@ router.put('/admin/plans/:id', requireAdminRole, async (req: AuthenticatedReques
       maxCpuCores,
       maxMemoryGb,
       maxStorageGb,
-      maxContainers
+      maxContainers,
+      maxProjects
     });
 
     // Log the plan update

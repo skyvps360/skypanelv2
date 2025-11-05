@@ -18,6 +18,7 @@ export interface ContainerPlan {
   maxMemoryGb: number;
   maxStorageGb: number;
   maxContainers: number;
+  maxProjects: number;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -43,6 +44,7 @@ export interface CreateContainerPlanInput {
   maxMemoryGb: number;
   maxStorageGb: number;
   maxContainers: number;
+  maxProjects: number;
 }
 
 export interface UpdateContainerPlanInput {
@@ -53,6 +55,7 @@ export interface UpdateContainerPlanInput {
   maxMemoryGb?: number;
   maxStorageGb?: number;
   maxContainers?: number;
+  maxProjects?: number;
 }
 
 export class ContainerPlanService {
@@ -72,6 +75,7 @@ export class ContainerPlanService {
           max_memory_gb,
           max_storage_gb,
           max_containers,
+          max_projects,
           active,
           created_at,
           updated_at
@@ -89,6 +93,7 @@ export class ContainerPlanService {
         maxMemoryGb: row.max_memory_gb,
         maxStorageGb: row.max_storage_gb,
         maxContainers: row.max_containers,
+        maxProjects: row.max_projects,
         active: row.active,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -114,6 +119,7 @@ export class ContainerPlanService {
           max_memory_gb,
           max_storage_gb,
           max_containers,
+          max_projects,
           active,
           created_at,
           updated_at
@@ -135,6 +141,7 @@ export class ContainerPlanService {
         maxMemoryGb: row.max_memory_gb,
         maxStorageGb: row.max_storage_gb,
         maxContainers: row.max_containers,
+        maxProjects: row.max_projects,
         active: row.active,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -158,19 +165,19 @@ export class ContainerPlanService {
         throw new Error('Price must be non-negative');
       }
       if (planData.maxCpuCores <= 0 || planData.maxMemoryGb <= 0 || 
-          planData.maxStorageGb <= 0 || planData.maxContainers <= 0) {
+          planData.maxStorageGb <= 0 || planData.maxContainers <= 0 || planData.maxProjects <= 0) {
         throw new Error('Resource limits must be positive numbers');
       }
 
       const result = await query(`
         INSERT INTO container_plans (
           name, description, price_monthly, max_cpu_cores, 
-          max_memory_gb, max_storage_gb, max_containers
+          max_memory_gb, max_storage_gb, max_containers, max_projects
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING 
           id, name, description, price_monthly, max_cpu_cores,
-          max_memory_gb, max_storage_gb, max_containers, active,
+          max_memory_gb, max_storage_gb, max_containers, max_projects, active,
           created_at, updated_at
       `, [
         planData.name.trim(),
@@ -179,7 +186,8 @@ export class ContainerPlanService {
         planData.maxCpuCores,
         planData.maxMemoryGb,
         planData.maxStorageGb,
-        planData.maxContainers
+        planData.maxContainers,
+        planData.maxProjects
       ]);
 
       const row = result.rows[0];
@@ -192,6 +200,7 @@ export class ContainerPlanService {
         maxMemoryGb: row.max_memory_gb,
         maxStorageGb: row.max_storage_gb,
         maxContainers: row.max_containers,
+        maxProjects: row.max_projects,
         active: row.active,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -220,7 +229,8 @@ export class ContainerPlanService {
       if ((updates.maxCpuCores !== undefined && updates.maxCpuCores <= 0) ||
           (updates.maxMemoryGb !== undefined && updates.maxMemoryGb <= 0) ||
           (updates.maxStorageGb !== undefined && updates.maxStorageGb <= 0) ||
-          (updates.maxContainers !== undefined && updates.maxContainers <= 0)) {
+          (updates.maxContainers !== undefined && updates.maxContainers <= 0) ||
+          (updates.maxProjects !== undefined && updates.maxProjects <= 0)) {
         throw new Error('Resource limits must be positive numbers');
       }
 
@@ -257,6 +267,10 @@ export class ContainerPlanService {
         updateFields.push(`max_containers = $${paramIndex++}`);
         values.push(updates.maxContainers);
       }
+      if (updates.maxProjects !== undefined) {
+        updateFields.push(`max_projects = $${paramIndex++}`);
+        values.push(updates.maxProjects);
+      }
 
       if (updateFields.length === 0) {
         throw new Error('No fields to update');
@@ -270,7 +284,7 @@ export class ContainerPlanService {
         WHERE id = $${paramIndex}
         RETURNING 
           id, name, description, price_monthly, max_cpu_cores,
-          max_memory_gb, max_storage_gb, max_containers, active,
+          max_memory_gb, max_storage_gb, max_containers, max_projects, active,
           created_at, updated_at
       `, values);
 
@@ -288,6 +302,7 @@ export class ContainerPlanService {
         maxMemoryGb: row.max_memory_gb,
         maxStorageGb: row.max_storage_gb,
         maxContainers: row.max_containers,
+        maxProjects: row.max_projects,
         active: row.active,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -645,6 +660,7 @@ export class ContainerPlanService {
           cp.max_memory_gb,
           cp.max_storage_gb,
           cp.max_containers,
+          cp.max_projects,
           cp.active as plan_active
         FROM container_subscriptions cs
         LEFT JOIN container_plans cp ON cs.plan_id = cp.id
@@ -676,6 +692,7 @@ export class ContainerPlanService {
           maxMemoryGb: row.max_memory_gb,
           maxStorageGb: row.max_storage_gb,
           maxContainers: row.max_containers,
+          maxProjects: row.max_projects,
           active: row.plan_active,
           createdAt: '', // Not needed for joined data
           updatedAt: ''  // Not needed for joined data
