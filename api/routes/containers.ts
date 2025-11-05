@@ -2,8 +2,7 @@ import express, { Request, Response } from 'express';
 import { authenticateToken, requireOrganization, requireAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import { query } from '../lib/database.js';
 import { encryptSecret, decryptSecret } from '../lib/crypto.js';
-import { easypanelService, type EasypanelConfig } from '../services/easypanelService.js';
-import { dokployService } from '../services/dokployService.js';
+import { caasService, type CaasConfig } from '../services/caasService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { ContainerPlanService } from '../services/containerPlanService.js';
 import { ResourceQuotaService } from '../services/resourceQuotaService.js';
@@ -14,7 +13,7 @@ import {
   formatErrorResponse, 
   ERROR_CODES 
 } from '../lib/containerErrors.js';
-import { validateEasypanelConfig, validateCreateContainerPlan } from '../middleware/containerValidation.js';
+import { validateCaasConfig, validateCreateContainerPlan } from '../middleware/containerValidation.js';
 
 const router = express.Router();
 
@@ -69,12 +68,12 @@ function handleContainerError(error: any, req: Request, res: Response, _next: an
 
 /**
  * GET /api/containers/admin/config
- * Get Easypanel configuration
+ * Get CaaS configuration
  * Admin only
  */
 router.get('/admin/config', requireAdminRole, async (_req: AuthenticatedRequest, res: Response, next: any) => {
   try {
-    const summary = await easypanelService.getConfigSummary();
+    const summary = await caasService.getConfigSummary();
 
     if (!summary) {
       return res.json({
@@ -113,70 +112,29 @@ router.get('/admin/config', requireAdminRole, async (_req: AuthenticatedRequest,
 
 /**
  * POST /api/containers/admin/config
- * Update Easypanel configuration with encryption
+ * Update CaaS configuration with encryption
  * Admin only
  */
-router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (req: AuthenticatedRequest, res: Response, next: any) => {
+router.post('/admin/config', requireAdminRole, validateCaasConfig, async (req: AuthenticatedRequest, res: Response, next: any) => {
   try {
     const { apiUrl, apiKey } = req.body;
 
-    // Check if configuration already exists
-    const existingResult = await query(
-      'SELECT id FROM easypanel_config WHERE active = true LIMIT 1'
-    );
-
-    if (existingResult.rows.length > 0) {
-      // Update existing configuration
-      const updateFields = ['api_url = $1', 'updated_at = NOW()'];
-      const updateValues: any[] = [apiUrl];
-      
-      // Only update API key if provided
-      if (apiKey) {
-        const encryptedApiKey = encryptSecret(apiKey);
-        updateFields.push(`api_key_encrypted = $${updateValues.length + 1}`);
-        updateValues.push(encryptedApiKey);
-      }
-      
-      updateValues.push(existingResult.rows[0].id);
-      
-      await query(
-        `UPDATE easypanel_config 
-         SET ${updateFields.join(', ')}
-         WHERE id = $${updateValues.length}`,
-        updateValues
-      );
-    } else {
-      // Create new configuration - API key is required for new configs
-      if (!apiKey) {
-        return res.status(400).json({
-          error: {
-            message: 'API key is required for new configuration'
-          }
-        });
-      }
-      
-      const encryptedApiKey = encryptSecret(apiKey);
-      await query(
-        `INSERT INTO easypanel_config (api_url, api_key_encrypted, active)
-         VALUES ($1, $2, true)`,
-        [apiUrl, encryptedApiKey]
-      );
-    }
+    // Use caasService to update config
+    await caasService.updateConfig(apiUrl, apiKey);
 
     // Log the configuration update
-    easypanelService.resetConfigCache();
     await logActivity({
       userId: req.user!.id,
       organizationId: req.user!.organizationId!,
       eventType: 'container.config.update',
-      entityType: 'easypanel_config',
+      entityType: 'caas_config',
       entityId: null,
       metadata: { apiUrl }
     });
 
     res.json({
       success: true,
-      message: 'Easypanel configuration updated successfully'
+      message: 'Container platform configuration updated successfully'
     });
   } catch (error) {
     next(error);
