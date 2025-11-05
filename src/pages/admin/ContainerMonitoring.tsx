@@ -133,77 +133,101 @@ export default function ContainerMonitoring() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Container Monitoring</h1>
-        <p className="text-muted-foreground">
-          Platform-wide container deployment statistics and monitoring
-        </p>
+    <div>
+      {/* Clean Hero Section - matching admin dashboard style */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+        <div className="relative z-10">
+          <Badge variant="secondary" className="mb-3">
+            Container Platform
+          </Badge>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Container Monitoring
+          </h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Platform-wide container deployment statistics and monitoring
+          </p>
+        </div>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Activity className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+          <Server className="absolute bottom-10 right-20 h-24 w-24 -rotate-6" />
+        </div>
       </div>
 
-      {/* Platform Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Subscriptions</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overviewLoading ? '...' : overview?.totalSubscriptions || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {overviewLoading ? '...' : overview?.activeSubscriptions || 0} active
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overviewLoading ? '...' : overview?.totalProjects || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Across all organizations
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Services</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overviewLoading ? '...' : overview?.totalServices || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Running containers
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Resource Usage</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="text-sm">
-                <span className="font-medium">
-                  {overviewLoading ? '...' : overview?.totalResourceUsage?.cpuCores || 0}
-                </span> CPU cores
+      {/* Platform Statistics - matching admin dashboard style */}
+      <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Total Subscriptions</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {overviewLoading ? '...' : overview?.totalSubscriptions || 0}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {overviewLoading ? '...' : overview?.activeSubscriptions || 0} active
+                </p>
               </div>
-              <div className="text-sm">
-                <span className="font-medium">
-                  {overviewLoading ? '...' : overview?.totalResourceUsage?.memoryGb || 0}
-                </span> GB RAM
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Users className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Total Projects</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {overviewLoading ? '...' : overview?.totalProjects || 0}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Across all organizations
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <Server className="h-6 w-6 text-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Total Services</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {overviewLoading ? '...' : overview?.totalServices || 0}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Running containers
+                </p>
+              </div>
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Database className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Resource Usage</p>
+                <p className="text-3xl font-bold tracking-tight">
+                  {overviewLoading ? '...' : overview?.totalResourceUsage?.cpuCores || 0}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  CPU cores • {overviewLoading ? '...' : overview?.totalResourceUsage?.memoryGb || 0} GB RAM
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <Activity className="h-6 w-6 text-foreground" />
               </div>
             </div>
           </CardContent>
@@ -213,7 +237,7 @@ export default function ContainerMonitoring() {
       {/* Subscription Breakdown - Hidden for now since we don't have this data */}
 
       {/* Active Subscriptions */}
-      <Card>
+      <Card className="mt-6">
         <CardHeader>
           <CardTitle>Active Subscriptions</CardTitle>
         </CardHeader>
@@ -285,7 +309,7 @@ export default function ContainerMonitoring() {
       </Card>
 
       {/* All Services */}
-      <Card>
+      <Card className="mt-6">
         <CardHeader>
           <CardTitle>All Container Services</CardTitle>
         </CardHeader>

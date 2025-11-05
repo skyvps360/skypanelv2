@@ -90,18 +90,12 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             isActive: activeAnchor === "dashboard" || !currentHash,
           },
           {
-            title: "Container Monitoring",
+            title: "Container Management",
             icon: Container,
             url: `/admin#container-monitoring`,
-            isActive: activeAnchor === "container-monitoring",
-          },
-          {
-            title: "Plan Management",
-            icon: CreditCard,
-            url: `/admin#vps-plans`,
-            isActive: ["vps-plans", "container-plans", "container-templates"].includes(activeAnchor),
+            isActive: ["container-monitoring", "container-plans", "container-templates"].includes(activeAnchor),
             items: [
-              { title: "VPS Plans", url: `/admin#vps-plans`, isActive: activeAnchor === "vps-plans" },
+              { title: "Container Monitoring", url: `/admin#container-monitoring`, isActive: activeAnchor === "container-monitoring" },
               { title: "Container Plans", url: `/admin#container-plans`, isActive: activeAnchor === "container-plans" },
               { title: "Container Templates", url: `/admin#container-templates`, isActive: activeAnchor === "container-templates" },
             ],
@@ -126,6 +120,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               "providers",
               "marketplace",
               "regions",
+              "vps-plans",
             ].includes(activeAnchor),
             items: [
               { title: "Servers", url: `/admin#servers`, isActive: activeAnchor === "servers" },
@@ -134,6 +129,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               { title: "Marketplace", url: `/admin#marketplace`, isActive: activeAnchor === "marketplace" },
               { title: "Regions", url: `/admin#regions`, isActive: activeAnchor === "regions" },
               { title: "Providers", url: `/admin#providers`, isActive: activeAnchor === "providers" },
+              { title: "VPS Plans", url: `/admin#vps-plans`, isActive: activeAnchor === "vps-plans" },
             ],
           },
           {

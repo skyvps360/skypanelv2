@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2, Power, PowerOff } from 'lucide-react'
+import { Plus, Edit, Trash2, Power, PowerOff, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -451,43 +451,55 @@ export default function ContainerPlansManagement() {
 
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Container Plans</h1>
-          <p className="text-muted-foreground">
-            Manage container hosting plans and pricing
-          </p>
+    <div>
+      {/* Clean Hero Section - matching admin dashboard style */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10 flex items-start justify-between">
+          <div>
+            <Badge variant="secondary" className="mb-3">
+              Container Platform
+            </Badge>
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+              Container Plans
+            </h1>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              Manage container hosting plans and pricing
+            </p>
+          </div>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="lg" onClick={resetForm}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Plan
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Create Container Plan</DialogTitle>
+              </DialogHeader>
+              <PlanForm
+                formData={formData}
+                formErrors={formErrors}
+                onNameChange={handleNameChange}
+                onPriceChange={handlePriceChange}
+                onDescriptionChange={handleDescriptionChange}
+                onCpuCoresChange={handleCpuCoresChange}
+                onMemoryChange={handleMemoryChange}
+                onStorageChange={handleStorageChange}
+                onContainersChange={handleContainersChange}
+                onProjectsChange={handleProjectsChange}
+                onCancel={handleCancel}
+                onSubmit={handleCreatePlan}
+                isPending={createPlanMutation.isPending}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
-
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Plan
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create Container Plan</DialogTitle>
-            </DialogHeader>
-            <PlanForm
-              formData={formData}
-              formErrors={formErrors}
-              onNameChange={handleNameChange}
-              onPriceChange={handlePriceChange}
-              onDescriptionChange={handleDescriptionChange}
-              onCpuCoresChange={handleCpuCoresChange}
-              onMemoryChange={handleMemoryChange}
-              onStorageChange={handleStorageChange}
-              onContainersChange={handleContainersChange}
-              onProjectsChange={handleProjectsChange}
-              onCancel={handleCancel}
-              onSubmit={handleCreatePlan}
-              isPending={createPlanMutation.isPending}
-            />
-          </DialogContent>
-        </Dialog>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <Package className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
       </div>
 
       <Card>

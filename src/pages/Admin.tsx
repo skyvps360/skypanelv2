@@ -8,6 +8,7 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
+  Box,
   Calendar,
   CheckCircle,
   ClipboardList,
@@ -2212,6 +2213,19 @@ const Admin: React.FC = () => {
         ],
         actionLabel: "Review integrations",
       },
+      {
+        id: "container-plans",
+        title: "Container Platform",
+        description: "Manage container plans, templates, and deployments.",
+        icon: Box,
+        accent: "text-cyan-600",
+        summary: [
+          { label: "Plans", value: "—" },
+          { label: "Templates", value: "—" },
+          { label: "Projects", value: "—" },
+        ],
+        actionLabel: "Manage containers",
+      },
     ];
   }, [
     activePlanCount,
@@ -2322,95 +2336,104 @@ const Admin: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={isDashboardView ? "space-y-6" : ""}>
       {isDashboardView ? (
         <>
-          <section className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20">
-            <div
-              className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-tr from-primary/20 via-primary/5 to-transparent blur-3xl lg:block"
-              aria-hidden="true"
-            />
-            <div className="relative flex flex-col gap-8 p-8 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-6 lg:max-w-2xl">
-                <Badge variant="outline" className="w-fit">
-                  Mission Control
+          {/* Clean Hero Section - matching dashboard style */}
+          <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8">
+            <div className="relative z-10">
+              <div className="mb-2">
+                <Badge variant="secondary" className="mb-3">
+                  Admin Panel
                 </Badge>
-                <div className="space-y-3">
-                  <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                    {BRAND_NAME} Cloud Administration
-                  </h1>
-                  <p className="text-sm text-muted-foreground sm:text-base">
-                    Coordinate VPS plans, dedicated servers, and client support from a single command surface.
-                  </p>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Active organizations
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-foreground">
-                      {formatCountValue(organizationStats.total)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {formatCountValue(organizationStats.withServers)} with servers
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Support posture
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-foreground">
-                      {formatCountValue(openTicketCount)} open
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {formatCountValue(urgentTickets)} urgent • {formatCountValue(inProgressTickets)} in progress
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Live workloads
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-foreground">
-                      {formatCountValue(activeServers)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Active servers across all providers
-                    </p>
-                  </div>
-                </div>
               </div>
-              <div className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-primary/30 bg-primary/5 p-6 text-foreground shadow-sm backdrop-blur">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                    Live feed
-                  </p>
-                  <p className="text-2xl font-semibold text-foreground">
-                    {formatCountValue(liveProvisioningCount)} builds in flight
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatCountValue(criticalAttentionCount)} items flagged across support and infrastructure.
-                  </p>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleRefresh}
-                  className="w-fit gap-2"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh data
-                </Button>
-              </div>
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+                {BRAND_NAME} Administration
+              </h1>
+              <p className="mt-2 max-w-2xl text-muted-foreground">
+                Manage infrastructure, support tickets, and platform configuration from a unified control panel.
+              </p>
             </div>
-          </section>
-          <section className="space-y-4">
+            
+            {/* Background decoration */}
+            <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+              <Settings className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+              <Shield className="absolute bottom-10 right-20 h-24 w-24 -rotate-6" />
+            </div>
+          </div>
+
+          {/* Key Metrics Grid - matching dashboard style */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Organizations</p>
+                    <p className="text-3xl font-bold tracking-tight">{formatCountValue(organizationStats.total)}</p>
+                    <p className="text-xs text-muted-foreground">{formatCountValue(organizationStats.withServers)} with servers</p>
+                  </div>
+                  <div className="rounded-lg bg-primary/10 p-3">
+                    <Users className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Support Tickets</p>
+                    <p className="text-3xl font-bold tracking-tight">{formatCountValue(openTicketCount)}</p>
+                    <p className="text-xs text-muted-foreground">{formatCountValue(urgentTickets)} urgent • {formatCountValue(inProgressTickets)} in progress</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-3">
+                    <LifeBuoy className="h-6 w-6 text-foreground" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Active Servers</p>
+                    <p className="text-3xl font-bold tracking-tight">{formatCountValue(activeServers)}</p>
+                    <p className="text-xs text-muted-foreground">Across all providers</p>
+                  </div>
+                  <div className="rounded-lg bg-primary/10 p-3">
+                    <Server className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Provisioning</p>
+                    <p className="text-3xl font-bold tracking-tight">{formatCountValue(liveProvisioningCount)}</p>
+                    <p className="text-xs text-muted-foreground">Builds in progress</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-3">
+                    <Clock className="h-6 w-6 text-foreground" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Admin Sections Grid */}
+          <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="space-y-1">
                 <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                  Mission Control
+                  Administration Sections
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Pick a focus area to jump into the tools for that surface.
+                  Select an area to manage platform settings and resources.
                 </p>
               </div>
             </div>
@@ -2420,78 +2443,62 @@ const Admin: React.FC = () => {
                 const isActive = panel.id === activeTab;
 
                 return (
-                  <button
-                    key={panel.id}
-                    type="button"
-                    onClick={() => handleTabChange(panel.id)}
-                    className={cn(
-                      "group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-border/60 bg-card/70 p-5 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                      isActive ? "border-primary/60 shadow-md" : ""
-                    )}
-                    aria-pressed={isActive}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent opacity-0 transition group-hover:opacity-100",
-                        isActive ? "opacity-100" : ""
-                      )}
-                    />
-                    <div className="relative flex items-center gap-3">
-                      <span
-                        className={cn(
-                          "rounded-xl border border-border/60 bg-background/80 p-3 transition",
-                          isActive
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "text-muted-foreground group-hover:text-primary",
-                          panel.accent
-                        )}
-                      >
-                        <Icon className="h-5 w-5" />
-                      </span>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-foreground">
-                          {panel.title}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {panel.description}
-                        </span>
-                      </div>
-                    </div>
-                    <dl className="relative mt-6 grid grid-cols-2 gap-4 text-xs text-muted-foreground sm:text-sm">
-                      {panel.summary.map((item) => (
-                        <div
-                          key={`${panel.id}-${item.label}`}
-                          className="space-y-1"
-                        >
-                          <dt className="font-medium uppercase tracking-wide text-muted-foreground/80">
-                            {item.label}
-                          </dt>
-                          <dd className="text-base font-semibold text-foreground">
-                            {item.value}
-                          </dd>
+                  <Card key={panel.id} className={cn(
+                    "cursor-pointer transition-colors hover:bg-muted/50",
+                    isActive ? "ring-2 ring-primary" : ""
+                  )}>
+                    <CardContent 
+                      className="p-6"
+                      onClick={() => handleTabChange(panel.id)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "rounded-lg p-2",
+                              isActive ? "bg-primary/10" : "bg-muted/50"
+                            )}>
+                              <Icon className={cn(
+                                "h-5 w-5",
+                                isActive ? "text-primary" : "text-muted-foreground"
+                              )} />
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground">{panel.title}</p>
+                              <p className="text-sm text-muted-foreground">{panel.description}</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 mt-4">
+                            {panel.summary.map((item) => (
+                              <div key={`${panel.id}-${item.label}`} className="space-y-1">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                  {item.label}
+                                </p>
+                                <p className="text-lg font-semibold text-foreground">
+                                  {item.value}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      ))}
-                    </dl>
-                    <span className="relative mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                      {panel.actionLabel}
-                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                    </span>
-                  </button>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>
-          </section>
+          </div>
         </>
       ) : null}
 
-      <div className="space-y-12">
+      <div className={isDashboardView ? "space-y-12" : "space-y-6"}>
         <SectionPanel
           section="dashboard"
           activeSection={activeTab}
           className="space-y-8"
         >
-            <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2">
               <Card className="h-full">
                 <CardHeader className="space-y-1">
                   <CardTitle className="text-lg font-semibold text-foreground">
@@ -2526,9 +2533,10 @@ const Admin: React.FC = () => {
                               )}
                               <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
                               <span>
-                                {ticket.updated_at
-                                  ? new Date(ticket.updated_at).toLocaleString()
-                                  : new Date(ticket.created_at).toLocaleString()}
+                                {ticket.updated_at 
+                                  ? new Date(ticket.updated_at).toLocaleString() 
+                                  : new Date(ticket.created_at).toLocaleString()
+                                }
                               </span>
                             </div>
                           </div>
@@ -2610,7 +2618,7 @@ const Admin: React.FC = () => {
                 </CardContent>
               </Card>
             </div>
-    </SectionPanel>
+        </SectionPanel>
 
     <SectionPanel section="theme" activeSection={activeTab}>
             <div className="bg-card shadow sm:rounded-lg">
@@ -4854,15 +4862,15 @@ const Admin: React.FC = () => {
         </SectionPanel>
 
         {/* Container Management Sections */}
-        <SectionPanel section="container-plans" activeSection={activeTab}>
+        <SectionPanel section="container-plans" activeSection={activeTab} className="space-y-0">
           <ContainerPlansManagement />
         </SectionPanel>
 
-        <SectionPanel section="container-templates" activeSection={activeTab}>
+        <SectionPanel section="container-templates" activeSection={activeTab} className="space-y-0">
           <ContainerTemplatesManagement />
         </SectionPanel>
 
-        <SectionPanel section="container-monitoring" activeSection={activeTab}>
+        <SectionPanel section="container-monitoring" activeSection={activeTab} className="space-y-0">
           <ContainerMonitoring />
         </SectionPanel>
 

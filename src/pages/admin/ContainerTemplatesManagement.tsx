@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Eye, EyeOff, Settings } from 'lucide-react'
+import { Plus, Edit, Eye, EyeOff, Settings, FileCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -332,29 +332,41 @@ export default function ContainerTemplatesManagement() {
   )
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Container Templates</h1>
-          <p className="text-muted-foreground">
-            Manage available application templates for container deployment
-          </p>
+    <div>
+      {/* Clean Hero Section - matching admin dashboard style */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 mb-6">
+        <div className="relative z-10 flex items-start justify-between">
+          <div>
+            <Badge variant="secondary" className="mb-3">
+              Container Platform
+            </Badge>
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+              Container Templates
+            </h1>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              Manage available application templates for container deployment
+            </p>
+          </div>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="lg" onClick={resetForm}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Template
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Create Container Template</DialogTitle>
+              </DialogHeader>
+              <TemplateForm />
+            </DialogContent>
+          </Dialog>
         </div>
-
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Template
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create Container Template</DialogTitle>
-            </DialogHeader>
-            <TemplateForm />
-          </DialogContent>
-        </Dialog>
+        
+        {/* Background decoration */}
+        <div className="absolute right-0 top-0 h-full w-1/3 opacity-5">
+          <FileCode className="absolute right-10 top-10 h-32 w-32 rotate-12" />
+        </div>
       </div>
 
       <Card>
