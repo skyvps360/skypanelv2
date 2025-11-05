@@ -980,36 +980,18 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
       });
     }
 
-    // Create project in Easypanel
+    // Create project in container platform
     const dokployProjectId = `${organizationId.substring(0, 8)}-${projectName}`;
     
     try {
       await caasService.createProject(dokployProjectId, req.user!.id);
-      
-      // Grant the organization's Easypanel user access to this project
-      const subscriptionResult = await query(
-        'SELECT easypanel_user_id FROM container_subscriptions WHERE organization_id = $1 AND status = $2',
-        [organizationId, 'active']
-      );
-      
-      if (subscriptionResult.rows.length > 0 && subscriptionResult.rows[0].easypanel_user_id) {
-        try {
-          // CaaS: Project access managed via Docker networks
-            dokployProjectId,
-            subscriptionResult.rows[0].easypanel_user_id,
-            true
-          );
-        } catch (accessError) {
-          console.error('Failed to grant user access to project:', accessError);
-          // Don't fail the entire operation if access grant fails
-        }
-      }
+      // CaaS: Project access managed via Docker networks
     } catch (caasError) {
-      console.error('Failed to create project in Easypanel:', caasError);
+      console.error('Failed to create project:', caasError);
       return res.status(500).json({
         error: {
-          code: 'EASYPANEL_PROJECT_CREATE_FAILED',
-          message: 'Failed to create project in Easypanel',
+          code: 'CAAS_PROJECT_CREATE_FAILED',
+          message: 'Failed to create project',
           details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
@@ -1486,9 +1468,6 @@ router.get('/projects/:projectName/services/:serviceName', async (req: Authentic
     try {
       if (serviceRow.service_type === 'app') {
         // CaaS: Service details retrieved differently
-          project.dokploy_project_id, 
-          serviceRow.dokploy_application_id
-        );
       }
       // For database services, we might need different inspection methods
       // This can be extended based on Easypanel API capabilities
@@ -1627,9 +1606,6 @@ router.get('/projects/:projectName/services/:serviceName/logs', async (req: Auth
     let serviceError = null;
     try {
         // CaaS: Service errors retrieved from Docker logs
-        project.dokploy_project_id, 
-        service.dokploy_application_id
-      );
     } catch (errorCheckError) {
       console.error('Failed to check service errors:', errorCheckError);
     }
@@ -1760,7 +1736,7 @@ router.post('/projects/:projectName/services/app', async (req: AuthenticatedRequ
 
     // Create app service in Easypanel
     try {
-      await caasService.deployApp({project.dokploy_project_id, appConfig, project: projectRow.project_name});
+      await caasService.deployApp({...appConfig, project: projectRow.project_name});
     } catch (caasError) {
       console.error('Failed to create app service in Easypanel:', caasError);
       return res.status(500).json({
@@ -1948,7 +1924,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'postgres',
             resources: resources || {}
           };
-          await caasService.deployDatabase({type: "postgres",project.dokploy_project_id, postgresConfig, project: projectRow.project_name, serviceName: serviceName});
+          await caasService.deployDatabase({type: "postgres", ...postgresConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'mysql': {
@@ -1959,7 +1935,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'mysql',
             resources: resources || {}
           };
-          await caasService.deployDatabase({type: "mysql",project.dokploy_project_id, mysqlConfig, project: projectRow.project_name, serviceName: serviceName});
+          await caasService.deployDatabase({type: "mysql", ...mysqlConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'mariadb': {
@@ -1970,7 +1946,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'mariadb',
             resources: resources || {}
           };
-          await caasService.deployDatabase({type: "mariadb",project.dokploy_project_id, mariadbConfig, project: projectRow.project_name, serviceName: serviceName});
+          await caasService.deployDatabase({type: "mariadb", ...mariadbConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'mongo': {
@@ -1981,7 +1957,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'mongo',
             resources: resources || {}
           };
-          await caasService.deployDatabase({type: "mongo",project.dokploy_project_id, mongoConfig, project: projectRow.project_name, serviceName: serviceName});
+          await caasService.deployDatabase({type: "mongo", ...mongoConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'redis': {
@@ -1990,7 +1966,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             password: credentials?.password, // Redis password is optional
             resources: resources || {}
           };
-          await caasService.deployDatabase({type: "redis",project.dokploy_project_id, redisConfig, project: projectRow.project_name, serviceName: serviceName});
+          await caasService.deployDatabase({type: "redis", ...redisConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         default:
