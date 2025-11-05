@@ -2322,10 +2322,10 @@ const Admin: React.FC = () => {
   };
 
   return (
-    <div className="w-full space-y-10 pb-16 pt-10">
+    <div className="space-y-6">
       {isDashboardView ? (
         <>
-          <section className="relative overflow-hidden rounded-3xl border border-border/60 bg-card/70 shadow-sm">
+          <section className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card via-card to-muted/20">
             <div
               className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-tr from-primary/20 via-primary/5 to-transparent blur-3xl lg:block"
               aria-hidden="true"

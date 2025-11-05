@@ -327,10 +327,13 @@ class EasypanelService {
         throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+  const data = await response.json();
       
-      // TRPC responses are typically wrapped in a result property
-      return data.result?.data ?? data;
+  // tRPC responses from Easypanel are typically nested like:
+  // { result: { data: { json: <payload> } } }
+  // Prefer the inner json payload when present, fall back progressively.
+  const unwrapped = data?.result?.data?.json ?? data?.result?.data ?? data;
+  return unwrapped;
     } catch (error: any) {
       console.error(`Easypanel API request failed for ${endpoint}:`, error);
       
@@ -495,8 +498,8 @@ class EasypanelService {
     try {
       await this.makeRequest('projects.updateProjectEnv', {
         body: { 
-          name: projectName,
-          env: env
+          projectName: projectName,
+          env: JSON.stringify(env)
         }
       });
     } catch (error) {
@@ -540,9 +543,23 @@ class EasypanelService {
         }
       });
 
+      // Ensure we have a stable user id. Some Easypanel versions may not
+      // return the id in the create response. If missing, fetch from list.
+      let id = data?.id as string | undefined;
+      const resolvedEmail = (data?.email as string) || email;
+
+      if (!id) {
+        try {
+          const existing = await this.findUserByEmail(resolvedEmail);
+          if (existing?.id) id = existing.id;
+        } catch {
+          // ignore secondary error, we will fall back to email as id
+        }
+      }
+
       return {
-        id: data.id || data.email,
-        email: data.email || email
+        id: id || resolvedEmail,
+        email: resolvedEmail
       };
     } catch (error) {
       console.error(`Error creating Easypanel user ${email}:`, error);
@@ -558,18 +575,36 @@ class EasypanelService {
       const data = await this.makeRequest('users.listUsers', {
         method: 'GET'
       });
+      // Easypanel returns { users: [...], meta: {...} }
+      const users = Array.isArray(data)
+        ? data
+        : Array.isArray((data as any)?.users)
+          ? (data as any).users
+          : [];
 
-      if (!Array.isArray(data)) {
-        return [];
-      }
+      if (!Array.isArray(users)) return [];
 
-      return data.map((user: any) => ({
+      return users.map((user: any) => ({
         id: user.id || user.email,
         email: user.email || '',
         admin: user.admin || false
       }));
     } catch (error) {
       console.error('Error listing Easypanel users:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find an Easypanel user by email
+   */
+  async findUserByEmail(email: string): Promise<{ id: string; email: string; admin: boolean } | null> {
+    try {
+      const users = await this.listUsers();
+      const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+      return user || null;
+    } catch (error) {
+      console.error(`Error finding Easypanel user by email ${email}:`, error);
       throw error;
     }
   }

@@ -413,17 +413,30 @@ export class ContainerPlanService {
         const orgOwner = orgUserResult.rows[0];
         const easypanelUserEmail = orgOwner.email;
         
-        // Generate a secure random password for the Easypanel user
-        const easypanelPassword = crypto.randomBytes(32).toString('base64');
-        const encryptedPassword = encryptSecret(easypanelPassword);
-
-        // Create Easypanel user (non-admin)
+        // Find or create Easypanel user
         let easypanelUser;
+        let easypanelPassword: string | null = null;
+        let encryptedPassword: string | null = null;
+
         try {
-          easypanelUser = await easypanelService.createUser(easypanelUserEmail, easypanelPassword, false);
+          // First, try to find existing user by email
+          easypanelUser = await easypanelService.findUserByEmail(easypanelUserEmail);
+          
+          if (easypanelUser) {
+            console.log(`Found existing Easypanel user for email ${easypanelUserEmail} with ID: ${easypanelUser.id}`);
+            // User already exists, no password needed (they use their own credentials)
+          } else {
+            // User doesn't exist, create a new one
+            console.log(`Creating new Easypanel user for email ${easypanelUserEmail}`);
+            easypanelPassword = crypto.randomBytes(32).toString('base64');
+            encryptedPassword = encryptSecret(easypanelPassword);
+            
+            easypanelUser = await easypanelService.createUser(easypanelUserEmail, easypanelPassword, false);
+            console.log(`Created new Easypanel user with ID: ${easypanelUser.id}`);
+          }
         } catch (error: any) {
-          console.error('Failed to create Easypanel user:', error);
-          throw new Error(`Failed to create Easypanel user account: ${error.message || 'Unknown error'}`);
+          console.error('Failed to find or create Easypanel user:', error);
+          throw new Error(`Failed to set up Easypanel user account: ${error.message || 'Unknown error'}`);
         }
 
         // Create subscription
@@ -447,24 +460,40 @@ export class ContainerPlanService {
         // Create an initial project for the user
         const initialProjectName = `${orgOwner.org_name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-project`.substring(0, 50);
         
+        let projectCreated = false;
         try {
+          console.log(`Creating initial project "${initialProjectName}" for Easypanel user ID: ${easypanelUser.id}`);
+          
           // Create project in Easypanel
           await easypanelService.createProject(initialProjectName);
-          
-          // Grant the user access to the project
-          await easypanelService.updateProjectAccess(initialProjectName, easypanelUser.id, true);
-
-          // Store the project in our database
-          await client.query(`
-            INSERT INTO container_projects (
-              organization_id, subscription_id, project_name, easypanel_project_name, status
-            )
-            VALUES ($1, $2, $3, $4, 'active')
-          `, [organizationId, subscription.id, initialProjectName, initialProjectName]);
+          projectCreated = true;
+          console.log(`Successfully created project "${initialProjectName}"`);
         } catch (error: any) {
-          console.error('Failed to create initial Easypanel project:', error);
-          // Don't fail the entire subscription if project creation fails
-          // The user can create projects later
+          console.error('Failed to create initial Easypanel project in Easypanel:', error);
+        }
+
+        // Store the project in our database if creation succeeded, even if access grant fails
+        if (projectCreated) {
+          try {
+            await client.query(`
+              INSERT INTO container_projects (
+                organization_id, subscription_id, project_name, easypanel_project_name, status
+              )
+              VALUES ($1, $2, $3, $4, 'active')
+            `, [organizationId, subscription.id, initialProjectName, initialProjectName]);
+            console.log(`Successfully stored project in database for organization ${organizationId}`);
+          } catch (dbErr) {
+            console.error('Failed to store project in database:', dbErr);
+          }
+
+          // Grant the user access to the project, but do not block on failure
+          try {
+            console.log(`Granting access to user ${easypanelUser.id} (${easypanelUserEmail}) for project "${initialProjectName}"`);
+            await easypanelService.updateProjectAccess(initialProjectName, easypanelUser.id, true);
+            console.log(`Successfully granted project access to user ${easypanelUser.id}`);
+          } catch (accessError) {
+            console.error('Failed to grant user access to project:', accessError);
+          }
         }
 
         // Create initial billing cycle
