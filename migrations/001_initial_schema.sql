@@ -1450,6 +1450,30 @@ CREATE TABLE IF NOT EXISTS container_plans (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Fix existing container_plans table if columns are wrong type
+DO $$
+BEGIN
+    -- Check if max_cpu_cores is integer and fix it
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'container_plans' 
+        AND column_name = 'max_cpu_cores' 
+        AND data_type = 'integer'
+    ) THEN
+        ALTER TABLE container_plans ALTER COLUMN max_cpu_cores TYPE DECIMAL(10,2);
+    END IF;
+    
+    -- Check if max_memory_gb is integer and fix it
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'container_plans' 
+        AND column_name = 'max_memory_gb' 
+        AND data_type = 'integer'
+    ) THEN
+        ALTER TABLE container_plans ALTER COLUMN max_memory_gb TYPE DECIMAL(10,2);
+    END IF;
+END $$;
+
 -- Container subscriptions table
 CREATE TABLE IF NOT EXISTS container_subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

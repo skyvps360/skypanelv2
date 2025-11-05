@@ -132,12 +132,10 @@ class ContainerService {
         success: true,
         plan: response.plan,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create container plan error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to create container plan',
-      };
+      // Re-throw with structured details so mutations can display validation errors
+      throw createDisplayError(error);
     }
   }
 
@@ -155,12 +153,10 @@ class ContainerService {
         success: true,
         plan: response.plan,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Update container plan error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update container plan',
-      };
+      // Re-throw with structured details so mutations can display validation errors
+      throw createDisplayError(error);
     }
   }
 

@@ -124,7 +124,7 @@ const PlanForm = React.memo(({
           min="0.1"
           value={formData.maxCpuCores}
           onChange={onCpuCoresChange}
-          placeholder="2"
+          placeholder="1.5"
         />
         {formErrors.maxCpuCores && (
           <p className="text-sm text-red-500">{formErrors.maxCpuCores}</p>
@@ -140,7 +140,7 @@ const PlanForm = React.memo(({
           min="0.1"
           value={formData.maxMemoryGb}
           onChange={onMemoryChange}
-          placeholder="4"
+          placeholder="2.5"
         />
         {formErrors.maxMemoryGb && (
           <p className="text-sm text-red-500">{formErrors.maxMemoryGb}</p>
@@ -533,6 +533,7 @@ export default function ContainerPlansManagement() {
                         <div>{plan.maxMemoryGb} GB RAM</div>
                         <div>{plan.maxStorageGb} GB storage</div>
                         <div>{plan.maxContainers} containers</div>
+                        <div>{plan.maxProjects} projects</div>
                       </div>
                     </TableCell>
                     <TableCell>
