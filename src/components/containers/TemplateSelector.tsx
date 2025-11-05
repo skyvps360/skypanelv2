@@ -111,7 +111,7 @@ const normalizeMemoryGb = (value: unknown): number | null => {
     return null;
   }
 
-  // Easypanel resource values are typically expressed in MB. When the value
+  // Dokploy resource values are typically expressed in MB. When the value
   // looks like a larger whole number, convert it to GB for display purposes.
   if (numeric > 64) {
     return numeric / 1024;

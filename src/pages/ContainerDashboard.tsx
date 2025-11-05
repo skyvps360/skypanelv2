@@ -1,6 +1,6 @@
 /**
  * Container Dashboard Component
- * Main dashboard for Easypanel Container as a Service (CaaS) management
+ * Main dashboard for Dokploy Container as a Service (CaaS) management
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';

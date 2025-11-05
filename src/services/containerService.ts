@@ -1,6 +1,6 @@
 /**
  * Container Service for SkyPanelV2 Frontend
- * Handles Easypanel Container as a Service (CaaS) API interactions
+ * Handles Dokploy Container as a Service (CaaS) API interactions
  */
 
 import { apiClient } from '@/lib/api';
