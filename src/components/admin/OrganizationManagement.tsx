@@ -214,59 +214,57 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                 onOpenChange={() => toggleOrganization(org.id)}
               >
                 <div className="rounded-lg border bg-card">
-                  <CollapsibleTrigger className="w-full">
-                    <div className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
+                  <div className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors">
+                    <CollapsibleTrigger className="flex items-center gap-3 flex-1">
+                      {expandedOrgs.has(org.id) ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
                       <div className="flex items-center gap-3">
-                        {expandedOrgs.has(org.id) ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        )}
-                        <div className="flex items-center gap-3">
-                          <Building2 className="h-5 w-5 text-primary" />
-                          <div className="text-left">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold">{org.name}</h3>
-                              <Badge variant="outline" className="text-xs">
-                                {org.memberCount} member{org.memberCount !== 1 ? 's' : ''}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Owner: {org.ownerName} ({org.ownerEmail})
-                            </p>
+                        <Building2 className="h-5 w-5 text-primary" />
+                        <div className="text-left">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">{org.name}</h3>
+                            <Badge variant="outline" className="text-xs">
+                              {org.memberCount} member{org.memberCount !== 1 ? 's' : ''}
+                            </Badge>
                           </div>
+                          <p className="text-sm text-muted-foreground">
+                            Owner: {org.ownerName} ({org.ownerEmail})
+                          </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-right text-xs text-muted-foreground mr-4">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            Created {formatDate(org.createdAt)}
-                          </div>
+                    </CollapsibleTrigger>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right text-xs text-muted-foreground mr-4">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Created {formatDate(org.createdAt)}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toast.info('Edit organization - coming soon');
-                          }}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toast.info('Delete organization - coming soon');
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toast.info('Edit organization - coming soon');
+                        }}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toast.info('Delete organization - coming soon');
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                  </CollapsibleTrigger>
+                  </div>
                   
                   <CollapsibleContent>
                     <div className="border-t p-4 bg-accent/20">
