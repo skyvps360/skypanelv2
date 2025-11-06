@@ -1,5 +1,8 @@
-/*
-displays VPS plans with pricing information
+/**
+ * Pricing Page
+ * 
+ * Public-facing pricing page that displays available VPS plans with transparent pricing
+ * information. Includes plan specifications, hourly/monthly rates, and feature comparisons.
  */
 
 import React, { useState, useEffect } from 'react';

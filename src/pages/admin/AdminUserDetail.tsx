@@ -316,17 +316,6 @@ const AdminUserDetail: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Modal - Temporarily disabled due to prop mismatch */}
-      {/* {showEditModal && (
-        <UserEditModal
-          user={user}
-          isOpen={showEditModal}
-          onClose={() => setShowEditModal(false)}
-          onSave={async () => {}}
-          isSaving={false}
-        />
-      )} */}
-
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
