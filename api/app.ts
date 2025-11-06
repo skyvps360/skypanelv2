@@ -11,6 +11,8 @@ import express, {
   type Response,
   type NextFunction,
 } from 'express'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import cors from 'cors'
 import helmet from 'helmet'
 import { smartRateLimit, addRateLimitHeaders } from './middleware/rateLimiting.js'
@@ -57,6 +59,11 @@ notificationService.start().catch(err => {
 });
 
 const app: express.Application = express()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const clientBuildPath = path.resolve(__dirname, '../dist')
+const clientIndexFile = path.join(clientBuildPath, 'index.html')
 
 // Trust proxy configuration - must be set before other middleware
 // This enables proper IP detection when behind proxies (Vite dev server, reverse proxies, etc.)
@@ -142,6 +149,23 @@ app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
 /**
  * 404 handler
  */
+if (process.env.NODE_ENV === 'production') {
+  // Serve the built frontend from /dist when running in production
+  app.use(express.static(clientBuildPath))
+
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api/')) {
+      return next()
+    }
+
+    res.sendFile(clientIndexFile, err => {
+      if (err) {
+        next(err)
+      }
+    })
+  })
+}
+
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     success: false,

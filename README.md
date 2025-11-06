@@ -414,17 +414,22 @@ pm2 monit
 pm2 logs
 ```
 
-#### Docker Deployment
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-RUN npm run build
-EXPOSE 3001
-CMD ["npm", "start"]
-```
+#### Docker Deployment (single container)
+1. Copy `.env.example` to `.env` and fill in production values. At minimum set `PORT`, database/Redis URLs, and `VITE_API_URL=/api` so the frontend hits the in-container API.
+2. Build the image:
+   ```bash
+   docker build \
+     --build-arg VITE_API_URL="https://panel.example.com/api" \
+     --build-arg VITE_COMPANY_NAME="SkyPanel" \
+     -t skypanelv2 .
+   ```
+3. Run the container (both API + built UI are served on the same port):
+   ```bash
+   docker run --env-file .env -p 3001:3001 skypanelv2
+   ```
+4. `.dockerignore` keeps unnecessary files (node_modules, env files, logs, etc.) out of the build context—add any other secrets or large assets you do not want baked into the image.
+
+The Express API now serves the Vite `dist/` build directly, so requests to `/` return the SPA while `/api/*` continues to hit the backend. Override any other `VITE_*` values by passing `--build-arg KEY=value` during `docker build`.
 
 ### Production Checklist
 
