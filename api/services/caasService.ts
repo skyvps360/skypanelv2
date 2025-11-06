@@ -548,6 +548,28 @@ class CaasService {
         hostConfig.CpuPeriod = cpuPeriod;
       }
 
+      // Prepare volume mounts
+      const binds: string[] = [];
+      const volumes: Record<string, {}> = {};
+      
+      if (config.mounts && config.mounts.length > 0) {
+        for (const mount of config.mounts) {
+          if (mount.type === 'volume' && mount.name) {
+            // Docker volume mount
+            binds.push(`${mount.name}:${mount.mountPath}`);
+            volumes[mount.mountPath] = {};
+          } else if (mount.type === 'bind' && mount.hostPath) {
+            // Bind mount
+            binds.push(`${mount.hostPath}:${mount.mountPath}`);
+            volumes[mount.mountPath] = {};
+          }
+        }
+      }
+
+      if (binds.length > 0) {
+        hostConfig.Binds = binds;
+      }
+
       // Security: No privileged mode, no host network
       hostConfig.Privileged = false;
       hostConfig.NetworkMode = networkName;
@@ -563,6 +585,7 @@ class CaasService {
           'caas.service': config.serviceName,
           'caas.type': 'app'
         },
+        Volumes: Object.keys(volumes).length > 0 ? volumes : undefined,
         HostConfig: hostConfig,
         NetworkingConfig: {
           EndpointsConfig: {
@@ -589,9 +612,9 @@ class CaasService {
   }
 
   /**
-   * Deploy a database service
+   * Deploy a database service with persistent volume
    */
-  async deployDatabase(config: DatabaseConfig & { project: string; serviceName: string }): Promise<{ serviceId: string; status: string }> {
+  async deployDatabase(config: DatabaseConfig & { project: string; serviceName: string; organizationId?: string }): Promise<{ serviceId: string; status: string; volumeId?: string }> {
     const imageMap: Record<string, string> = {
       postgres: 'postgres:15-alpine',
       mysql: 'mysql:8.0',
@@ -599,6 +622,38 @@ class CaasService {
       mongo: 'mongo:7.0',
       redis: 'redis:7-alpine'
     };
+
+    // Determine data directory based on database type
+    const dataDirMap: Record<string, string> = {
+      postgres: '/var/lib/postgresql/data',
+      mysql: '/var/lib/mysql',
+      mariadb: '/var/lib/mysql',
+      mongo: '/data/db',
+      redis: '/data'
+    };
+
+    const mountPath = dataDirMap[config.type];
+
+    // Create persistent volume for database if organizationId is provided
+    let volumeId: string | undefined;
+    let volumeName: string | undefined;
+    
+    if (config.organizationId && mountPath) {
+      try {
+        const { volumeService } = await import('./volumeService.js');
+        const volume = await volumeService.createVolume({
+          organizationId: config.organizationId,
+          serviceName: config.serviceName,
+          mountPath,
+          sizeLimit: config.storage || 10240, // Default 10GB
+          backupEnabled: true
+        });
+        volumeId = volume.id;
+        volumeName = volume.name;
+      } catch (error) {
+        console.warn('Failed to create volume, deploying without persistence:', error);
+      }
+    }
 
     const appConfig: AppServiceConfig = {
       serviceName: config.serviceName,
@@ -609,10 +664,21 @@ class CaasService {
       env: config.env,
       resources: {
         memoryLimit: 512
-      }
+      },
+      // Add volume mount if volume was created
+      mounts: volumeName ? [{
+        type: 'volume',
+        name: volumeName,
+        mountPath
+      }] : undefined
     };
 
-    return this.deployApp({ ...appConfig, project: config.project });
+    const result = await this.deployApp({ ...appConfig, project: config.project });
+    
+    return {
+      ...result,
+      volumeId
+    };
   }
 
   /**

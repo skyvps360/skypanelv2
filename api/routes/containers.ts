@@ -3808,6 +3808,254 @@ router.get('/admin/services', requireAdminRole, async (req: AuthenticatedRequest
   }
 });
 
+// ============================================================
+// Volume Management Routes
+// ============================================================
+
+/**
+ * GET /api/containers/volumes
+ * List volumes for current organization
+ */
+router.get('/volumes', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const organizationId = req.user!.organizationId!;
+    
+    const volumes = await volumeService.listVolumes(organizationId);
+    
+    res.json({
+      success: true,
+      volumes
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/volumes
+ * Create a new volume
+ */
+router.post('/volumes', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const organizationId = req.user!.organizationId!;
+    const { serviceName, mountPath, sizeLimit, backupEnabled } = req.body;
+    
+    if (!serviceName || !mountPath) {
+      return res.status(400).json({
+        error: {
+          code: ERROR_CODES.MISSING_REQUIRED_FIELDS,
+          message: 'Service name and mount path are required'
+        }
+      });
+    }
+    
+    const volume = await volumeService.createVolume({
+      organizationId,
+      serviceName,
+      mountPath,
+      sizeLimit,
+      backupEnabled: backupEnabled !== false
+    });
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId,
+      eventType: 'container.volume.create',
+      entityType: 'volume',
+      entityId: volume.id,
+      metadata: { volumeName: volume.name, serviceName, mountPath }
+    });
+    
+    res.json({
+      success: true,
+      volume
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/volumes/:volumeId
+ * Get volume usage statistics
+ */
+router.get('/volumes/:volumeId', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const { volumeId } = req.params;
+    
+    const usage = await volumeService.getVolumeUsage(volumeId);
+    
+    if (!usage) {
+      return res.status(404).json({
+        error: {
+          code: ERROR_CODES.SERVICE_NOT_FOUND,
+          message: 'Volume not found'
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      usage
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/containers/volumes/:volumeId
+ * Delete a volume
+ */
+router.delete('/volumes/:volumeId', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const { volumeId } = req.params;
+    const organizationId = req.user!.organizationId!;
+    
+    await volumeService.deleteVolume(volumeId);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId,
+      eventType: 'container.volume.delete',
+      entityType: 'volume',
+      entityId: volumeId,
+      metadata: { volumeId }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Volume deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/volumes/:volumeId/backup
+ * Create a backup of a volume
+ */
+router.post('/volumes/:volumeId/backup', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const { volumeId } = req.params;
+    const organizationId = req.user!.organizationId!;
+    
+    const backup = await volumeService.backupVolume(volumeId);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId,
+      eventType: 'container.volume.backup',
+      entityType: 'volume',
+      entityId: volumeId,
+      metadata: { backupId: backup.backupId, size: backup.size }
+    });
+    
+    res.json({
+      success: true,
+      backup
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/volumes/:volumeId/backups
+ * List backups for a volume
+ */
+router.get('/volumes/:volumeId/backups', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const { volumeId } = req.params;
+    
+    const backups = await volumeService.listBackups(volumeId);
+    
+    res.json({
+      success: true,
+      backups
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/volumes/:volumeId/restore
+ * Restore a volume from backup
+ */
+router.post('/volumes/:volumeId/restore', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const { volumeId } = req.params;
+    const { backupId } = req.body;
+    const organizationId = req.user!.organizationId!;
+    
+    if (!backupId) {
+      return res.status(400).json({
+        error: {
+          code: ERROR_CODES.MISSING_REQUIRED_FIELDS,
+          message: 'Backup ID is required'
+        }
+      });
+    }
+    
+    await volumeService.restoreVolume(volumeId, backupId);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId,
+      eventType: 'container.volume.restore',
+      entityType: 'volume',
+      entityId: volumeId,
+      metadata: { backupId }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Volume restored successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/containers/backups/:backupId
+ * Delete a backup
+ */
+router.delete('/backups/:backupId', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { volumeService } = await import('../services/volumeService.js');
+    const { backupId } = req.params;
+    const organizationId = req.user!.organizationId!;
+    
+    await volumeService.deleteBackup(backupId);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId,
+      eventType: 'container.backup.delete',
+      entityType: 'backup',
+      entityId: backupId,
+      metadata: { backupId }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Backup deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Apply error handler to all container routes
 router.use(handleContainerError);
 
