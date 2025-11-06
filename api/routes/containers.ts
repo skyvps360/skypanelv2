@@ -4055,6 +4055,96 @@ router.delete('/backups/:backupId', async (req: AuthenticatedRequest, res: Respo
   }
 });
 
+// ============================================================
+// Monitoring and Metrics Routes
+// ============================================================
+
+/**
+ * GET /api/containers/services/:serviceId/stats
+ * Get real-time container statistics
+ */
+router.get('/services/:serviceId/stats', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { metricsService } = await import('../services/metricsService.js');
+    const { serviceId } = req.params;
+    
+    const stats = await metricsService.getLiveStats(serviceId);
+    
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/services/:serviceId/health
+ * Get container health status
+ */
+router.get('/services/:serviceId/health', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { metricsService } = await import('../services/metricsService.js');
+    const { serviceId } = req.params;
+    
+    const health = await metricsService.getContainerHealth(serviceId);
+    
+    res.json({
+      success: true,
+      health
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/services/:serviceId/history
+ * Get historical usage data
+ */
+router.get('/services/:serviceId/history', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { metricsService } = await import('../services/metricsService.js');
+    const { serviceId } = req.params;
+    const { start, end } = req.query;
+    
+    const timeRange = {
+      start: start ? new Date(start as string) : new Date(Date.now() - 24 * 60 * 60 * 1000),
+      end: end ? new Date(end as string) : new Date()
+    };
+    
+    const history = await metricsService.getHistoricalStats(serviceId, timeRange);
+    
+    res.json({
+      success: true,
+      history
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/organizations/usage
+ * Get organization resource summary
+ */
+router.get('/organizations/usage', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { metricsService } = await import('../services/metricsService.js');
+    const organizationId = req.user!.organizationId!;
+    
+    const usage = await metricsService.getOrganizationUsage(organizationId);
+    
+    res.json({
+      success: true,
+      usage
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Apply error handler to all container routes
 router.use(handleContainerError);
 
