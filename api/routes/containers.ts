@@ -2749,8 +2749,6 @@ router.put('/projects/:projectName/services/:serviceName/env', async (req: Authe
         }
       });
     }
-      });
-    }
 
     // Update configuration in database
     const currentConfig = service.configuration || {};

@@ -870,7 +870,7 @@ class CaasService {
     resources?: ResourceConfig;
   }): Promise<void> {
     try {
-      const docker = this.getDockerClient(serviceId);
+      const docker = await this.getDockerClient(serviceId);
       const oldContainer = docker.getContainer(serviceId);
       
       // Get current container configuration
