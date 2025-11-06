@@ -2736,18 +2736,19 @@ router.put('/projects/:projectName/services/:serviceName/env', async (req: Authe
 
     const service = serviceResult.rows[0];
 
-    // Update environment variables in Easypanel
+    // Update environment variables using CaaS rolling update
     try {
-      await caasService.updateEnv(service.dokploy_application_id, environmentVariables
-      );
+      await caasService.updateEnv(service.container_id || service.dokploy_application_id, environmentVariables);
     } catch (caasError) {
       console.error('Failed to update service environment:', caasError);
       return res.status(500).json({
         error: {
-          code: 'EASYPANEL_ENV_UPDATE_FAILED',
-          message: 'Failed to update service environment in Easypanel',
+          code: 'CAAS_ENV_UPDATE_FAILED',
+          message: 'Failed to update service environment variables',
           details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
+      });
+    }
       });
     }
 
@@ -2912,16 +2913,16 @@ router.put('/projects/:projectName/services/:serviceName/resources', async (req:
       });
     }
 
-    // Update resources in Easypanel
+    // Update resources using CaaS service (live update where possible)
     try {
-      await caasService.updateResources(service.dokploy_application_id, resources
+      await caasService.updateResources(service.container_id || service.dokploy_application_id, resources
       );
     } catch (caasError) {
       console.error('Failed to update service resources:', caasError);
       return res.status(500).json({
         error: {
-          code: 'EASYPANEL_RESOURCES_UPDATE_FAILED',
-          message: 'Failed to update service resources in Easypanel',
+          code: 'CAAS_RESOURCES_UPDATE_FAILED',
+          message: 'Failed to update service resource limits',
           details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });

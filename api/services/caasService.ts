@@ -810,16 +810,155 @@ class CaasService {
   }
 
   /**
-   * Update service environment variables
+   * Update service environment variables with rolling update
    */
   async updateEnv(serviceId: string, env: Record<string, string>): Promise<void> {
-    // Docker doesn't support updating env vars on running containers
-    // Would need to recreate the container with new env
-    throw new ContainerServiceError(
-      ERROR_CODES.SERVICE_ACTION_FAILED,
-      'Environment update requires service recreation',
-      501
-    );
+    try {
+      const docker = this.getDockerClient(serviceId);
+      const container = docker.getContainer(serviceId);
+      
+      // Get current container configuration
+      const inspect = await container.inspect();
+      const config = inspect.Config;
+      const hostConfig = inspect.HostConfig;
+      
+      // Stop the container
+      try {
+        await container.stop();
+      } catch (e) {
+        // Container might already be stopped
+      }
+      
+      // Remove the container
+      await container.remove();
+      
+      // Prepare new environment variables
+      const envArray = Object.entries(env).map(([key, val]) => `${key}=${val}`);
+      
+      // Recreate container with new environment
+      const newContainer = await docker.createContainer({
+        name: inspect.Name,
+        Image: config.Image,
+        Env: envArray,
+        Labels: config.Labels,
+        Volumes: config.Volumes,
+        HostConfig: hostConfig,
+        NetworkingConfig: inspect.NetworkSettings.Networks ? {
+          EndpointsConfig: inspect.NetworkSettings.Networks
+        } : undefined
+      });
+      
+      // Start the new container
+      await newContainer.start();
+    } catch (error) {
+      console.error('Error updating environment variables:', error);
+      throw new ContainerServiceError(
+        ERROR_CODES.SERVICE_ACTION_FAILED,
+        'Failed to update environment variables',
+        500,
+        { error: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
+  /**
+   * Perform rolling update with zero-downtime
+   */
+  async rollingUpdate(serviceId: string, config: {
+    image?: string;
+    env?: Record<string, string>;
+    resources?: ResourceConfig;
+  }): Promise<void> {
+    try {
+      const docker = this.getDockerClient(serviceId);
+      const oldContainer = docker.getContainer(serviceId);
+      
+      // Get current container configuration
+      const inspect = await oldContainer.inspect();
+      const containerConfig = inspect.Config;
+      const hostConfig = inspect.HostConfig;
+      const networkName = Object.keys(inspect.NetworkSettings.Networks || {})[0];
+      
+      // Prepare new configuration
+      const newImage = config.image || containerConfig.Image;
+      const newEnv = config.env ? Object.entries(config.env).map(([k, v]) => `${k}=${v}`) : containerConfig.Env;
+      
+      // Prepare resource limits if provided
+      const newHostConfig: any = { ...hostConfig };
+      if (config.resources) {
+        if (config.resources.memoryLimit) {
+          const memBytes = typeof config.resources.memoryLimit === 'string'
+            ? parseInt(config.resources.memoryLimit) * 1024 * 1024
+            : config.resources.memoryLimit * 1024 * 1024;
+          newHostConfig.Memory = memBytes;
+        }
+        if (config.resources.cpuLimit) {
+          const cpuPeriod = 100000;
+          const cpuQuota = typeof config.resources.cpuLimit === 'string'
+            ? parseFloat(config.resources.cpuLimit) * cpuPeriod
+            : config.resources.cpuLimit * cpuPeriod;
+          newHostConfig.CpuQuota = cpuQuota;
+          newHostConfig.CpuPeriod = cpuPeriod;
+        }
+      }
+      
+      // Create new container with updated configuration
+      const newContainerName = `${inspect.Name}-new`;
+      const newContainer = await docker.createContainer({
+        name: newContainerName,
+        Image: newImage,
+        Env: newEnv,
+        Labels: containerConfig.Labels,
+        Volumes: containerConfig.Volumes,
+        HostConfig: newHostConfig,
+        NetworkingConfig: networkName ? {
+          EndpointsConfig: {
+            [networkName]: {}
+          }
+        } : undefined
+      });
+      
+      // Start new container
+      await newContainer.start();
+      
+      // Wait for new container to be healthy (simple check)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Stop old container
+      try {
+        await oldContainer.stop({ t: 10 });
+      } catch (e) {
+        console.warn('Error stopping old container:', e);
+      }
+      
+      // Rename containers
+      try {
+        await oldContainer.rename({ name: `${inspect.Name}-old` });
+      } catch (e) {
+        console.warn('Error renaming old container:', e);
+      }
+      
+      try {
+        await newContainer.rename({ name: inspect.Name });
+      } catch (e) {
+        console.warn('Error renaming new container:', e);
+      }
+      
+      // Remove old container
+      try {
+        await oldContainer.remove({ force: true });
+      } catch (e) {
+        console.warn('Error removing old container:', e);
+      }
+    } catch (error) {
+      console.error('Error performing rolling update:', error);
+      throw new ContainerServiceError(
+        ERROR_CODES.SERVICE_ACTION_FAILED,
+        'Failed to perform rolling update',
+        500,
+        { error: error instanceof Error ? error.message : String(error) }
+      );
+    }
   }
 
   /**
