@@ -56,19 +56,6 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Pricing from "./pages/Pricing";
 import SSHKeys from "./pages/SSHKeys";
 
-// Container pages
-import ContainerDashboard from "./pages/ContainerDashboard";
-import ContainerPlansPage from "./pages/ContainerPlansPage";
-import ContainerTemplatesPage from "./pages/ContainerTemplatesPage";
-import ContainerProjects from "./pages/ContainerProjects";
-import NewProjectPage from "./pages/NewProjectPage";
-import ProjectDetail from "./pages/ProjectDetail";
-import ServiceDetail from "./pages/ServiceDetail";
-
-// Admin container pages
-import ContainerPlansManagement from "./pages/admin/ContainerPlansManagement";
-import ContainerTemplatesManagement from "./pages/admin/ContainerTemplatesManagement";
-import ContainerMonitoring from "./pages/admin/ContainerMonitoring";
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 
 // Component to handle impersonation banner display
@@ -287,62 +274,6 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <SSHKeys />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/containers"
-          element={
-            <ProtectedRoute>
-              <ContainerDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/containers/plans"
-          element={
-            <ProtectedRoute>
-              <ContainerPlansPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/containers/projects"
-          element={
-            <ProtectedRoute>
-              <ContainerProjects />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/containers/projects/new"
-          element={
-            <ProtectedRoute>
-              <NewProjectPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/containers/templates"
-          element={
-            <ProtectedRoute>
-              <ContainerTemplatesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/containers/projects/:projectName"
-          element={
-            <ProtectedRoute>
-              <ProjectDetail />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/containers/projects/:projectName/services/:serviceName"
-          element={
-            <ProtectedRoute>
-              <ServiceDetail />
             </ProtectedRoute>
           }
         />

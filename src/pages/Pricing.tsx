@@ -1,5 +1,5 @@
 /*
-displays VPS and Container plans with pricing information
+displays VPS plans with pricing information
  */
 
 import React, { useState, useEffect } from 'react';
@@ -8,14 +8,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Loader2, 
   Check, 
   Cpu, 
   HardDrive, 
   MemoryStick, 
-  Container, 
   Server,
   Network,
   Shield,
@@ -23,14 +21,12 @@ import {
   ArrowRight,
   Cloud
 } from 'lucide-react';
-import type { ContainerPlan } from '@/types/containers';
 import type { VPSPlan } from '@/types/vps';
 import { BRAND_NAME } from '@/lib/brand';
 import MarketingNavbar from '@/components/MarketingNavbar';
 import MarketingFooter from '@/components/MarketingFooter';
 
 const PricingPage: React.FC = () => {
-  const [containerPlans, setContainerPlans] = useState<ContainerPlan[]>([]);
   const [vpsPlans, setVpsPlans] = useState<VPSPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,26 +40,16 @@ const PricingPage: React.FC = () => {
     setError(null);
 
     try {
-      // Fetch container plans
-      const containerResponse = await fetch('/api/pricing/containers');
-      const containerResult = await containerResponse.json();
-      
       // Fetch VPS plans  
       const vpsResponse = await fetch('/api/pricing/vps');
       const vpsResult = await vpsResponse.json();
-
-      if (!containerResponse.ok) {
-        console.warn('Container plans fetch failed:', containerResult.error);
-      }
       
       if (!vpsResponse.ok) {
         console.warn('VPS plans fetch failed:', vpsResult.error);
       }
 
-      console.log('Container plans loaded:', containerResult.plans?.length || 0);
       console.log('VPS plans loaded:', vpsResult.plans?.length || 0);
       
-      setContainerPlans(containerResult.plans || []);
       setVpsPlans(vpsResult.plans || []);
     } catch (err) {
       console.error('Failed to load pricing data:', err);
@@ -149,7 +135,7 @@ const PricingPage: React.FC = () => {
             Simple, Predictable Pricing
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-            Choose from our VPS instances or container plans. Pay only for what you use with transparent, hourly billing.
+            Choose from our VPS instances. Pay only for what you use with transparent, hourly billing.
           </p>
         </div>
 
@@ -160,27 +146,14 @@ const PricingPage: React.FC = () => {
           </Alert>
         )}
 
-        {/* Pricing Tabs */}
-        <Tabs defaultValue="vps" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 max-w-lg mx-auto mb-12 h-12">
-            <TabsTrigger value="vps" className="flex items-center gap-2">
-              <Server className="h-4 w-4" />
-              VPS Instances
-            </TabsTrigger>
-            <TabsTrigger value="containers" className="flex items-center gap-2">
-              <Container className="h-4 w-4" />
-              Container Plans
-            </TabsTrigger>
-          </TabsList>
-
-          {/* VPS Plans */}
-          <TabsContent value="vps" className="space-y-8">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-semibold mb-4">VPS Instances</h2>
-              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                High-performance virtual private servers with full root access and SSH console
-              </p>
-            </div>
+        {/* VPS Plans */}
+        <div className="space-y-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-semibold mb-4">VPS Instances</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              High-performance virtual private servers with full root access and SSH console
+            </p>
+          </div>
 
             {vpsPlans.length === 0 ? (
               <Card>
@@ -331,115 +304,7 @@ const PricingPage: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* Container Plans */}
-          <TabsContent value="containers" className="space-y-8">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-semibold mb-4">Container Plans</h2>
-              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Managed container hosting with one-click deployments and automatic scaling
-              </p>
-            </div>
-
-            {containerPlans.length === 0 ? (
-              <Card>
-                <CardContent className="py-12">
-                  <div className="text-center">
-                    <Container className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-medium mb-2">No Container Plans Available</h3>
-                    <p className="text-muted-foreground mb-4">
-                      Container plans are not currently configured. Please check back later.
-                    </p>
-                    <Button asChild variant="outline">
-                      <Link to="/contact">Contact Support</Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {containerPlans.map((plan) => (
-                  <Card key={plan.id} className="relative border border-border/60 bg-card hover:border-primary/50 transition-colors">
-                    <CardHeader>
-                      <CardTitle className="text-xl">{plan.name}</CardTitle>
-                      <CardDescription>{plan.description}</CardDescription>
-                      <div className="pt-2">
-                        <span className="text-3xl font-bold">{formatCurrency(Number(plan.priceMonthly) || 0)}</span>
-                        <span className="text-muted-foreground">/month</span>
-                      </div>
-                    </CardHeader>
-
-                    <CardContent className="space-y-4">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <Cpu className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm">
-                            {formatResource(Number(plan.maxCpuCores) || 0, 'CPU Core')}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-3">
-                          <MemoryStick className="h-4 w-4 text-green-600" />
-                          <span className="text-sm">
-                            {formatResource(Number(plan.maxMemoryGb) || 0, 'GB Memory')}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-3">
-                          <HardDrive className="h-4 w-4 text-purple-600" />
-                          <span className="text-sm">
-                            {formatResource(Number(plan.maxStorageGb) || 0, 'GB Storage')}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-3">
-                          <Container className="h-4 w-4 text-orange-600" />
-                          <span className="text-sm">
-                            {formatResource(Number(plan.maxContainers) || 0, 'Container')}
-                          </span>
-                        </div>
-                      </div>
-                    </CardContent>
-
-                    <CardFooter>
-                      <Button asChild className="w-full">
-                        <Link to="/register">
-                          Get Started
-                          <ArrowRight className="h-4 w-4 ml-2" />
-                        </Link>
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {/* Container Features */}
-            <Card className="bg-muted/20">
-              <CardContent className="pt-6">
-                <h3 className="font-semibold mb-4">Container Features Include:</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {[
-                    'One-click app deployment',
-                    'Popular application templates',
-                    'Automatic scaling',
-                    'Built-in monitoring',
-                    'Database services',
-                    'Custom domains',
-                    'SSL certificates',
-                    'Real-time logs'
-                  ].map((feature) => (
-                    <div key={feature} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-primary" />
-                      <span className="text-sm">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        </div>
 
         {/* Call to Action */}
         <Card className="mt-16 bg-gradient-to-br from-primary/5 via-transparent to-transparent border-primary/20">
