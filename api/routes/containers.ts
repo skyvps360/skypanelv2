@@ -4145,6 +4145,204 @@ router.get('/organizations/usage', async (req: AuthenticatedRequest, res: Respon
   }
 });
 
+// ============================================================
+// Domain Management Routes
+// ============================================================
+
+/**
+ * POST /api/containers/services/:serviceId/domains
+ * Add a custom domain to a service
+ */
+router.post('/services/:serviceId/domains', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { domainService } = await import('../services/domainService.js');
+    const { serviceId } = req.params;
+    const { hostname, port, pathPrefix, sslEnabled } = req.body;
+    const organizationId = req.user!.organizationId!;
+    
+    if (!hostname) {
+      return res.status(400).json({
+        error: {
+          code: ERROR_CODES.MISSING_REQUIRED_FIELDS,
+          message: 'Hostname is required'
+        }
+      });
+    }
+    
+    const domain = await domainService.addDomain({
+      organizationId,
+      serviceId,
+      hostname,
+      port: port || 80,
+      pathPrefix,
+      sslEnabled: sslEnabled !== false
+    });
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId,
+      eventType: 'container.domain.add',
+      entityType: 'domain',
+      entityId: domain.id,
+      metadata: { serviceId, hostname }
+    });
+    
+    res.json({
+      success: true,
+      domain
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/services/:serviceId/domains
+ * List domains for a service
+ */
+router.get('/services/:serviceId/domains', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { domainService } = await import('../services/domainService.js');
+    const { serviceId } = req.params;
+    
+    const domains = await domainService.listDomains(serviceId);
+    
+    res.json({
+      success: true,
+      domains
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/domains
+ * List all domains for current organization
+ */
+router.get('/domains', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { domainService } = await import('../services/domainService.js');
+    const organizationId = req.user!.organizationId!;
+    
+    const domains = await domainService.listOrganizationDomains(organizationId);
+    
+    res.json({
+      success: true,
+      domains
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/containers/domains/:domainId
+ * Delete a domain
+ */
+router.delete('/domains/:domainId', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { domainService } = await import('../services/domainService.js');
+    const { domainId } = req.params;
+    const organizationId = req.user!.organizationId!;
+    
+    await domainService.deleteDomain(domainId);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId,
+      eventType: 'container.domain.delete',
+      entityType: 'domain',
+      entityId: domainId,
+      metadata: { domainId }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Domain deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/domains/validate
+ * Validate domain ownership
+ */
+router.post('/domains/validate', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { domainService } = await import('../services/domainService.js');
+    const { hostname } = req.body;
+    
+    if (!hostname) {
+      return res.status(400).json({
+        error: {
+          code: ERROR_CODES.MISSING_REQUIRED_FIELDS,
+          message: 'Hostname is required'
+        }
+      });
+    }
+    
+    const validation = await domainService.validateDomain(hostname);
+    
+    res.json({
+      success: true,
+      validation
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/domains/:hostname/certificate
+ * Get SSL certificate status
+ */
+router.get('/domains/:hostname/certificate', async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { domainService } = await import('../services/domainService.js');
+    const { hostname } = req.params;
+    
+    const certificate = await domainService.getCertificateStatus(hostname);
+    
+    res.json({
+      success: true,
+      certificate
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/admin/traefik/deploy
+ * Deploy Traefik reverse proxy (Admin only)
+ */
+router.post('/admin/traefik/deploy', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { domainService } = await import('../services/domainService.js');
+    
+    const result = await domainService.ensureTraefikDeployed();
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'container.traefik.deploy',
+      entityType: 'traefik',
+      entityId: result.containerId || null,
+      metadata: { deployed: result.deployed }
+    });
+    
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Apply error handler to all container routes
 router.use(handleContainerError);
 

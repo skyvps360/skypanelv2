@@ -97,6 +97,8 @@ export interface DomainConfig {
   host: string;
   port?: number;
   https?: boolean;
+  pathPrefix?: string;
+  enableTraefik?: boolean;
 }
 
 export interface MountConfig {
@@ -574,17 +576,50 @@ class CaasService {
       hostConfig.Privileged = false;
       hostConfig.NetworkMode = networkName;
 
+      // Prepare labels (including Traefik if domains configured)
+      const labels: Record<string, string> = {
+        'caas.tenant': tenantId,
+        'caas.project': config.project,
+        'caas.service': config.serviceName,
+        'caas.type': 'app'
+      };
+
+      // Add Traefik labels if domains are configured
+      if (config.domains && config.domains.length > 0) {
+        for (let i = 0; i < config.domains.length; i++) {
+          const domain = config.domains[i];
+          if (domain.enableTraefik !== false) {
+            const routerName = `${config.serviceName}-${i}`;
+            const port = domain.port || 80;
+            
+            labels['traefik.enable'] = 'true';
+            labels[`traefik.http.routers.${routerName}.rule`] = domain.pathPrefix 
+              ? `Host(\`${domain.host}\`) && PathPrefix(\`${domain.pathPrefix}\`)`
+              : `Host(\`${domain.host}\`)`;
+            labels[`traefik.http.routers.${routerName}.entrypoints`] = 'web';
+            labels[`traefik.http.services.${routerName}.loadbalancer.server.port`] = port.toString();
+
+            // Add HTTPS configuration if enabled
+            if (domain.https !== false) {
+              labels[`traefik.http.routers.${routerName}-secure.rule`] = labels[`traefik.http.routers.${routerName}.rule`];
+              labels[`traefik.http.routers.${routerName}-secure.entrypoints`] = 'websecure';
+              labels[`traefik.http.routers.${routerName}-secure.tls`] = 'true';
+              labels[`traefik.http.routers.${routerName}-secure.tls.certresolver`] = 'letsencrypt';
+              
+              // Redirect HTTP to HTTPS
+              labels[`traefik.http.routers.${routerName}.middlewares`] = `${routerName}-redirect`;
+              labels[`traefik.http.middlewares.${routerName}-redirect.redirectscheme.scheme`] = 'https';
+            }
+          }
+        }
+      }
+
       // Create and start container
       const container = await docker.createContainer({
         name: containerName,
         Image: config.source.image || 'nginx:latest',
         Env: envArray,
-        Labels: {
-          'caas.tenant': tenantId,
-          'caas.project': config.project,
-          'caas.service': config.serviceName,
-          'caas.type': 'app'
-        },
+        Labels: labels,
         Volumes: Object.keys(volumes).length > 0 ? volumes : undefined,
         HostConfig: hostConfig,
         NetworkingConfig: {
