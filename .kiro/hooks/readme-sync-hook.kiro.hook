@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "README Sync",
+  "description": "Automatically updates README.md when code files are modified to keep documentation current with the latest changes",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.tsx",
+      "src/**/*.ts",
+      "api/**/*.ts",
+      "package.json",
+      "migrations/*.sql",
+      "scripts/*.js"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Code files have been updated. Please review the current README.md file and update it to reflect any new features, API changes, setup instructions, or architectural modifications based on the recent code changes. Focus on keeping the documentation accurate and helpful for developers getting started with the project."
+  }
+}
