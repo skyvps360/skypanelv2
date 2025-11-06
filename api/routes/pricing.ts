@@ -1,6 +1,5 @@
 import express, { Request, Response } from "express";
 import { query } from "../lib/database.js";
-import { ContainerPlanService } from "../services/containerPlanService.js";
 
 const router = express.Router();
 
@@ -62,30 +61,9 @@ router.get("/vps", async (_req: Request, res: Response) => {
 });
 
 /**
- * GET /api/pricing/containers
- * 
- * Public endpoint to retrieve available container plans for pricing display.
- * No authentication required - this is for public pricing pages.
- */
-router.get("/containers", async (_req: Request, res: Response) => {
-  try {
-    const plans = await ContainerPlanService.listPlans(true); // Only active plans
-    
-    res.json({
-      plans
-    });
-  } catch (error) {
-    console.error("Public container plans fetch error:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to fetch container plans";
-    res.status(500).json({ error: message });
-  }
-});
-
-/**
  * GET /api/pricing
  * 
- * Public endpoint to retrieve all pricing information (VPS + containers).
+ * Public endpoint to retrieve all pricing information (VPS).
  * No authentication required - this is for public pricing pages.
  */
 router.get("/", async (_req: Request, res: Response) => {
@@ -130,13 +108,9 @@ router.get("/", async (_req: Request, res: Response) => {
       region_id: row.region_id,
       specifications: row.specifications,
     }));
-
-    // Fetch container plans
-    const containerPlans = await ContainerPlanService.listPlans(true); // Only active plans
     
     res.json({
-      vps: vpsPlans,
-      containers: containerPlans
+      vps: vpsPlans
     });
   } catch (error) {
     console.error("Public pricing fetch error:", error);

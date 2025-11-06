@@ -3421,56 +3421,6 @@ router.get(
         [id]
       );
 
-      // Get user's container subscription and projects
-      let containerSubscription = null;
-      let containerProjects: any[] = [];
-
-      try {
-        const containerSubResult = await query(
-          `SELECT 
-            cs.id,
-            cs.plan_id,
-            cp.name as plan_name,
-            cs.status,
-            cs.created_at
-          FROM container_subscriptions cs
-          JOIN organizations org ON org.id = cs.organization_id
-          JOIN organization_members om ON om.organization_id = org.id
-          LEFT JOIN container_plans cp ON cp.id = cs.plan_id
-          WHERE om.user_id = $1
-          ORDER BY cs.created_at DESC
-          LIMIT 1`,
-          [id]
-        );
-
-        if (containerSubResult.rows.length > 0) {
-          containerSubscription = containerSubResult.rows[0];
-
-          // Get container projects for this user
-          const projectsResult = await query(
-            `SELECT 
-              cp.id,
-              cp.project_name,
-              cp.status,
-              cp.created_at,
-              COALESCE(
-                (SELECT COUNT(*) FROM container_services cs WHERE cs.project_id = cp.id),
-                0
-              ) as service_count
-            FROM container_projects cp
-            JOIN organizations org ON org.id = cp.organization_id
-            JOIN organization_members om ON om.organization_id = org.id
-            WHERE om.user_id = $1
-            ORDER BY cp.created_at DESC`,
-            [id]
-          );
-          containerProjects = projectsResult.rows;
-        }
-      } catch (containerErr: any) {
-        // Container tables might not exist, continue without container data
-        console.warn("Container data not available:", containerErr.message);
-      }
-
       // Get user's billing information
       let billing = {
         wallet_balance: 0,
@@ -3572,8 +3522,6 @@ router.get(
       const detailedUser = {
         user,
         vpsInstances: vpsResult.rows,
-        containerSubscription,
-        containerProjects,
         billing,
         activity
       };
@@ -3651,35 +3599,6 @@ router.delete(
             WHERE organization_id = ANY($1)`,
             [organizationIds]
           );
-        }
-
-        // Delete container subscriptions and projects
-        try {
-          if (organizationIds.length > 0) {
-            await query(
-              `DELETE FROM container_services 
-              WHERE project_id IN (
-                SELECT id FROM container_projects 
-                WHERE organization_id = ANY($1)
-              )`,
-              [organizationIds]
-            );
-
-            await query(
-              `DELETE FROM container_projects 
-              WHERE organization_id = ANY($1)`,
-              [organizationIds]
-            );
-
-            await query(
-              `DELETE FROM container_subscriptions 
-              WHERE organization_id = ANY($1)`,
-              [organizationIds]
-            );
-          }
-        } catch (containerErr: any) {
-          // Container tables might not exist, continue
-          console.warn("Container cleanup not available:", containerErr.message);
         }
 
         // Delete billing records

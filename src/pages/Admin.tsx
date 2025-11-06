@@ -50,11 +50,6 @@ import MarketplaceManager from "@/components/admin/MarketplaceManager";
 import { AdminSupportView } from "@/components/admin/AdminSupportView";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 
-// Container admin components
-import ContainerPlansManagement from "./admin/ContainerPlansManagement";
-import ContainerTemplatesManagement from "./admin/ContainerTemplatesManagement";
-import ContainerMonitoring from "./admin/ContainerMonitoring";
-import CaasConfig from "./admin/CaasConfig";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -134,9 +129,6 @@ type AdminSection =
   | "dashboard"
   | "support"
   | "vps-plans"
-  | "container-plans"
-  | "container-templates"
-  | "container-monitoring"
   | "servers"
   | "providers"
   | "marketplace"
@@ -148,16 +140,12 @@ type AdminSection =
   | "rate-limiting"
   | "faq-management"
   | "platform"
-  | "caas-config"
   | "contact-management";
 
 const ADMIN_SECTIONS: AdminSection[] = [
   "dashboard",
   "support",
   "vps-plans",
-  "container-plans",
-  "container-templates",
-  "container-monitoring",
   "servers",
   "providers",
   "marketplace",
@@ -169,7 +157,6 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "rate-limiting",
   "faq-management",
   "platform",
-  "caas-config",
   "contact-management",
 ];
 
@@ -2212,19 +2199,6 @@ const Admin: React.FC = () => {
           { label: "Inactive", value: formatCountValue(inactiveProviders) },
         ],
         actionLabel: "Review integrations",
-      },
-      {
-        id: "container-plans",
-        title: "Container Platform",
-        description: "Manage container plans, templates, and deployments.",
-        icon: Box,
-        accent: "text-cyan-600",
-        summary: [
-          { label: "Plans", value: "—" },
-          { label: "Templates", value: "—" },
-          { label: "Projects", value: "—" },
-        ],
-        actionLabel: "Manage containers",
       },
     ];
   }, [
@@ -4959,23 +4933,6 @@ const Admin: React.FC = () => {
         </SectionPanel>
         <SectionPanel section="regions" activeSection={activeTab}>
           <RegionAccessManager token={token || ""} />
-        </SectionPanel>
-
-        {/* Container Management Sections */}
-        <SectionPanel section="container-plans" activeSection={activeTab} className="space-y-0">
-          <ContainerPlansManagement />
-        </SectionPanel>
-
-        <SectionPanel section="container-templates" activeSection={activeTab} className="space-y-0">
-          <ContainerTemplatesManagement />
-        </SectionPanel>
-
-        <SectionPanel section="container-monitoring" activeSection={activeTab} className="space-y-0">
-          <ContainerMonitoring />
-        </SectionPanel>
-        
-        <SectionPanel section="caas-config" activeSection={activeTab}>
-          <CaasConfig />
         </SectionPanel>
       </div>
 
