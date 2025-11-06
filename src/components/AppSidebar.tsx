@@ -12,7 +12,6 @@ import {
   ServerCog,
   Settings,
   Users,
-  Container,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,7 +22,6 @@ import { NavSecondary } from "@/components/nav-secondary";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import { containerService } from "@/services/containerService";
 import {
   Sidebar,
   SidebarContent,
@@ -42,34 +40,11 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
   const location = useLocation();
   const { user } = useAuth();
 
-  // Determine if user has an active container subscription
-  const [hasActiveContainerSubscription, setHasActiveContainerSubscription] = React.useState<boolean>(false);
-
-  React.useEffect(() => {
-    let mounted = true;
-    // Only check subscription status for authenticated users
-    if (!user) {
-      setHasActiveContainerSubscription(false);
-      return;
-    }
-    (async () => {
-      try {
-        const result = await containerService.getSubscription();
-        const isActive = !!(result.success && result.subscription && result.subscription.status === "active");
-        if (mounted) setHasActiveContainerSubscription(isActive);
-      } catch (_) {
-        if (mounted) setHasActiveContainerSubscription(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [user]);
-
   // Main navigation items
   const pathname = location.pathname;
   const currentHash = location.hash?.slice(1) ?? "";
   const isDashboardActive = pathname === "/dashboard";
   const isVpsActive = pathname.startsWith("/vps");
-  const isContainersActive = pathname.startsWith("/containers");
   const isActivityActive = pathname.startsWith("/activity");
   const isBillingActive = pathname.startsWith("/billing");
   const isSshKeysActive = pathname.startsWith("/ssh-keys");
@@ -88,17 +63,6 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             icon: LayoutDashboard,
             url: `/admin`,
             isActive: activeAnchor === "dashboard" || !currentHash,
-          },
-          {
-            title: "Container Management",
-            icon: Container,
-            url: `/admin#container-monitoring`,
-            isActive: ["container-monitoring", "container-plans", "container-templates"].includes(activeAnchor),
-            items: [
-              { title: "Container Monitoring", url: `/admin#container-monitoring`, isActive: activeAnchor === "container-monitoring" },
-              { title: "Container Plans", url: `/admin#container-plans`, isActive: activeAnchor === "container-plans" },
-              { title: "Container Templates", url: `/admin#container-templates`, isActive: activeAnchor === "container-templates" },
-            ],
           },
           {
             title: "Support",
@@ -136,13 +100,12 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             title: "Platform Settings",
             icon: Settings,
             url: `/admin#platform`,
-            isActive: ["platform", "theme", "faq-management", "contact-management", "caas-config"].includes(activeAnchor),
+            isActive: ["platform", "theme", "faq-management", "contact-management"].includes(activeAnchor),
             items: [
               { title: "Theme", url: `/admin#theme`, isActive: activeAnchor === "theme" },
               { title: "FAQ Management", url: `/admin#faq-management`, isActive: activeAnchor === "faq-management" },
               { title: "Contact Management", url: `/admin#contact-management`, isActive: activeAnchor === "contact-management" },
               { title: "Rate Limiting", url: `/admin#rate-limiting`, isActive: activeAnchor === "rate-limiting" },
-              { title: "Container Platform Config", url: `/admin#caas-config`, isActive: activeAnchor === "caas-config" },
             ],
           },
           {
@@ -173,39 +136,6 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               title: "VPS",
               url: "/vps",
               isActive: isVpsActive,
-            },
-          ],
-        },
-        {
-          title: "Containers",
-          url: "/containers",
-          icon: Container,
-          isActive: isContainersActive,
-          items: [
-            {
-              title: "Dashboard",
-              url: "/containers",
-              isActive: pathname === "/containers",
-            },
-            // Only show Projects and Templates if subscription is active
-            ...(hasActiveContainerSubscription
-              ? [
-                  {
-                    title: "Projects",
-                    url: "/containers/projects",
-                    isActive: pathname === "/containers/projects" || pathname.startsWith("/containers/projects/"),
-                  },
-                  {
-                    title: "Templates",
-                    url: "/containers/templates",
-                    isActive: pathname === "/containers/templates",
-                  },
-                ]
-              : []),
-            {
-              title: "Plans",
-              url: "/containers/plans",
-              isActive: pathname === "/containers/plans",
             },
           ],
         },
@@ -244,9 +174,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
       isDashboardActive,
       isSshKeysActive,
       isVpsActive,
-      isContainersActive,
       pathname,
-      hasActiveContainerSubscription,
     ]
   );
 
