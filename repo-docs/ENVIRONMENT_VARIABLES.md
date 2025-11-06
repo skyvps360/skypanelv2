@@ -121,27 +121,7 @@ DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
 1. **Linode**: Create token at https://cloud.linode.com/profile/tokens
 2. **DigitalOcean**: Create token at https://cloud.digitalocean.com/account/api/tokens
 
-## Container Service Integration (Optional)
 
-### Easypanel Configuration
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `EASYPANEL_API_URL` | No | - | Easypanel instance URL (e.g., `https://easypanel.example.com`) |
-| `EASYPANEL_API_KEY` | No | - | Easypanel API key for authentication |
-
-**Setup Instructions:**
-1. Deploy or access an Easypanel instance
-2. Generate API key from Easypanel admin panel
-3. Ensure network connectivity between SkyPanelV2 and Easypanel
-4. Configure through admin UI after setting environment variables
-
-**Features Enabled:**
-- Container as a Service (CaaS) functionality
-- Subscription-based container plans
-- Template-based application deployment
-- Resource quota management
-- Automated container billing
 
 ## Rate Limiting Configuration
 
@@ -292,8 +272,7 @@ node scripts/test-smtp.js
 # Test billing workflow
 node scripts/test-hourly-billing.js
 
-# Test container billing (if Easypanel enabled)
-node scripts/test-container-billing.js
+
 ```
 
 ## Migration Notes
@@ -309,7 +288,7 @@ When upgrading SkyPanelV2, check for new environment variables:
 
 ### Environment Variable Changes
 
-- **v2.1.0**: Added Easypanel integration variables
+
 - **v2.0.0**: Enhanced rate limiting configuration
 - **v1.5.0**: Added InfluxDB monitoring support
 - **v1.4.0**: Improved SMTP2GO configuration options
@@ -318,5 +297,5 @@ When upgrading SkyPanelV2, check for new environment variables:
 
 For additional help with environment configuration, see:
 - [Main README](../README.md)
-- [Easypanel Admin Guide](./EASYPANEL_ADMIN_GUIDE.md)
+
 - [API Reference](./API_REFERENCE.md)

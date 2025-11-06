@@ -48,7 +48,6 @@ async function cleanMigration() {
       DROP TABLE IF EXISTS support_tickets CASCADE;
       DROP TABLE IF EXISTS vps_instances CASCADE;
       DROP TABLE IF EXISTS vps_plans CASCADE;
-      DROP TABLE IF EXISTS containers CASCADE;
       DROP TABLE IF EXISTS user_api_keys CASCADE;
       DROP TABLE IF EXISTS wallets CASCADE;
       DROP TABLE IF EXISTS organization_members CASCADE;

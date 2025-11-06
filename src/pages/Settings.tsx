@@ -91,7 +91,6 @@ const Settings: React.FC = () => {
   const [notificationData, setNotificationData] = useState({
     emailNotifications: true,
     smsNotifications: false,
-    containerAlerts: true,
     billingAlerts: true,
     securityAlerts: true,
     maintenanceAlerts: true
@@ -205,7 +204,6 @@ const Settings: React.FC = () => {
         notifications: {
           email: notificationData.emailNotifications,
           sms: notificationData.smsNotifications,
-          containerAlerts: notificationData.containerAlerts,
           billingAlerts: notificationData.billingAlerts,
           securityAlerts: notificationData.securityAlerts,
           maintenanceAlerts: notificationData.maintenanceAlerts
@@ -547,7 +545,6 @@ const Settings: React.FC = () => {
                   <h4 className="text-sm font-medium text-foreground mb-3">Alert Types</h4>
                   <div className="space-y-3">
                     {[
-                      { key: 'containerAlerts', label: 'Container Alerts', description: 'Container status changes and issues' },
                       { key: 'billingAlerts', label: 'Billing Alerts', description: 'Payment and billing notifications' },
                       { key: 'securityAlerts', label: 'Security Alerts', description: 'Security-related notifications' },
                       { key: 'maintenanceAlerts', label: 'Maintenance Alerts', description: 'Scheduled maintenance notifications' }

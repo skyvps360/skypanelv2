@@ -18,7 +18,7 @@
 ## Key Libraries & Integrations
 - **PayPal REST SDK** for payment processing
 - **Linode/Akamai API** and **DigitalOcean API** for VPS provisioning
-- **Easypanel API** for optional container services
+
 - **ssh2** for WebSocket-based SSH console access
 - **Nodemailer** with SMTP2GO for email notifications
 - **jsonwebtoken** for JWT authentication

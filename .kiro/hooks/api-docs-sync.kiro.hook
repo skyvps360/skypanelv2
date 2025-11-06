@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "name": "API Documentation Sync",
+  "description": "Automatically updates /api-docs when API code is modified to ensure documentation stays current with endpoint changes",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "api/routes/**/*.ts",
+      "api/routes/**/*.js",
+      "api/app.ts",
+      "api/index.ts",
+      "api/services/**/*.ts",
+      "api/services/**/*.js",
+      "api/middleware/**/*.ts",
+      "api/middleware/**/*.js"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "API code has been modified. Please analyze the changes in the API routes, services, and middleware files, then update the /api-docs directory to reflect any new endpoints, modified request/response schemas, authentication requirements, or other API changes. Ensure the documentation accurately represents the current API implementation including proper examples, parameter descriptions, and response formats."
+  }
+}

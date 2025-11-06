@@ -1,5 +1,8 @@
-require('dotenv').config();
-const { Pool } = require('pg');
+import dotenv from 'dotenv';
+import pg from 'pg';
+
+dotenv.config();
+const { Pool } = pg;
 
 async function testConnection() {
   console.log('🔍 Testing PostgreSQL connection...');

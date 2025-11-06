@@ -1750,10 +1750,10 @@ const Admin: React.FC = () => {
           provider_plan_id: selectedType.id,
           base_price: selectedType.price.monthly,
           markup_price: newVPSPlan.markupPrice,
-          backup_price_monthly: newVPSPlan.backupPriceMonthly || selectedType.backup_price_monthly || 0,
-          backup_price_hourly: newVPSPlan.backupPriceHourly || selectedType.backup_price_hourly || 0,
-          backup_upcharge_monthly: newVPSPlan.backupUpchargeMonthly || 0,
-          backup_upcharge_hourly: newVPSPlan.backupUpchargeHourly || 0,
+          backup_price_monthly: parseFloat(String(newVPSPlan.backupPriceMonthly)) || selectedType.backup_price_monthly || 0,
+          backup_price_hourly: parseFloat(String(newVPSPlan.backupPriceHourly)) || selectedType.backup_price_hourly || 0,
+          backup_upcharge_monthly: parseFloat(String(newVPSPlan.backupUpchargeMonthly)) || 0,
+          backup_upcharge_hourly: parseFloat(String(newVPSPlan.backupUpchargeHourly)) || 0,
           daily_backups_enabled: selectedProvider.type === 'digitalocean' ? newVPSPlan.dailyBackupsEnabled : false,
           weekly_backups_enabled: selectedProvider.type === 'digitalocean' ? newVPSPlan.weeklyBackupsEnabled : true,
           specifications: {
@@ -3297,14 +3297,14 @@ const Admin: React.FC = () => {
                 }
               }}
             >
-              <DialogContent className="max-w-xl">
-                <DialogHeader>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                <DialogHeader className="flex-shrink-0">
                   <DialogTitle>Create VPS Plan</DialogTitle>
                   <DialogDescription>
                     Configure plan pricing and markup. Customers will select their region during deployment.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-2">
                   <div className="grid gap-2">
                     <Label htmlFor="plan-name">Display name</Label>
                     <Input
@@ -3514,13 +3514,17 @@ const Admin: React.FC = () => {
                           ? `Default: $${(Number(selectedType.backup_price_monthly) || 0).toFixed(2)}`
                           : "0.00";
                       })()}
-                      value={newVPSPlan.backupPriceMonthly || ""}
-                      onChange={(e) =>
-                        setNewVPSPlan((prev) => ({
-                          ...prev,
-                          backupPriceMonthly: Number(e.target.value) || 0,
-                        }))
-                      }
+                      value={newVPSPlan.backupPriceMonthly}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Allow empty string, numbers, and partial decimal inputs like "0.", ".5", etc.
+                        if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                          setNewVPSPlan((prev) => ({
+                            ...prev,
+                            backupPriceMonthly: value, // Store the string value to preserve typing
+                          }));
+                        }
+                      }}
                     />
                     <p className="text-xs text-muted-foreground">
                       {(() => {
@@ -3550,13 +3554,17 @@ const Admin: React.FC = () => {
                           ? `Default: $${(Number(selectedType.backup_price_hourly) || 0).toFixed(6)}`
                           : "0.000000";
                       })()}
-                      value={newVPSPlan.backupPriceHourly || ""}
-                      onChange={(e) =>
-                        setNewVPSPlan((prev) => ({
-                          ...prev,
-                          backupPriceHourly: Number(e.target.value) || 0,
-                        }))
-                      }
+                      value={newVPSPlan.backupPriceHourly}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Allow empty string, numbers, and partial decimal inputs like "0.", ".5", etc.
+                        if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                          setNewVPSPlan((prev) => ({
+                            ...prev,
+                            backupPriceHourly: value, // Store the string value to preserve typing
+                          }));
+                        }
+                      }}
                     />
                     <p className="text-xs text-muted-foreground">
                       {(() => {
@@ -3576,25 +3584,29 @@ const Admin: React.FC = () => {
                       step="0.01"
                       min={0}
                       placeholder="0.00"
-                      value={newVPSPlan.backupUpchargeMonthly || ""}
+                      value={newVPSPlan.backupUpchargeMonthly}
                       onChange={(e) => {
-                        const monthlyUpcharge = Number(e.target.value) || 0;
-                        setNewVPSPlan((prev) => ({
-                          ...prev,
-                          backupUpchargeMonthly: monthlyUpcharge,
-                          backupUpchargeHourly: monthlyUpcharge / 730,
-                        }));
+                        const value = e.target.value;
+                        // Allow empty string, numbers, and partial decimal inputs like "0.", ".5", etc.
+                        if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                          const numericValue = value === "" ? 0 : parseFloat(value) || 0;
+                          setNewVPSPlan((prev) => ({
+                            ...prev,
+                            backupUpchargeMonthly: value, // Store the string value to preserve typing
+                            backupUpchargeHourly: numericValue / 730,
+                          }));
+                        }
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Additional markup you charge for backups (hourly: ${((Number(newVPSPlan.backupUpchargeMonthly) || 0) / 730).toFixed(6)}/hr)
+                      Additional markup you charge for backups (hourly: ${((parseFloat(String(newVPSPlan.backupUpchargeMonthly)) || 0) / 730).toFixed(6)}/hr)
                     </p>
                   </div>
                   {(() => {
                     const selectedProvider = providers.find(p => p.id === newVPSPlan.selectedProviderId);
                     const selectedType = linodeTypes.find(t => t.id === newVPSPlan.selectedType);
-                    const baseBackupPrice = newVPSPlan.backupPriceMonthly || 0;
-                    const upcharge = newVPSPlan.backupUpchargeMonthly || 0;
+                    const baseBackupPrice = parseFloat(String(newVPSPlan.backupPriceMonthly)) || 0;
+                    const upcharge = parseFloat(String(newVPSPlan.backupUpchargeMonthly)) || 0;
                     const totalWeekly = baseBackupPrice + upcharge;
                     const totalDaily = totalWeekly * 1.5;
 
@@ -3669,7 +3681,7 @@ const Admin: React.FC = () => {
                     />
                   </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="flex-shrink-0 border-t pt-4 mt-4">
                   <Button
                     type="button"
                     variant="outline"

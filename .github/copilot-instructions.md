@@ -1,7 +1,7 @@
 # SkyPanelV2 Copilot Instructions
 
 ## Architecture & Entry Points
-- **Backend:** Starts in `api/server.ts`; wraps Express app from `api/app.ts`, wires `initSSHBridge`, and schedules hourly `BillingService` and `ContainerBillingService`—preserve those hooks when touching server startup.
+- **Backend:** Starts in `api/server.ts`; wraps Express app from `api/app.ts`, wires `initSSHBridge`, and schedules hourly `BillingService`—preserve those hooks when touching server startup.
 - **App Bootstrap:** `api/app.ts` loads `dotenv` first, validates config via `validateConfig()`, boots notification service, then mounts middleware (helmet, smart rate limiting, CORS) before `/api` routes; new routers register after middleware.
 - **Frontend:** Bootstraps through `src/main.tsx` → `src/App.tsx`, where React Router, Auth/Theme/Impersonation providers, and shared `QueryClient` (staleTime 30s) live; wrap protected pages with `ProtectedRoute` or `AdminRoute` helpers.
 - **Real-time:** SSE endpoint in `api/routes/notifications.ts` authenticates via `token` query param and relays `notificationService` events; clients use `EventSource` for live updates.
@@ -20,7 +20,7 @@
 - **Routing:** `App.tsx` defines routes with `ProtectedRoute` (requires auth), `AdminRoute` (requires admin role), and `PublicRoute` (redirects if authenticated); layout via `AppLayout` with breadcrumb context.
 - **Styling:** Tailwind + shadcn components (`src/components/ui`); path alias `@/*` for imports; theming via CSS variables driven by `ThemeContext`.
 - **Data Fetching:** TanStack Query for server state (default staleTime 30s, refetchOnWindowFocus true); `useQuery`/`useMutation` patterns; optimistic updates where appropriate.
-- **Components:** Pages in `src/pages/`, reusable components in `src/components/`, admin-specific in `src/components/admin/`; container features in `src/pages/admin/Container*`.
+- **Components:** Pages in `src/pages/`, reusable components in `src/components/`, admin-specific in `src/components/admin/`.
 
 ## Database & Migrations
 - **Schema:** Single consolidated migration `migrations/001_initial_schema.sql` includes all tables (users, organizations, wallets, vps_instances, support_tickets, activity_logs, container plans/subscriptions, etc.).
@@ -43,11 +43,6 @@
 - **Provider Security:** Provider API tokens encrypted before DB storage; decryption helpers in `api/lib/crypto.ts`; validation via `validateProviderCredentials`.
 - **Audit Logging:** Admin operations logged via `auditLogger` middleware; security headers via `adminSecurityHeaders`; request size limits (`requestSizeLimit`) on sensitive endpoints.
 
-## Container Platform (Easypanel)
-- **Integration:** Optional CaaS via Easypanel; config stored encrypted in `platform_settings`; services under `api/services/containerPlanService.ts`, `resourceQuotaService.ts`, `containerTemplateService.ts`.
-- **Routes:** Container endpoints in `api/routes/containers.ts` with validation middleware from `api/middleware/containerValidation.ts`; admin routes require `requireAdmin`.
-- **Billing:** Monthly subscription cycles managed by `ContainerBillingService`; processes due cycles hourly, deducts from wallets, handles suspensions.
-- **Frontend:** User-facing pages in `src/pages/ContainerDashboard.tsx`, `ContainerPlansPage.tsx`, `ContainerTemplatesPage.tsx`, `ProjectDetail.tsx`, `ServiceDetail.tsx`; admin pages in `src/pages/admin/Container*`.
 
 ## Provider Architecture
 - **Factory Pattern:** `ProviderFactory.createProvider(type, token)` returns `IProviderService` implementation (Linode or DigitalOcean).
@@ -59,7 +54,7 @@
 ## White-Label & Branding
 - **Environment Variables:** `COMPANY_NAME`, `COMPANY_BRAND_NAME`, `VITE_COMPANY_NAME`, `COMPANY_LOGO_URL` control branding; `src/lib/brand.ts` exports resolved values.
 - **Theme System:** Admin can configure themes via `/admin#theme-manager`; stored in `theme_presets` table; `themeService.ts` manages CRUD; CSS variables applied via `ThemeContext`.
-- **Provider Hiding:** Mentions of "Linode", "DigitalOcean", "Dokploy" not exposed to clients; admins define labels via `/admin#providers` and `/admin#dokploy-config`.
+- **Provider Hiding:** Mentions of "Linode", "DigitalOcean" not exposed to clients; admins define labels via `/admin#providers`.
 
 ## Common Pitfalls
 - **Missing .js Extensions:** ESM requires explicit `.js` in imports; TypeScript will compile without them but runtime will fail.

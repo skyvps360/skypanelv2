@@ -4,31 +4,98 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Node.js](https://img.shields.io/badge/Node.js-43853D?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
-SkyPanelV2 is an open-source control plane for cloud service providing offering vps and container services. It packages provider provisioning, PayPal-backed wallet billing, white-label branding for the applicaiton owner, and a modern self-service portal backed by a React 18 + Vite frontend and an Express.js API.
+SkyPanelV2 is an open-source cloud service reseller billing panel that provides a white-label control plane for cloud hosting businesses. It enables service providers to offer VPS hosting services through a unified interface with integrated billing, customer management, and comprehensive administrative tools.
 
 ## Feature Highlights
 
-- **Multi-provider VPS management**: Unified interface for Linode and DigitalOcean with provider abstraction, normalized APIs, and intelligent caching. See [MULTI_PROVIDER_VPS.md](./repo-docs/MULTI_PROVIDER_VPS.md) for details.
-- **Built-in Container as a Service (CaaS)**: Native Docker-based container platform with rootless isolation, per-tenant networking, resource quotas, and subscription-based billing. No external dependencies required.
-- **Flexible backup pricing**: Provider-specific backup options (daily vs weekly for DigitalOcean), transparent pricing with admin-configurable upcharges, and user-driven region selection. See [FLEXIBLE_BACKUP_PRICING_API.md](./repo-docs/FLEXIBLE_BACKUP_PRICING_API.md) for API documentation.
-- **Provider provisioning**: Linode and DigitalOcean services orchestrate instance creation, plan catalogs, stackscript automation, and activity logging.
-- **Billing & wallets**: PayPal prepaid wallets, hourly reconciliation via `BillingService`, invoices, and downloadable billing artifacts.
-- **Real-time notifications**: PostgreSQL LISTEN/NOTIFY feeds a Server-Sent Events stream surfaced in the UI for activity, billing, and support updates.
-- **White-label experience**: Environment-driven branding, theme toggles, and shadcn-style UI primitives lets admins whitelabel everything from brandname to even the upstream providers.
-- **Secure access**: JWT auth, impersonation support, SSH WebSocket bridge for VPS consoles, and centrally managed rate limiting.
-- **Team collaboration**: Multi-tenant organizations, role-based routing, and auditable activity logs across the stack.
-- **Consistent branding**: Use of consistent brand name definable by `.env` secret.
-- **White label**: Provider names (Linode, DigitalOcean) are hidden from clients and configurable via admin dashboard.
-- **Container Platform**: Configure Docker-based container platform in `/admin#caas-config` to enable containerized application hosting for clients.
-- **Customer-focused design**: Application designed for customer-facing cloud hosting business.
+### Core VPS Management
+- **Multi-provider support**: Unified interface for Linode and DigitalOcean with provider abstraction and normalized APIs
+- **Flexible backup pricing**: Provider-specific backup options with admin-configurable upcharges and transparent pricing
+- **SSH console access**: WebSocket-based SSH bridge for direct VPS terminal access
+- **Real-time monitoring**: Live status updates and resource monitoring across all instances
+
+### Billing & Payments
+- **PayPal integration**: Prepaid wallet system with automated hourly billing reconciliation
+- **Invoice management**: Automated invoice generation with downloadable PDF artifacts
+- **Usage tracking**: Detailed resource usage monitoring and cost breakdown
+- **Multi-currency support**: Flexible pricing with currency formatting
+
+### Administration & Management
+- **Comprehensive admin panel**: User management, provider configuration, and system monitoring
+- **Role-based access**: Admin and user roles with impersonation capabilities for support
+- **Rate limiting**: Configurable API rate limits with different tiers for user types
+- **Activity logging**: Comprehensive audit trail for all system activities
+
+### White-Label & Branding
+- **Environment-driven branding**: Complete customization via environment variables
+- **Theme system**: Multiple theme presets with custom color schemes
+- **Provider abstraction**: Hide upstream provider names from end users
+- **Custom domain support**: Full white-label experience for resellers
+
+### Real-Time Features
+- **Live notifications**: PostgreSQL LISTEN/NOTIFY with Server-Sent Events for instant updates
+- **WebSocket support**: Real-time SSH console and system status updates
+- **Activity feeds**: Live activity streams for billing, support, and system events
+
+### Modern UI/UX
+- **Responsive design**: Mobile-first approach with adaptive layouts
+- **Drag & drop**: Sortable interfaces for provider management and configuration
+- **Modal improvements**: Enhanced dialog sizing with proper scrolling and responsive behavior
+- **Accessibility**: ARIA-compliant components with keyboard navigation support
+- **Dark/Light themes**: Multiple theme presets with system preference detection
+
+### Developer Experience
+- **Modern tech stack**: React 18, TypeScript, Vite with hot reload and fast builds
+- **API-first design**: RESTful APIs with comprehensive documentation and type safety
+- **Database migrations**: Versioned schema management with rollback support
+- **Testing suite**: Vitest for unit tests and Supertest for API integration tests
+- **Development tools**: ESLint, TypeScript strict checking, and automated formatting
+
+## Available Pages & Features
+
+### Customer Portal
+- **Dashboard**: Overview of VPS instances, billing summary, and recent activity
+- **VPS Management**: Create, manage, and monitor VPS instances with real-time status
+- **SSH Console**: Browser-based SSH access with full terminal functionality
+- **SSH Keys**: Manage SSH public keys for secure VPS access
+- **Billing**: Wallet management, PayPal top-ups, invoice history, and usage tracking
+- **Support**: Ticket system with real-time messaging and file attachments
+- **Settings**: Account management, preferences, and security settings
+- **Activity**: Comprehensive activity log with filtering and search
+
+### Administrative Interface
+- **Admin Dashboard**: System overview with key metrics and quick actions
+- **User Management**: User accounts, roles, and impersonation capabilities
+- **VPS Plans**: Configure pricing, markups, and available instance types
+- **Provider Management**: Configure Linode/DigitalOcean APIs and settings
+- **Support Management**: Handle customer tickets and support requests
+- **Platform Settings**: System configuration, themes, and branding options
+- **Rate Limiting**: Configure API rate limits for different user tiers
+- **FAQ Management**: Manage help documentation and frequently asked questions
+
+### Public Pages
+- **Homepage**: Marketing landing page with feature highlights
+- **Pricing**: Public pricing information and plan comparisons
+- **FAQ**: Customer help documentation and common questions
+- **About Us**: Company information and team details
+- **Contact**: Contact form and support information
+- **Status**: System status and uptime monitoring
+- **Terms of Service**: Legal terms and conditions
+- **Privacy Policy**: Privacy policy and data handling information
+
+### API Documentation
+- **API Reference**: Interactive API documentation for developers
+- **Integration Guides**: Documentation for third-party integrations
  
 ## Architecture Snapshot
 
-- Frontend (`src/`): React 18, Vite, TypeScript, Tailwind, TanStack Query 5, Zustand, shadcn-inspired components.
-- Backend (`api/`): Express.js (ESM) with modular routes, service layer, and a dynamic config proxy wrapping environment reads.
-- Database: PostgreSQL migrations in `migrations/` applied through helper scripts; activity logs trigger notifications automatically.
-- Infrastructure helpers (`scripts/`): Migration runners, admin utilities, billing testers, SMTP checks, and other operational tooling.
+- **Frontend (`src/`)**: React 18, Vite, TypeScript, Tailwind CSS, TanStack Query v5, Zustand, shadcn/ui components, React Router v7.
+- **Backend (`api/`)**: Express.js (ESM) with modular routes, service layer, JWT authentication, and comprehensive middleware.
+- **Database**: PostgreSQL with versioned migrations in `migrations/`; real-time notifications via LISTEN/NOTIFY.
+- **Infrastructure (`scripts/`)**: Migration runners, admin utilities, billing automation, SMTP testing, and operational tooling.
 
 ## Repository Layout
 
@@ -41,9 +108,9 @@ SkyPanelV2 is an open-source control plane for cloud service providing offering 
 
 ## Tech Stack
 
-- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, React Router, TanStack Query, Zustand.
-- **Backend**: Node.js 20, Express, TypeScript, PostgreSQL, Redis, Bull queues, Nodemailer, WebSockets (ssh2).
-- **Integrations**: PayPal REST SDK, Linode/Akamai, DigitalOcean (optional), SMTP2GO, Docker Engine hooks, optional InfluxDB metrics.
+- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, React Router v7, TanStack Query v5, Zustand, shadcn/ui components.
+- **Backend**: Node.js 20+, Express.js (ESM), TypeScript, PostgreSQL, Redis, Bull queues, Nodemailer, WebSockets (ssh2).
+- **Integrations**: PayPal REST SDK, Linode/Akamai API, DigitalOcean API, SMTP2GO, optional InfluxDB metrics.
 
 ## Prerequisites
 
@@ -51,7 +118,7 @@ SkyPanelV2 is an open-source control plane for cloud service providing offering 
 - npm 9+
 - PostgreSQL 12+
 - Redis 6+
-- Docker Engine (for Container Platform features)
+
 - Optional: InfluxDB 2.x for metrics collection
 
 ## Getting Started
@@ -81,18 +148,12 @@ SkyPanelV2 is an open-source control plane for cloud service providing offering 
    - `DATABASE_URL` – PostgreSQL connection string.
    - `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` – PayPal REST credentials.
    - `LINODE_API_TOKEN` (required) and `DIGITALOCEAN_API_TOKEN` (optional) for provider APIs.
-   - `CAAS_API_URL` and `CAAS_API_KEY` (optional) for built-in Container Platform. Defaults to local Docker socket.
+
    - `COMPANY_NAME`, `COMPANY_BRAND_NAME`, or `VITE_COMPANY_NAME` to control white-label branding.
    - `SSH_CRED_SECRET` – Auto-generated by the script above for encrypting provider API tokens.
    - `REDIS_URL`, `SMTP2GO_*`, and rate limiting values to match your environment.
 
-   **Container Platform Variables (Optional)**:
-   ```bash
-   # Built-in Container Platform (CaaS)
-   CAAS_API_URL=http://localhost:2375
-   CAAS_API_KEY=your-caas-api-key  # Optional for socket connections
-   CAAS_MODE=development
-   ```
+
 
    For a complete reference of all environment variables, see the **[Environment Variables Documentation](./repo-docs/ENVIRONMENT_VARIABLES.md)**.
 
@@ -114,8 +175,16 @@ SkyPanelV2 is an open-source control plane for cloud service providing offering 
    npm run dev
    ```
 
-   - Vite runs at `http://localhost:5173`.
-   - Express API (with SSE, PayPal webhooks, and SSH bridge) runs at `http://localhost:3001`.
+   This starts both servers concurrently:
+   - **Frontend**: Vite dev server at `http://localhost:5173` with hot reload
+   - **Backend**: Express API at `http://localhost:3001` with auto-restart via Nodemon
+   - **Features**: SSE notifications, PayPal webhooks, SSH WebSocket bridge, API proxy
+
+   For individual servers:
+   ```bash
+   npm run client:dev  # Frontend only
+   npm run server:dev  # Backend only
+   ```
 
 5. **Seed admin access**
 
@@ -128,119 +197,37 @@ SkyPanelV2 is an open-source control plane for cloud service providing offering 
 
    Rotate admin passwords promptly in real deployments.
 
-## Container Platform (CaaS) Integration
 
-SkyPanelV2 includes a built-in Container as a Service (CaaS) platform powered by Docker. This allows users to deploy and manage containerized applications alongside VPS services through a subscription-based model with resource quotas and automated billing.
-
-### Quick Start
-
-1. **Configure Docker Access**
-   ```bash
-   # Ensure Docker is running and accessible
-   # For local development:
-   CAAS_API_URL=http://localhost:2375
-   # Or use Unix socket:
-   CAAS_API_URL=unix:///var/run/docker.sock
-   ```
-
-2. **Configure Environment Variables**
-   ```bash
-   # Add to .env file
-   CAAS_API_URL=http://localhost:2375
-   CAAS_API_KEY=your-api-key  # Optional for socket connections
-   CAAS_MODE=development
-   ```
-
-3. **Apply Database Migration**
-   ```bash
-   node scripts/run-migration.js
-   # This will apply migration 003_migrate_to_caas.sql
-   ```
-
-4. **Restart Application**
-   ```bash
-   npm run dev  # Development
-   npm run pm2:reload  # Production
-   ```
-
-5. **Admin Configuration**
-   - Navigate to **Admin Panel** → **Platform Settings** → **Container Platform Config**
-   - Test connection to Docker daemon
-   - Create container plans in **Container Plans**
-   - Configure templates in **Container Templates**
-
-6. **User Workflow**
-   - Users subscribe to container plans
-   - Create projects to organize services
-   - Deploy from templates, custom Docker images, or databases
-   - Monitor resource usage and manage services
-
-### Core Features
-
-#### For Users
-- **Subscription Plans**: Choose from admin-defined plans with CPU, memory, storage, and container quotas
-- **Project Organization**: Group related services into logical projects with isolated networks
-- **Multiple Deployment Options**:
-  - **Templates**: One-click deployment of popular applications (WordPress, databases, etc.)
-  - **Custom Apps**: Deploy from Docker images or Git repositories
-  - **Managed Databases**: PostgreSQL, MySQL, MongoDB, Redis with automated setup
-- **Resource Management**: Real-time quota monitoring with visual usage indicators
-- **Service Control**: Start, stop, restart, and configure containerized services
-- **Log Access**: View and search container logs for troubleshooting
-- **Environment Management**: Update application configuration through environment variables
-
-#### For Administrators
-- **Plan Management**: Create subscription tiers with flexible resource quotas and pricing
-- **Template Control**: Enable/disable application templates and organize by category
-- **Platform Monitoring**: View usage statistics across all organizations
-- **Billing Automation**: Integrated monthly billing with wallet deduction and suspension handling
-- **Configuration Management**: Secure Docker API configuration with connection testing
-
-### Architecture Integration
-
-The Container Platform follows SkyPanelV2's established patterns:
-
-- **Native Docker Integration**: Direct communication with Docker API using dockerode library
-- **Tenant Isolation**: Rootless containers with per-tenant network namespaces
-- **Database Schema**: Tables for caas_config, plans, subscriptions, projects, services, and billing cycles
-- **Service Layer**: Dedicated CaaS service for Docker orchestration, quota management, and billing
-- **API Routes**: RESTful endpoints under `/api/containers` with proper authentication
-- **Frontend Components**: React components for dashboard, deployment wizards, and management interfaces
-- **Billing System**: Extends existing billing infrastructure with container-specific cycles
-- **Activity Logging**: All container operations logged for audit and notification purposes
-
-### Security & Compliance
-
-- **Rootless Containers**: All containers run without privileged access
-- **Network Isolation**: Per-tenant Docker networks prevent cross-tenant communication
-- **Resource Limits**: CPU and memory quotas enforced at container level using cgroups
-- **No Privileged Mode**: Dangerous capabilities (SYS_ADMIN, host networking) explicitly denied
-- **API Key Encryption**: Docker API credentials encrypted using the same system as VPS provider keys
-- **Access Control**: Role-based permissions with organization-level resource access
-- **Audit Trail**: Comprehensive logging of all container operations and billing events
-
-### Requirements
-
-- **Docker Engine**: Docker daemon accessible via TCP socket or Unix socket
-- **Network Access**: SkyPanelV2 backend must reach Docker API endpoint
-- **Resource Planning**: Adequate server resources to support planned container workloads
-- **Security**: Properly configured Docker daemon with appropriate security settings
-
-### Documentation
-
-- **[Container API Reference](./repo-docs/CONTAINER_API_REFERENCE.md)**: Complete API endpoint documentation
-- For migration from legacy Easypanel/Dokploy systems, see migration notes in the Container API Reference
 
 ## Useful npm Scripts
 
-- `npm run dev` – Start Vite + Nodemon concurrently.
-- `npm run client:dev` / `npm run server:dev` – Run frontend or backend individually.
+### Development
+- `npm run dev` – Start Vite + Nodemon concurrently for full-stack development.
+- `npm run dev-up` – Kill ports and start development servers (convenience script).
+- `npm run client:dev` – Run frontend only (Vite dev server on port 5173).
+- `npm run server:dev` – Run backend only (Nodemon on port 3001).
 - `npm run kill-ports` – Free ports `3001` and `5173` before restarting dev servers.
-- `npm run build` – Type-check and build API + frontend assets.
-- `npm run start` – Launch production Express server and Vite preview.
-- `npm run pm2:start` / `npm run pm2:reload` / `npm run pm2:stop` – Manage PM2-based deployments.
-- `npm run test` / `npm run test:watch` – Run Vitest suites.
-- `npm run lint` / `npm run check` – Run ESLint and TypeScript diagnostics.
+
+### Building & Testing
+- `npm run build` – TypeScript check + Vite build for production.
+- `npm run test` – Run Vitest test suite once.
+- `npm run test:watch` – Run Vitest in watch mode for development.
+- `npm run lint` – Run ESLint validation.
+- `npm run check` – TypeScript type checking without emitting files.
+- `npm run preview` – Preview production build locally.
+
+### Production & Deployment
+- `npm run start` – Launch production Express server + Vite preview.
+- `npm run pm2:start` – Start with PM2 process manager.
+- `npm run pm2:reload` – Reload PM2 processes.
+- `npm run pm2:stop` – Stop and delete PM2 processes.
+- `npm run pm2:list` – List PM2 processes.
+
+### Database Management
+- `npm run db:reset` – Reset database (with confirmation prompt).
+- `npm run db:reset:confirm` – Reset database without prompt.
+- `npm run db:fresh` – Reset database and apply all migrations.
+- `npm run seed:admin` – Create admin user via script.
 
 ### Script Utilities
 
@@ -252,8 +239,7 @@ The Container Platform follows SkyPanelV2's established patterns:
 
 #### Billing & Payment Scripts
 - `node scripts/test-hourly-billing.js` – Dry-run the hourly billing workflow.
-- `node scripts/process-container-billing.js` – Manually process container billing cycles.
-- `node scripts/test-container-billing.js` – Test container billing automation with mock data.
+
 
 #### Communication & Admin Scripts
 - `node scripts/test-smtp.js` – Send an SMTP2GO smoke test.
@@ -262,19 +248,35 @@ The Container Platform follows SkyPanelV2's established patterns:
 
 ## Development Notes
 
-- Express boots from `api/server.ts`, wires the SSH WebSocket bridge, and schedules `BillingService.runHourlyBilling()` and `ContainerBillingService.processDueBillingCycles()`.
-- Database access should flow through `api/lib/database.ts` (`query`, `transaction`) to keep billing and wallet mutations atomic.
-- Use `logActivity` in `api/services/activityLogger.ts` to persist auditable events and emit notifications.
-- Rate limiting lives in `api/middleware/rateLimiting.ts`; reuse `smartRateLimit` or `createCustomRateLimiter` for new routes.
-- Frontend API calls should go through `src/lib/api.ts` or service wrappers so environment-aware URLs and auth headers stay consistent.
-- Update `.env` branding keys and restart dev servers to refresh marketing copy and theming tokens.
+### Backend Architecture
+- **Server startup**: Express boots from `api/server.ts`, initializes SSH WebSocket bridge, and schedules hourly billing
+- **Database access**: Use `api/lib/database.ts` (`query`, `transaction`) for atomic operations, especially billing
+- **Activity logging**: Use `logActivity` in `api/services/activityLogger.ts` for auditable events and notifications
+- **Rate limiting**: Configured in `api/middleware/rateLimiting.ts` with tiered limits for different user types
+
+### Frontend Development
+- **API communication**: Route calls through `src/lib/api.ts` for consistent auth headers and error handling
+- **State management**: TanStack Query for server state, Zustand for client state, React Context for auth/theme
+- **Component library**: shadcn/ui components with Tailwind CSS for consistent styling
+- **Routing**: React Router v7 with protected routes and role-based access control
+
+### Configuration & Branding
+- **Environment variables**: Update `.env` branding keys and restart dev servers to refresh UI
+- **Theme system**: Modify theme presets in `src/theme/` for custom color schemes
+- **White-labeling**: Configure `COMPANY_NAME`, `VITE_COMPANY_NAME` for complete rebranding
+
+### Development Workflow
+- **Hot reload**: Vite provides instant frontend updates, Nodemon restarts backend on changes
+- **Type safety**: Full TypeScript coverage with shared types between frontend and backend
+- **Testing**: Run `npm run test:watch` during development for continuous feedback
+- **Debugging**: Use browser dev tools for frontend, Node.js inspector for backend debugging
 
 ## Documentation
 
 ### API Documentation
 
 - **[API Reference](./repo-docs/API_REFERENCE.md)** - Complete API endpoint reference
-- **[Container API Reference](./repo-docs/CONTAINER_API_REFERENCE.md)** - Container Platform (CaaS) API endpoints
+
 - **[Flexible Backup Pricing API](./repo-docs/FLEXIBLE_BACKUP_PRICING_API.md)** - Backup configuration and pricing endpoints
 - **[Multi-Provider VPS](./repo-docs/MULTI_PROVIDER_VPS.md)** - Multi-provider VPS management
 
@@ -292,25 +294,118 @@ Additional documentation for specific features is available in the `repo-docs/` 
 
 ## Deployment
 
-1. `npm run build`
-2. Provide production `.env` with hardened secrets and `NODE_ENV=production`.
-3. Run `npm run start` (or `npm run pm2:start`) on the target host.
+### Quick Deployment
+1. **Build the application**
+   ```bash
+   npm run build
+   ```
 
-Production checklist:
+2. **Configure production environment**
+   - Copy `.env.example` to `.env` with production values
+   - Set `NODE_ENV=production`
+   - Configure all required secrets and API keys
 
-- Strong `JWT_SECRET`, `ENCRYPTION_KEY`, PayPal live credentials.
-- `TRUST_PROXY` tuned to match load balancer hops.
-- Redis secured (password and TLS when available).
-- PostgreSQL SSL for managed providers.
-- Optional InfluxDB target configured for long-term metrics.
+3. **Deploy and start**
+   ```bash
+   npm run start        # Simple deployment
+   npm run pm2:start    # PM2 process management (recommended)
+   ```
+
+### Production Deployment Options
+
+#### Vercel (Recommended for Serverless)
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy to Vercel
+vercel --prod
+```
+Configure environment variables in Vercel dashboard.
+
+#### VPS/Dedicated Server with PM2
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Deploy with PM2
+npm run pm2:start
+
+# Monitor processes
+pm2 monit
+pm2 logs
+```
+
+#### Docker Deployment
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+EXPOSE 3001
+CMD ["npm", "start"]
+```
+
+### Production Checklist
+
+#### Security
+- [ ] Strong `JWT_SECRET` (32+ characters)
+- [ ] Secure `ENCRYPTION_KEY` for provider API tokens
+- [ ] PayPal live credentials (not sandbox)
+- [ ] `TRUST_PROXY` configured for your infrastructure
+- [ ] Redis password and TLS enabled
+- [ ] PostgreSQL SSL for managed database providers
+
+#### Performance
+- [ ] Redis caching configured and connected
+- [ ] Database connection pooling optimized
+- [ ] Rate limiting configured appropriately
+- [ ] Static assets served via CDN (if applicable)
+
+#### Monitoring
+- [ ] Application logging configured
+- [ ] Error tracking service integrated
+- [ ] Database backup strategy implemented
+- [ ] Health check endpoints configured
+- [ ] Optional: InfluxDB for metrics collection
+
+#### Environment Variables
+- [ ] All required variables from `.env.example` configured
+- [ ] Provider API tokens with proper permissions
+- [ ] SMTP credentials for email notifications
+- [ ] PayPal webhook endpoints configured
 
 ## Troubleshooting
 
-- **API unreachable**: Confirm the backend is running on `PORT` from `.env` and migrations completed.
-- **Linode regions empty**: Validate `LINODE_API_TOKEN` and ensure provider settings are populated via the admin panel.
-- **Notifications missing**: Ensure migrations `008_notifications.sql` and `009_fix_notification_filtering.sql` ran successfully.
-- **PayPal checkout issues**: Verify frontend SDK loads and server credentials match sandbox or live mode.
-- **SSH console fails**: Ensure JWT tokens include console permissions and the SSH bridge is reachable at `/api/vps/:id/ssh`.
+### Common Development Issues
+- **Ports in use**: Run `npm run kill-ports` to free ports 3001 and 5173 before starting dev servers
+- **API unreachable**: Confirm backend is running on correct `PORT` from `.env` and all migrations completed
+- **Build failures**: Run `npm run check` for TypeScript errors, `npm run lint` for ESLint issues
+- **Database connection**: Use `node scripts/test-connection.js` to verify PostgreSQL connectivity
+
+### Provider Integration Issues
+- **Linode regions empty**: Validate `LINODE_API_TOKEN` and configure provider settings in admin panel
+- **DigitalOcean API errors**: Check `DIGITALOCEAN_API_TOKEN` and ensure proper rate limiting compliance
+- **Provider validation fails**: Verify API tokens have correct permissions and aren't expired
+
+### Feature-Specific Issues
+- **Notifications not working**: Ensure notification migrations ran successfully and Redis is connected
+- **PayPal checkout problems**: Verify SDK loads correctly and credentials match sandbox/live mode
+- **SSH console fails**: Check JWT token permissions and SSH bridge accessibility at `/api/vps/:id/ssh`
+- **Email delivery issues**: Test SMTP configuration with `node scripts/test-smtp.js`
+
+### Performance & Scaling
+- **Slow API responses**: Check database query performance and Redis caching configuration
+- **Memory issues**: Monitor Node.js heap usage, consider PM2 for production process management
+- **Rate limiting**: Adjust limits in `.env` based on your infrastructure capacity
+
+### Production Deployment
+- **Environment variables**: Ensure all production secrets are properly configured
+- **Database migrations**: Run `node scripts/run-migration.js` before deployment
+- **SSL/TLS**: Configure proper certificates for production domains
+- **Monitoring**: Set up logging and monitoring for production error tracking
 
 ## UI Gallery
 

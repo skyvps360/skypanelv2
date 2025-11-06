@@ -3422,7 +3422,7 @@ router.get(
       );
 
       // Get user's billing information
-      let billing = {
+      const billing = {
         wallet_balance: 0,
         monthly_spend: 0,
         total_payments: 0,

@@ -1,11 +1,11 @@
 # Product Overview
 
-SkyPanelV2 is an open-source cloud service reseller billing panel that provides a white-label control plane for cloud hosting businesses. It enables service providers to offer VPS and container services through a unified interface with integrated billing and customer management.
+SkyPanelV2 is an open-source cloud service reseller billing panel that provides a white-label control plane for cloud hosting businesses. It enables service providers to offer VPS services through a unified interface with integrated billing and customer management.
 
 ## Core Features
 
 - **Multi-provider VPS management**: Unified interface for Linode and DigitalOcean with provider abstraction and normalized APIs
-- **Container as a Service (CaaS)**: Optional Easypanel integration for containerized application hosting with subscription-based plans
+
 - **Billing & wallets**: PayPal prepaid wallets with hourly reconciliation and invoice generation
 - **White-label branding**: Environment-driven customization allowing complete rebranding of the platform
 - **Real-time notifications**: PostgreSQL LISTEN/NOTIFY with Server-Sent Events for live updates

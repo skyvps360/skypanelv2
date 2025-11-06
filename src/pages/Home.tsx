@@ -35,11 +35,11 @@ const featureHighlights = [
     bullets: ['Instant deployment in 45 seconds', 'Full root access', 'Web-based SSH console']
   },
   {
-    title: 'Container Applications',
+    title: 'Application Hosting',
     description:
-      'Deploy containerized applications with one-click templates. Run WordPress, databases, and custom applications with managed scaling and monitoring.',
+      'Host web applications and databases with reliable performance. Deploy your applications with full control and monitoring capabilities.',
     icon: Layers,
-    bullets: ['One-click app deployment', 'Popular application templates', 'Managed scaling']
+    bullets: ['Application deployment', 'Database hosting', 'Performance monitoring']
   },
   {
     title: 'Secure Access',
@@ -66,10 +66,10 @@ const solutionTiles = [
     icon: Server
   },
   {
-    title: 'Container Applications',
-    blurb: 'Deploy containerized applications with one-click templates. WordPress, databases, and custom apps ready in minutes.',
-    statLabel: 'App templates',
-    statValue: '50+',
+    title: 'Application Hosting',
+    blurb: 'Host web applications and databases with reliable performance. Deploy your applications with full control and monitoring.',
+    statLabel: 'Supported platforms',
+    statValue: '20+',
     icon: Layers
   },
   {
@@ -96,7 +96,7 @@ const testimonials = [
   },
   {
     quote:
-      'Deploying our containerized applications was incredibly simple. The one-click templates got us up and running in minutes.',
+      'Deploying our applications was incredibly simple. The platform got us up and running in minutes with excellent performance.',
     name: 'David Rodriguez',
     role: 'CTO • DevTeam Inc'
   }
@@ -116,7 +116,7 @@ const faqs = [
   {
     question: 'Can I manage everything from one dashboard?',
     answer:
-      'Yes. You can create, resize, backup, rebuild, and delete VPS instances and containers from our unified control panel. Real-time status updates keep you informed.'
+      'Yes. You can create, resize, backup, rebuild, and delete VPS instances from our unified control panel. Real-time status updates keep you informed.'
   },
   {
     question: 'Is there a free tier?',
@@ -141,10 +141,10 @@ export default function Home() {
               </Badge>
               <div className="space-y-6">
                 <h1 className="text-4xl font-semibold leading-tight sm:text-5xl lg:text-6xl">
-                  Deploy VPS and Container Services
+                  Deploy VPS Infrastructure
                 </h1>
                 <p className="text-lg text-muted-foreground sm:text-xl">
-                  Get powerful VPS instances and containerized applications with instant deployment, SSH console access, and flexible billing. Scale your infrastructure on demand.
+                  Get powerful VPS instances with instant deployment, SSH console access, and flexible billing. Scale your infrastructure on demand.
                 </p>
               </div>
               <div className="flex flex-wrap gap-4">
@@ -409,7 +409,7 @@ export default function Home() {
             </Badge>
             <h2 className="text-3xl font-semibold sm:text-4xl">Create an account, add funds, deploy your infrastructure.</h2>
             <p className="max-w-2xl text-lg text-muted-foreground">
-              Your first deployment takes minutes. Add funds to your wallet and start deploying VPS instances and containers immediately.
+              Your first deployment takes minutes. Add funds to your wallet and start deploying VPS instances immediately.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <Button size="lg" asChild>

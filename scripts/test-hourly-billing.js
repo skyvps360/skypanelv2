@@ -9,15 +9,21 @@
  * 5. Verifies each hour charges the correct flat rate (not accumulating)
  */
 
+import dotenv from 'dotenv';
 import pg from 'pg';
-import { BillingService } from '../api/services/billingService.ts';
-import { config } from '../api/config/index.ts';
+import { BillingService } from '../api/services/billingService.js';
+
+// Load environment variables
+dotenv.config();
 
 const { Pool } = pg;
 
 // Database connection
 const pool = new Pool({
-  connectionString: config.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 // Test credentials

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-SkyPanelV2 is an open-source cloud service reseller billing panel that provides a white-label control plane for cloud hosting businesses. It enables service providers to offer VPS and container services through a unified interface with integrated billing and customer management.
+SkyPanelV2 is an open-source cloud service reseller billing panel that provides a white-label control plane for cloud hosting businesses. It enables service providers to offer VPS hosting services through a unified interface with integrated billing and customer management.
 
 ## Technology Stack
 
@@ -24,7 +24,7 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 ### Key Integrations
 - **PayPal REST SDK** for payments
 - **Linode/Akamai API** and **DigitalOcean API** for VPS
-- **Easypanel API** for container services
+
 - **ssh2** for WebSocket SSH console access
 - **Nodemailer** with SMTP2GO for emails
 - **JWT** authentication with **bcryptjs** hashing
@@ -163,14 +163,8 @@ node scripts/check-contact-methods-status.js
 
 ### Billing & Provider Management
 ```bash
-# Process container billing
-node scripts/process-container-billing.js
-
 # Test hourly billing
 node scripts/test-hourly-billing.js
-
-# Test container billing
-node scripts/test-container-billing.js
 
 # Migrate VPS provider data
 node scripts/migrate-vps-provider-data.js
@@ -184,9 +178,6 @@ node scripts/fix-provider-encryption.js
 
 ### Integration Testing
 ```bash
-# Test Easypanel connection
-node scripts/test-easypanel-connection.js
-
 # Test database connection
 node scripts/test-connection.js
 ```
@@ -213,14 +204,7 @@ POST   /api/vps/:id/power    # Power operations (start/stop/reboot)
 GET    /api/vps/:id/console  # WebSocket SSH console access
 ```
 
-### Container Services (Easypanel)
-```
-GET    /api/containers       # List containers
-POST   /api/containers       # Create container
-GET    /api/containers/:id   # Get container details
-PUT    /api/containers/:id   # Update container
-DELETE /api/containers/:id   # Delete container
-```
+
 
 ### Billing & Wallets
 ```
@@ -264,9 +248,7 @@ LINODE_API_TOKEN=your-linode-token
 # DigitalOcean
 DIGITALOCEAN_API_TOKEN=your-do-token
 
-# Easypanel (Optional)
-EASYPANEL_API_URL=https://your-easypanel.com
-EASYPANEL_API_TOKEN=your-easypanel-token
+
 ```
 
 ### Payment Integration
@@ -336,10 +318,7 @@ src/
 - Real-time status monitoring
 - WebSocket SSH console access
 
-### Container as a Service (CaaS)
-- Optional Easypanel integration
-- Subscription-based container plans
-- Application deployment and management
+
 
 ### Billing System
 - PayPal prepaid wallet system
@@ -425,7 +404,6 @@ CMD ["npm", "start"]
 node scripts/test-connection.js
 
 # Test external integrations
-node scripts/test-easypanel-connection.js
 node scripts/test-smtp.js
 ```
 
