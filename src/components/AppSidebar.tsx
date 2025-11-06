@@ -100,7 +100,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             title: "Platform Settings",
             icon: Settings,
             url: `/admin#platform`,
-            isActive: ["platform", "theme", "faq-management", "contact-management", "caas-config"].includes(activeAnchor),
+            isActive: ["platform", "theme", "faq-management", "contact-management"].includes(activeAnchor),
             items: [
               { title: "Theme", url: `/admin#theme`, isActive: activeAnchor === "theme" },
               { title: "FAQ Management", url: `/admin#faq-management`, isActive: activeAnchor === "faq-management" },
