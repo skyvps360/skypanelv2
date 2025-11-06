@@ -463,6 +463,7 @@ export interface EasypanelConfigRequest {
 export interface EasypanelConfigResponse {
   apiUrl: string;
   hasApiKey?: boolean;
+  status?: 'healthy' | 'degraded' | 'unknown';
   connectionStatus?: string;
   lastConnectionTest?: string;
   source?: 'db' | 'env' | 'none';

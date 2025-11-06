@@ -185,6 +185,30 @@ router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedReq
   }
 });
 
+/**
+ * GET /api/containers/admin/config/detect
+ * Detect available Docker connection methods
+ * Admin only
+ */
+router.get('/admin/config/detect', requireAdminRole, async (_req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const detected = await caasService.detectDockerSetup();
+    
+    res.json({
+      success: true,
+      detected: detected.detected,
+      socketPath: detected.socketPath,
+      tcpUrl: detected.tcpUrl,
+      recommendations: {
+        preferred: detected.socketPath ? detected.socketPath : detected.tcpUrl,
+        connectionType: detected.socketPath ? 'socket' : 'tcp'
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 
 // ============================================================

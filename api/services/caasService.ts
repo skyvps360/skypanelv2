@@ -23,11 +23,13 @@ export interface CaasConfig {
   apiUrl: string;
   apiKey?: string;
   hasApiKey?: boolean;
+  connectionType?: 'socket' | 'tcp';
   status?: 'healthy' | 'degraded' | 'unknown';
   lastConnectionTest?: string;
   connectionStatus?: 'success' | 'failed' | 'pending' | 'connected';
   source?: 'db' | 'env' | 'none';
   updatedAt?: string;
+  version?: string;
 }
 
 export interface CaasProject {
@@ -130,6 +132,71 @@ class CaasService {
   private dockerClients: Map<string, Dockerode> = new Map();
 
   /**
+   * Detect available Docker connection methods
+   */
+  async detectDockerSetup(): Promise<{ socketPath?: string; tcpUrl?: string; detected: string[] }> {
+    const detected: string[] = [];
+    const fs = await import('fs');
+    
+    // Check for Docker socket
+    const socketPaths = ['/var/run/docker.sock', '/run/docker.sock'];
+    let socketPath: string | undefined;
+    
+    for (const path of socketPaths) {
+      try {
+        if (fs.existsSync(path)) {
+          socketPath = path;
+          detected.push(`socket:${path}`);
+          break;
+        }
+      } catch (e) {
+        // Socket doesn't exist or not accessible
+      }
+    }
+    
+    // Check for TCP connection (localhost:2375)
+    try {
+      const testDocker = new Dockerode({ host: 'localhost', port: 2375 });
+      await testDocker.ping();
+      detected.push('tcp:localhost:2375');
+    } catch (e) {
+      // TCP connection not available
+    }
+    
+    return {
+      socketPath,
+      tcpUrl: detected.includes('tcp:localhost:2375') ? 'http://localhost:2375' : undefined,
+      detected
+    };
+  }
+
+  /**
+   * Create Docker client based on configuration
+   */
+  private createDockerClientFromConfig(apiUrl: string): Dockerode {
+    // Check if it's a Unix socket path
+    if (apiUrl.startsWith('unix://') || apiUrl.startsWith('/')) {
+      const socketPath = apiUrl.startsWith('unix://') ? apiUrl.replace('unix://', '') : apiUrl;
+      return new Dockerode({ socketPath });
+    }
+    
+    // Parse TCP URL
+    try {
+      const url = new URL(apiUrl);
+      const options: any = {
+        protocol: url.protocol.replace(':', ''),
+        host: url.hostname,
+        port: parseInt(url.port) || (url.protocol === 'https:' ? 2376 : 2375)
+      };
+      
+      return new Dockerode(options);
+    } catch (e) {
+      // Fallback to socket
+      return new Dockerode({ socketPath: '/var/run/docker.sock' });
+    }
+  }
+
+  /**
    * Get Docker client for a specific tenant
    * Creates isolated Docker daemon connection per tenant
    */
@@ -138,9 +205,17 @@ class CaasService {
       return this.dockerClients.get(tenantId)!;
     }
 
-    // In production, this would connect to a tenant-specific Docker socket
-    // For now, we use the default socket with namespace isolation
-    const docker = new Dockerode({ socketPath: '/var/run/docker.sock' });
+    // Get configuration to determine connection type
+    const config = await this.getConfig();
+    let docker: Dockerode;
+    
+    if (config?.apiUrl) {
+      docker = this.createDockerClientFromConfig(config.apiUrl);
+    } else {
+      // Default to Unix socket
+      docker = new Dockerode({ socketPath: '/var/run/docker.sock' });
+    }
+    
     this.dockerClients.set(tenantId, docker);
     return docker;
   }
@@ -159,11 +234,16 @@ class CaasService {
         const row = result.rows[0];
         const decryptedKey = row.api_key_encrypted ? await decryptSecret(row.api_key_encrypted) : null;
         
+        // Determine connection type from API URL
+        const apiUrl = row.api_url || '';
+        const connectionType = (apiUrl.startsWith('unix://') || apiUrl.startsWith('/')) ? 'socket' : 'tcp';
+        
         return {
           id: row.id,
-          apiUrl: row.api_url,
+          apiUrl,
           apiKey: decryptedKey || undefined,
           hasApiKey: !!row.api_key_encrypted,
+          connectionType,
           status: row.status || 'unknown',
           lastConnectionTest: row.last_connection_test,
           connectionStatus: row.status === 'healthy' ? 'connected' : 'failed',
@@ -177,13 +257,37 @@ class CaasService {
       const envKey = appConfig.caas?.apiKey;
 
       if (envUrl || envKey) {
+        const connectionType = (envUrl && (envUrl.startsWith('unix://') || envUrl.startsWith('/'))) ? 'socket' : 'tcp';
         return {
           apiUrl: envUrl || '',
           apiKey: envKey,
           hasApiKey: !!envKey,
+          connectionType,
           status: 'unknown',
           connectionStatus: 'pending',
           source: 'env'
+        };
+      }
+
+      // Auto-detect Docker setup
+      const detected = await this.detectDockerSetup();
+      if (detected.socketPath) {
+        return {
+          apiUrl: detected.socketPath,
+          hasApiKey: false,
+          connectionType: 'socket',
+          status: 'unknown',
+          connectionStatus: 'pending',
+          source: 'none'
+        };
+      } else if (detected.tcpUrl) {
+        return {
+          apiUrl: detected.tcpUrl,
+          hasApiKey: false,
+          connectionType: 'tcp',
+          status: 'unknown',
+          connectionStatus: 'pending',
+          source: 'none'
         };
       }
 
@@ -249,7 +353,23 @@ class CaasService {
    */
   async testConnection(): Promise<{ success: boolean; message: string; version?: string }> {
     try {
-      const docker = new Dockerode({ socketPath: '/var/run/docker.sock' });
+      const config = await this.getConfig();
+      let docker: Dockerode;
+      
+      if (config?.apiUrl) {
+        docker = this.createDockerClientFromConfig(config.apiUrl);
+      } else {
+        // Try to auto-detect
+        const detected = await this.detectDockerSetup();
+        if (detected.socketPath) {
+          docker = new Dockerode({ socketPath: detected.socketPath });
+        } else if (detected.tcpUrl) {
+          docker = this.createDockerClientFromConfig(detected.tcpUrl);
+        } else {
+          throw new Error('No Docker connection available');
+        }
+      }
+      
       const info = await docker.version();
 
       // Update config status

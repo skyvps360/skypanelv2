@@ -32,7 +32,7 @@ interface CaasConfigRequest {
 }
 
 const initialFormData: ConfigFormData = {
-  apiUrl: 'http://localhost:2375',
+  apiUrl: '/var/run/docker.sock',
   apiKey: ''
 }
 
@@ -97,7 +97,7 @@ export default function CaasConfig() {
     if (config) {
       setFormData(prev => ({
         ...prev,
-        apiUrl: config.apiUrl || 'http://localhost:2375',
+        apiUrl: config.apiUrl || '/var/run/docker.sock',
         // Only clear API key if we're loading for the first time and there's no existing key
         apiKey: prev.apiKey || ''
       }))
@@ -117,18 +117,24 @@ export default function CaasConfig() {
     const errors: Partial<ConfigFormData> = {}
 
     if (!formData.apiUrl.trim()) {
-      errors.apiUrl = 'API URL is required'
+      errors.apiUrl = 'API URL or socket path is required'
     } else {
-      try {
-        new URL(formData.apiUrl)
-      } catch {
-        errors.apiUrl = 'Please enter a valid URL'
+      // Check if it's a valid URL or a valid Unix socket path
+      const isSocketPath = formData.apiUrl.startsWith('/') || formData.apiUrl.startsWith('unix://')
+      if (!isSocketPath) {
+        try {
+          new URL(formData.apiUrl)
+        } catch {
+          errors.apiUrl = 'Please enter a valid URL or Unix socket path'
+        }
       }
     }
 
-    // Only require API key if we don't have one saved or if user is trying to update it
-    if (!formData.apiKey.trim() && !config?.hasApiKey) {
-      errors.apiKey = 'API Key is required'
+    // API key is optional for socket connections
+    const isSocketPath = formData.apiUrl.startsWith('/') || formData.apiUrl.startsWith('unix://')
+    if (!isSocketPath && !formData.apiKey.trim() && !config?.hasApiKey) {
+      // Only require API key for TCP connections if we don't have one saved
+      errors.apiKey = 'API Key may be required for TCP connections'
     }
 
     setFormErrors(errors)
@@ -309,31 +315,32 @@ export default function CaasConfig() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="apiUrl">Docker API URL *</Label>
+            <Label htmlFor="apiUrl">Docker Connection *</Label>
             <Input
               id="apiUrl"
-              type="url"
+              type="text"
               value={formData.apiUrl}
               onChange={(e) => handleInputChange('apiUrl', e.target.value)}
-              placeholder="http://localhost:2375 or unix:///var/run/docker.sock"
+              placeholder="/var/run/docker.sock or http://localhost:2375"
               disabled={isLoading || saveConfigMutation.isPending}
             />
             {formErrors.apiUrl && (
               <p className="text-sm text-destructive">{formErrors.apiUrl}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              The URL to your Docker API endpoint. For local development, use http://localhost:2375 or the Docker socket path.
+              For local Docker, use the Unix socket path: /var/run/docker.sock (or unix:///var/run/docker.sock).
+              For remote Docker, use a URL like http://localhost:2375
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="apiKey">API Key {!config?.hasApiKey && '*'}</Label>
+            <Label htmlFor="apiKey">API Key (Optional for Socket Connections)</Label>
             <Input
               id="apiKey"
               type="password"
               value={formData.apiKey}
               onChange={(e) => handleInputChange('apiKey', e.target.value)}
-              placeholder={config?.hasApiKey ? 'Enter new API key to update' : 'Enter API key'}
+              placeholder={config?.hasApiKey ? 'Enter new API key to update' : 'Optional for Unix socket'}
               disabled={isLoading || saveConfigMutation.isPending}
             />
             {formErrors.apiKey && (
@@ -342,7 +349,7 @@ export default function CaasConfig() {
             <p className="text-xs text-muted-foreground">
               {config?.hasApiKey 
                 ? 'Leave blank to keep the existing API key. Enter a new key to update it.' 
-                : 'API key for Docker API authentication. Optional for socket connections.'}
+                : 'API key is optional for Unix socket connections. Required for remote Docker API with authentication.'}
             </p>
           </div>
 
