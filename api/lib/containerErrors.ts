@@ -1,6 +1,6 @@
 /**
  * Container Error Handling Utilities
- * Provides standardized error handling for Easypanel CaaS integration
+ * Provides standardized error handling for CaaS (Container as a Service) integration
  */
 
 // ============================================================
@@ -31,9 +31,14 @@ export const ERROR_CODES = {
   CONFIG_UPDATE_FAILED: 'CONFIG_UPDATE_FAILED',
   
   // Authentication Errors
-  EASYPANEL_AUTH_FAILED: 'EASYPANEL_AUTH_FAILED',
-  EASYPANEL_ACCESS_DENIED: 'EASYPANEL_ACCESS_DENIED',
-  EASYPANEL_CONNECTION_FAILED: 'EASYPANEL_CONNECTION_FAILED',
+  CAAS_AUTH_FAILED: 'CAAS_AUTH_FAILED',
+  CAAS_ACCESS_DENIED: 'CAAS_ACCESS_DENIED',
+  CAAS_CONNECTION_FAILED: 'CAAS_CONNECTION_FAILED',
+  
+  // Legacy error codes (deprecated, kept for backward compatibility)
+  EASYPANEL_AUTH_FAILED: 'CAAS_AUTH_FAILED',
+  EASYPANEL_ACCESS_DENIED: 'CAAS_ACCESS_DENIED',
+  EASYPANEL_CONNECTION_FAILED: 'CAAS_CONNECTION_FAILED',
   
   // Validation Errors
   INVALID_PROJECT_NAME: 'INVALID_PROJECT_NAME',
@@ -151,11 +156,11 @@ export function createConfigError(message: string, details?: Record<string, any>
 }
 
 export function createAuthError(message: string): ContainerServiceError {
-  return new ContainerServiceError(ERROR_CODES.EASYPANEL_AUTH_FAILED, message, 401);
+  return new ContainerServiceError(ERROR_CODES.CAAS_AUTH_FAILED, message, 401);
 }
 
 export function createConnectionError(message: string): ContainerServiceError {
-  return new ContainerServiceError(ERROR_CODES.EASYPANEL_CONNECTION_FAILED, message, 503);
+  return new ContainerServiceError(ERROR_CODES.CAAS_CONNECTION_FAILED, message, 503);
 }
 
 export function createNotFoundError(resource: string, id: string): ContainerServiceError {
@@ -177,21 +182,21 @@ export function createBillingError(message: string, details?: Record<string, any
 }
 
 // ============================================================
-// Easypanel API Error Transformation
+// CaaS API Error Transformation
 // ============================================================
 
-export function transformEasypanelError(error: any): ContainerServiceError {
-  const errorMessage = error.message || 'Unknown Easypanel API error';
+export function transformCaasError(error: any): ContainerServiceError {
+  const errorMessage = error.message || 'Unknown CaaS API error';
   
   // Check for specific HTTP status codes
   if (errorMessage.includes('401') || errorMessage.includes('authentication')) {
-    return createAuthError('Easypanel authentication failed. Please check your API key.');
+    return createAuthError('Container platform authentication failed. Please check your API key.');
   }
   
   if (errorMessage.includes('403') || errorMessage.includes('access denied')) {
     return new ContainerServiceError(
-      ERROR_CODES.EASYPANEL_ACCESS_DENIED,
-      'Easypanel access denied. Please check your API key permissions.',
+      ERROR_CODES.CAAS_ACCESS_DENIED,
+      'Container platform access denied. Please check your API key permissions.',
       403
     );
   }
@@ -199,16 +204,16 @@ export function transformEasypanelError(error: any): ContainerServiceError {
   if (errorMessage.includes('404') || errorMessage.includes('not found')) {
     return new ContainerServiceError(
       ERROR_CODES.EXTERNAL_API_ERROR,
-      'Easypanel endpoint not found. Please check your API URL.',
+      'Container platform endpoint not found. Please check your API URL.',
       404
     );
   }
   
   if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND') || errorMessage.includes('timeout')) {
-    return createConnectionError('Cannot connect to Easypanel. Please check your API URL and network connectivity.');
+    return createConnectionError('Cannot connect to container platform. Please check your API URL and network connectivity.');
   }
   
-  // Check for specific Easypanel error messages
+  // Check for specific error messages
   if (errorMessage.includes('project already exists')) {
     return new ContainerServiceError(
       ERROR_CODES.DEPLOYMENT_FAILED,
@@ -236,7 +241,7 @@ export function transformEasypanelError(error: any): ContainerServiceError {
   if (errorMessage.includes('insufficient resources')) {
     return new ContainerServiceError(
       ERROR_CODES.DEPLOYMENT_FAILED,
-      'Insufficient resources on Easypanel server. Please try again later or contact support.',
+      'Insufficient resources on container platform. Please try again later or contact support.',
       503
     );
   }
@@ -244,10 +249,15 @@ export function transformEasypanelError(error: any): ContainerServiceError {
   // Generic external API error
   return new ContainerServiceError(
     ERROR_CODES.EXTERNAL_API_ERROR,
-    `Easypanel API error: ${errorMessage}`,
+    `Container platform API error: ${errorMessage}`,
     500,
     { originalError: errorMessage }
   );
+}
+
+// Legacy function for backward compatibility
+export function transformEasypanelError(error: any): ContainerServiceError {
+  return transformCaasError(error);
 }
 
 // ============================================================

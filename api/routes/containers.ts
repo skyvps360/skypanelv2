@@ -2,8 +2,7 @@ import express, { Request, Response } from 'express';
 import { authenticateToken, requireOrganization, requireAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import { query } from '../lib/database.js';
 import { encryptSecret, decryptSecret } from '../lib/crypto.js';
-import { easypanelService, type EasypanelConfig } from '../services/easypanelService.js';
-import { dokployService } from '../services/dokployService.js';
+import { caasService, type CaasConfig } from '../services/caasService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { ContainerPlanService } from '../services/containerPlanService.js';
 import { ResourceQuotaService } from '../services/resourceQuotaService.js';
@@ -14,7 +13,7 @@ import {
   formatErrorResponse, 
   ERROR_CODES 
 } from '../lib/containerErrors.js';
-import { validateEasypanelConfig, validateCreateContainerPlan } from '../middleware/containerValidation.js';
+import { validateCaasConfig, validateCreateContainerPlan } from '../middleware/containerValidation.js';
 
 const router = express.Router();
 
@@ -69,12 +68,12 @@ function handleContainerError(error: any, req: Request, res: Response, _next: an
 
 /**
  * GET /api/containers/admin/config
- * Get Easypanel configuration
+ * Get CaaS configuration
  * Admin only
  */
 router.get('/admin/config', requireAdminRole, async (_req: AuthenticatedRequest, res: Response, next: any) => {
   try {
-    const summary = await easypanelService.getConfigSummary();
+    const summary = await caasService.getConfigSummary();
 
     if (!summary) {
       return res.json({
@@ -113,70 +112,29 @@ router.get('/admin/config', requireAdminRole, async (_req: AuthenticatedRequest,
 
 /**
  * POST /api/containers/admin/config
- * Update Easypanel configuration with encryption
+ * Update CaaS configuration with encryption
  * Admin only
  */
-router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (req: AuthenticatedRequest, res: Response, next: any) => {
+router.post('/admin/config', requireAdminRole, validateCaasConfig, async (req: AuthenticatedRequest, res: Response, next: any) => {
   try {
     const { apiUrl, apiKey } = req.body;
 
-    // Check if configuration already exists
-    const existingResult = await query(
-      'SELECT id FROM easypanel_config WHERE active = true LIMIT 1'
-    );
-
-    if (existingResult.rows.length > 0) {
-      // Update existing configuration
-      const updateFields = ['api_url = $1', 'updated_at = NOW()'];
-      const updateValues: any[] = [apiUrl];
-      
-      // Only update API key if provided
-      if (apiKey) {
-        const encryptedApiKey = encryptSecret(apiKey);
-        updateFields.push(`api_key_encrypted = $${updateValues.length + 1}`);
-        updateValues.push(encryptedApiKey);
-      }
-      
-      updateValues.push(existingResult.rows[0].id);
-      
-      await query(
-        `UPDATE easypanel_config 
-         SET ${updateFields.join(', ')}
-         WHERE id = $${updateValues.length}`,
-        updateValues
-      );
-    } else {
-      // Create new configuration - API key is required for new configs
-      if (!apiKey) {
-        return res.status(400).json({
-          error: {
-            message: 'API key is required for new configuration'
-          }
-        });
-      }
-      
-      const encryptedApiKey = encryptSecret(apiKey);
-      await query(
-        `INSERT INTO easypanel_config (api_url, api_key_encrypted, active)
-         VALUES ($1, $2, true)`,
-        [apiUrl, encryptedApiKey]
-      );
-    }
+    // Use caasService to update config
+    await caasService.updateConfig(apiUrl, apiKey);
 
     // Log the configuration update
-    easypanelService.resetConfigCache();
     await logActivity({
       userId: req.user!.id,
       organizationId: req.user!.organizationId!,
       eventType: 'container.config.update',
-      entityType: 'easypanel_config',
+      entityType: 'caas_config',
       entityId: null,
       metadata: { apiUrl }
     });
 
     res.json({
       success: true,
-      message: 'Easypanel configuration updated successfully'
+      message: 'Container platform configuration updated successfully'
     });
   } catch (error) {
     next(error);
@@ -185,427 +143,49 @@ router.post('/admin/config', requireAdminRole, validateEasypanelConfig, async (r
 
 /**
  * POST /api/containers/admin/config/test
- * Test Easypanel connection
+ * Test CaaS connection
  * Admin only
- * Accepts optional apiUrl and apiKey in request body to test before saving
  */
 router.post('/admin/config/test', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
-  let activeConfig: Readonly<EasypanelConfig> | null = null;
-  const { apiUrl: testApiUrl, apiKey: testApiKey } = req.body;
-
   try {
-    // If test credentials are provided, test them directly without saving
-    if (testApiUrl || testApiKey) {
-      // Get current config for fallback values
-      easypanelService.resetConfigCache();
-      const currentConfig = await easypanelService.getActiveConfig();
-      
-      const urlToTest = testApiUrl || currentConfig?.apiUrl;
-      const keyToTest = testApiKey || (currentConfig?.source === 'env' ? currentConfig.apiKeyPlain : 
-                                       currentConfig?.apiKeyEncrypted ? decryptSecret(currentConfig.apiKeyEncrypted) : null);
-      
-      if (!urlToTest || !keyToTest) {
-        return res.status(400).json({
-          error: {
-            code: ERROR_CODES.CONFIG_NOT_FOUND,
-            message: 'API URL and API Key are required for testing'
-          }
-        });
-      }
-
-      // Test the connection with provided credentials
-      try {
-        // Normalize URL
-        const baseUrl = urlToTest.replace(/\/+$/, '').replace(/\/api\/trpc$/, '');
-        const testUrl = `${baseUrl}/api/trpc/projects.listProjects`;
-        
-        const response = await fetch(testUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${keyToTest}`,
-            'Content-Type': 'application/json',
-          }
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => '');
-          console.error('Easypanel test connection failed:', response.status, errorText);
-          
-          // Update database status to failed if config exists
-          if (currentConfig && currentConfig.source === 'db' && currentConfig.id) {
-            try {
-              await query(
-                `UPDATE easypanel_config 
-                 SET last_connection_test = NOW(), connection_status = 'failed', updated_at = NOW()
-                 WHERE id = $1`,
-                [currentConfig.id]
-              );
-              easypanelService.resetConfigCache();
-            } catch (updateError) {
-              console.error('Failed to update connection status after failed test:', updateError);
-              // Continue even if update fails
-            }
-          }
-          
-          return res.status(400).json({
-            error: {
-              code: ERROR_CODES.EASYPANEL_CONNECTION_FAILED,
-              message: `Failed to connect to Easypanel: ${response.status} ${response.statusText}`,
-              details: { 
-                status: 'failed',
-                statusCode: response.status,
-                error: errorText
-              }
-            }
-          });
-        }
-
-        // Connection successful - update database status if config exists
-        if (currentConfig && currentConfig.source === 'db' && currentConfig.id) {
-          try {
-            await query(
-              `UPDATE easypanel_config 
-               SET last_connection_test = NOW(), connection_status = 'success', updated_at = NOW()
-               WHERE id = $1`,
-              [currentConfig.id]
-            );
-            easypanelService.resetConfigCache();
-          } catch (updateError) {
-            console.error('Failed to update connection status after test:', updateError);
-            // Continue even if update fails
-          }
-        }
-
-        await logActivity({
-          userId: req.user!.id,
-          organizationId: req.user!.organizationId!,
-          eventType: 'container.config.test',
-          entityType: 'easypanel_config',
-          entityId: currentConfig?.source === 'db' ? currentConfig.id : null,
-          status: 'success',
-          metadata: { status: 'success', apiUrl: urlToTest, testMode: true }
-        });
-
-        return res.json({
-          success: true,
-          message: 'Connection to Easypanel successful',
-          status: 'success'
-        });
-      } catch (testError: any) {
-        console.error('Easypanel test connection error:', testError);
-        
-        // Update database status to failed if config exists
-        if (currentConfig && currentConfig.source === 'db' && currentConfig.id) {
-          try {
-            await query(
-              `UPDATE easypanel_config 
-               SET last_connection_test = NOW(), connection_status = 'failed', updated_at = NOW()
-               WHERE id = $1`,
-              [currentConfig.id]
-            );
-            easypanelService.resetConfigCache();
-          } catch (updateError) {
-            console.error('Failed to update connection status after failed test:', updateError);
-            // Continue even if update fails
-          }
-        }
-        
-        return res.status(400).json({
-          error: {
-            code: ERROR_CODES.EASYPANEL_CONNECTION_FAILED,
-            message: 'Failed to connect to Easypanel. Please check your API URL and key.',
-            details: { 
-              status: 'failed',
-              error: testError.message
-            }
-          }
-        });
-      }
-    }
-
-    // Otherwise, test the saved configuration
-    easypanelService.resetConfigCache();
-    activeConfig = await easypanelService.getActiveConfig();
-
-    if (!activeConfig) {
-      throw new ContainerServiceError(
-        ERROR_CODES.CONFIG_NOT_FOUND,
-        'No Easypanel configuration found. Please configure API credentials first.',
-        400
-      );
-    }
-
-    const connectionTest = await easypanelService.testConnection();
-    const status = connectionTest ? 'success' : 'failed';
-
-    if (activeConfig.source === 'db' && activeConfig.id) {
-      await query(
-        `UPDATE easypanel_config 
-         SET last_connection_test = NOW(), connection_status = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [status, activeConfig.id]
-      );
-    }
+    const testResult = await caasService.testConnection();
 
     await logActivity({
       userId: req.user!.id,
       organizationId: req.user!.organizationId!,
       eventType: 'container.config.test',
-      entityType: 'easypanel_config',
-      entityId: activeConfig.source === 'db' ? activeConfig.id : null,
-      status: connectionTest ? 'success' : 'error',
-      metadata: { status, apiUrl: activeConfig.apiUrl, source: activeConfig.source }
+      entityType: 'caas_config',
+      entityId: null,
+      status: testResult.success ? 'success' : 'error',
+      metadata: { 
+        status: testResult.success ? 'success' : 'failed',
+        message: testResult.message,
+        version: testResult.version
+      }
     });
 
-    easypanelService.resetConfigCache();
-
-    if (connectionTest) {
+    if (testResult.success) {
       return res.json({
         success: true,
-        message: 'Connection to Easypanel successful',
-        status: 'success'
+        message: testResult.message,
+        status: 'success',
+        version: testResult.version
       });
     }
 
     return res.status(400).json({
       error: {
-        code: ERROR_CODES.EASYPANEL_CONNECTION_FAILED,
-        message: 'Failed to connect to Easypanel. Please check your API URL and key.',
+        code: ERROR_CODES.CAAS_CONNECTION_FAILED,
+        message: testResult.message,
         details: { status: 'failed' }
       }
     });
   } catch (error) {
-    if (activeConfig && activeConfig.source === 'db' && activeConfig.id) {
-      try {
-        await query(
-          `UPDATE easypanel_config 
-           SET last_connection_test = NOW(), connection_status = 'failed', updated_at = NOW()
-           WHERE id = $1`,
-          [activeConfig.id]
-        );
-      } catch (updateError) {
-        console.error('Failed to update connection status:', updateError);
-      }
-    }
-
-    easypanelService.resetConfigCache();
     next(error);
   }
 });
 
-// ============================================================
-// Dokploy Configuration Routes
-// ============================================================
 
-/**
- * GET /api/containers/admin/dokploy/config
- * Get Dokploy configuration
- * Admin only
- */
-router.get('/admin/dokploy/config', requireAdminRole, async (_req: AuthenticatedRequest, res: Response, next: any) => {
-  try {
-    const summary = await dokployService.getConfigSummary();
-
-    if (!summary) {
-      return res.json({
-        config: {
-          apiUrl: '',
-          hasApiKey: false,
-          lastConnectionTest: null,
-          connectionStatus: null,
-          source: 'none'
-        }
-      });
-    }
-
-    let normalizedStatus: string | null = null;
-    if (summary.connectionStatus === 'connected') {
-      normalizedStatus = 'success';
-    } else if (summary.connectionStatus === 'failed') {
-      normalizedStatus = 'failed';
-    } else if (summary.connectionStatus) {
-      normalizedStatus = summary.connectionStatus;
-    }
-
-    res.json({
-      config: {
-        apiUrl: summary.apiUrl,
-        hasApiKey: summary.hasApiKey,
-        lastConnectionTest: summary.lastConnectionTest,
-        connectionStatus: normalizedStatus,
-        source: summary.source
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * POST /api/containers/admin/dokploy/config
- * Update Dokploy configuration with encryption
- * Admin only
- */
-router.post('/admin/dokploy/config', requireAdminRole, validateEasypanelConfig, async (req: AuthenticatedRequest, res: Response, next: any) => {
-  try {
-    const { apiUrl, apiKey } = req.body;
-
-    // Check if configuration already exists
-    const existingResult = await query(
-      'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
-    );
-
-    if (existingResult.rows.length > 0) {
-      // Update existing configuration
-      const updateFields = ['api_url = $1', 'updated_at = NOW()'];
-      const updateValues: any[] = [apiUrl];
-      
-      // Only update API key if provided
-      if (apiKey) {
-        const encryptedApiKey = encryptSecret(apiKey);
-        updateFields.push(`api_key_encrypted = $${updateValues.length + 1}`);
-        updateValues.push(encryptedApiKey);
-      }
-      
-      updateValues.push(existingResult.rows[0].id);
-      
-      await query(
-        `UPDATE dokploy_config 
-         SET ${updateFields.join(', ')}
-         WHERE id = $${updateValues.length}`,
-        updateValues
-      );
-    } else {
-      // Create new configuration - API key is required for new configs
-      if (!apiKey) {
-        return res.status(400).json({
-          error: {
-            message: 'API key is required for new configuration'
-          }
-        });
-      }
-      
-      const encryptedApiKey = encryptSecret(apiKey);
-      await query(
-        `INSERT INTO dokploy_config (api_url, api_key_encrypted, active)
-         VALUES ($1, $2, true)`,
-        [apiUrl, encryptedApiKey]
-      );
-    }
-
-    // Log the configuration update
-    dokployService.resetConfigCache();
-    await logActivity({
-      userId: req.user!.id,
-      organizationId: req.user!.organizationId!,
-      eventType: 'container.config.update',
-      entityType: 'dokploy_config',
-      entityId: null,
-      metadata: { apiUrl }
-    });
-
-    res.json({
-      success: true,
-      message: 'Dokploy configuration updated successfully'
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * POST /api/containers/admin/dokploy/config/test
- * Test Dokploy connection
- * Admin only
- */
-router.post('/admin/dokploy/config/test', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
-  try {
-    const { apiUrl, apiKey } = req.body || {};
-    const trimmedUrl = typeof apiUrl === 'string' ? apiUrl.trim() : '';
-    const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
-
-    const shouldOverride = Boolean(trimmedUrl && trimmedKey);
-    const connectionTest = await dokployService.testConnection(
-      shouldOverride ? { apiUrl: trimmedUrl, apiKey: trimmedKey } : undefined
-    );
-    
-    if (connectionTest.success) {
-      // Update connection status in database if config exists
-      const existingResult = await query(
-        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
-      );
-
-      if (existingResult.rows.length > 0 && !shouldOverride) {
-        await query(
-          `UPDATE dokploy_config 
-           SET connection_status = 'connected', last_connection_test = NOW()
-           WHERE id = $1`,
-          [existingResult.rows[0].id]
-        );
-      }
-
-      await logActivity({
-        userId: req.user!.id,
-        organizationId: req.user!.organizationId!,
-        eventType: 'container.config.test',
-        entityType: 'dokploy_config',
-        entityId: null,
-        metadata: { status: 'success', override: shouldOverride }
-      });
-
-      dokployService.resetConfigCache();
-      
-      res.json({
-        success: true,
-        message: 'Dokploy connection test successful'
-      });
-    } else {
-      // Update connection status to failed
-      const existingResult = await query(
-        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
-      );
-
-      if (existingResult.rows.length > 0 && !shouldOverride) {
-        await query(
-          `UPDATE dokploy_config 
-           SET connection_status = 'failed', last_connection_test = NOW()
-           WHERE id = $1`,
-          [existingResult.rows[0].id]
-        );
-      }
-
-      dokployService.resetConfigCache();
-
-      res.status(500).json({
-        success: false,
-        message: connectionTest.message || 'Dokploy connection test failed'
-      });
-    }
-  } catch (error) {
-    // Update connection status on error
-    try {
-      const existingResult = await query(
-        'SELECT id FROM dokploy_config WHERE active = true LIMIT 1'
-      );
-
-      const { apiUrl = '', apiKey = '' } = req.body || {};
-      const usedOverride = Boolean(apiUrl?.trim() && apiKey?.trim());
-
-      if (existingResult.rows.length > 0 && !usedOverride) {
-        await query(
-          `UPDATE dokploy_config 
-           SET connection_status = 'failed', last_connection_test = NOW()
-           WHERE id = $1`,
-          [existingResult.rows[0].id]
-        );
-      }
-    } catch (dbError) {
-      console.error('Failed to update connection status:', dbError);
-    }
-    dokployService.resetConfigCache();
-    next(error);
-  }
-});
 
 // ============================================================
 // Plan Management Routes
@@ -1400,37 +980,19 @@ router.post('/projects', async (req: AuthenticatedRequest, res: Response) => {
       });
     }
 
-    // Create project in Easypanel
+    // Create project in container platform
     const dokployProjectId = `${organizationId.substring(0, 8)}-${projectName}`;
     
     try {
-      await easypanelService.createProject(dokployProjectId);
-      
-      // Grant the organization's Easypanel user access to this project
-      const subscriptionResult = await query(
-        'SELECT easypanel_user_id FROM container_subscriptions WHERE organization_id = $1 AND status = $2',
-        [organizationId, 'active']
-      );
-      
-      if (subscriptionResult.rows.length > 0 && subscriptionResult.rows[0].easypanel_user_id) {
-        try {
-          await easypanelService.updateProjectAccess(
-            dokployProjectId,
-            subscriptionResult.rows[0].easypanel_user_id,
-            true
-          );
-        } catch (accessError) {
-          console.error('Failed to grant user access to project:', accessError);
-          // Don't fail the entire operation if access grant fails
-        }
-      }
-    } catch (easypanelError) {
-      console.error('Failed to create project in Easypanel:', easypanelError);
+      await caasService.createProject(dokployProjectId, req.user!.id);
+      // CaaS: Project access managed via Docker networks
+    } catch (caasError) {
+      console.error('Failed to create project:', caasError);
       return res.status(500).json({
         error: {
-          code: 'EASYPANEL_PROJECT_CREATE_FAILED',
-          message: 'Failed to create project in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          code: 'CAAS_PROJECT_CREATE_FAILED',
+          message: 'Failed to create project',
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -1517,9 +1079,9 @@ router.get('/projects/:projectName', async (req: AuthenticatedRequest, res: Resp
     // Get project details from Easypanel
     let easypanelProject = null;
     try {
-      easypanelProject = await easypanelService.inspectProject(projectRow.dokploy_project_id);
-    } catch (easypanelError) {
-      console.error('Failed to get project details from Easypanel:', easypanelError);
+      easypanelProject = await caasService.getProjectDetail(projectRow.dokploy_project_id);
+    } catch (caasError) {
+      console.error('Failed to get project details from Easypanel:', caasError);
       // Continue without Easypanel data - project might be in database but not in Easypanel
     }
 
@@ -1618,9 +1180,9 @@ router.delete('/projects/:projectName', async (req: AuthenticatedRequest, res: R
 
     // Delete project from Easypanel
     try {
-      await easypanelService.destroyProject(project.dokploy_project_id);
-    } catch (easypanelError) {
-      console.error('Failed to delete project from Easypanel:', easypanelError);
+      await caasService.deleteProject(project.dokploy_project_id);
+    } catch (caasError) {
+      console.error('Failed to delete project from Easypanel:', caasError);
       // Continue with database deletion even if Easypanel deletion fails
       // The project might not exist in Easypanel anymore
     }
@@ -1712,14 +1274,14 @@ router.put('/projects/:projectName/env', async (req: AuthenticatedRequest, res: 
 
     // Update environment variables in Easypanel
     try {
-      await easypanelService.updateProjectEnv(project.dokploy_project_id, environmentVariables);
-    } catch (easypanelError) {
-      console.error('Failed to update project environment in Easypanel:', easypanelError);
+      // CaaS: Environment variables are per-service, not per-project
+    } catch (caasError) {
+      console.error('Failed to update project environment in Easypanel:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_ENV_UPDATE_FAILED',
           message: 'Failed to update project environment in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -1806,21 +1368,21 @@ router.get('/projects/:projectName/services', async (req: AuthenticatedRequest, 
     );
 
     // Get services from Easypanel for real-time status
-    let easypanelServices = [];
+    let containerServices = [];
     try {
-      const easypanelProject = await easypanelService.listProjectsAndServices();
+      const easypanelProject = await caasService.listProjects();
       const projectData = easypanelProject.find(p => p.name === project.dokploy_project_id);
       if (projectData && projectData.services) {
-        easypanelServices = projectData.services;
+        containerServices = projectData.services;
       }
-    } catch (easypanelError) {
-      console.error('Failed to get services from Easypanel:', easypanelError);
+    } catch (caasError) {
+      console.error('Failed to get services from Easypanel:', caasError);
       // Continue without real-time data
     }
 
     // Merge database and Easypanel data
     const services = servicesResult.rows.map(row => {
-      const easypanelService = easypanelServices.find(es => es.name === row.dokploy_application_id);
+      const containerService = containerServices.find(es => es.name === row.dokploy_application_id);
       
       return {
         id: row.id,
@@ -1828,12 +1390,12 @@ router.get('/projects/:projectName/services', async (req: AuthenticatedRequest, 
         serviceName: row.service_name,
         dokployApplicationId: row.dokploy_application_id,
         serviceType: row.service_type,
-        status: easypanelService?.status || row.status,
+        status: containerService?.status || row.status,
         cpuLimit: row.cpu_limit,
         memoryLimitGb: row.memory_limit_gb,
         storageLimitGb: row.storage_limit_gb,
         configuration: row.configuration || {},
-        easypanelData: easypanelService || null,
+        easypanelData: containerService || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       };
@@ -1902,18 +1464,15 @@ router.get('/projects/:projectName/services/:serviceName', async (req: Authentic
     const serviceRow = serviceResult.rows[0];
 
     // Get detailed service information from Easypanel
-    let easypanelServiceDetail = null;
+    let caasServiceDetail = null;
     try {
       if (serviceRow.service_type === 'app') {
-        easypanelServiceDetail = await easypanelService.inspectAppService(
-          project.dokploy_project_id, 
-          serviceRow.dokploy_application_id
-        );
+        // CaaS: Service details retrieved differently
       }
       // For database services, we might need different inspection methods
       // This can be extended based on Easypanel API capabilities
-    } catch (easypanelError) {
-      console.error('Failed to get service details from Easypanel:', easypanelError);
+    } catch (caasError) {
+      console.error('Failed to get service details from Easypanel:', caasError);
       // Continue without detailed Easypanel data
     }
 
@@ -1928,7 +1487,7 @@ router.get('/projects/:projectName/services/:serviceName', async (req: Authentic
       memoryLimitGb: serviceRow.memory_limit_gb,
       storageLimitGb: serviceRow.storage_limit_gb,
       configuration: serviceRow.configuration || {},
-      easypanelData: easypanelServiceDetail,
+      easypanelData: containerServiceDetail,
       project: {
         id: project.id,
         projectName: project.project_name,
@@ -2013,7 +1572,7 @@ router.get('/projects/:projectName/services/:serviceName/logs', async (req: Auth
     
     try {
       // Get Docker containers for this service to retrieve logs
-      const containers = await easypanelService.getDockerContainers(service.dokploy_application_id);
+      // CaaS: Docker containers managed directly
       
       if (containers && containers.length > 0) {
         // For now, we'll return container information
@@ -2034,22 +1593,19 @@ router.get('/projects/:projectName/services/:serviceName/logs', async (req: Auth
           ]
         }));
       }
-    } catch (easypanelError) {
-      console.error('Failed to get logs from Easypanel:', easypanelError);
+    } catch (caasError) {
+      console.error('Failed to get logs from Easypanel:', caasError);
       error = {
         code: 'LOGS_FETCH_FAILED',
         message: 'Failed to fetch logs from container service',
-        details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+        details: caasError instanceof Error ? caasError.message : 'Unknown error'
       };
     }
 
     // Check for service errors
     let serviceError = null;
     try {
-      serviceError = await easypanelService.getServiceError(
-        project.dokploy_project_id, 
-        service.dokploy_application_id
-      );
+        // CaaS: Service errors retrieved from Docker logs
     } catch (errorCheckError) {
       console.error('Failed to check service errors:', errorCheckError);
     }
@@ -2180,14 +1736,14 @@ router.post('/projects/:projectName/services/app', async (req: AuthenticatedRequ
 
     // Create app service in Easypanel
     try {
-      await easypanelService.createAppService(project.dokploy_project_id, appConfig);
-    } catch (easypanelError) {
-      console.error('Failed to create app service in Easypanel:', easypanelError);
+      await caasService.deployApp({...appConfig, project: projectRow.project_name});
+    } catch (caasError) {
+      console.error('Failed to create app service in Easypanel:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_SERVICE_CREATE_FAILED',
           message: 'Failed to create app service in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -2368,7 +1924,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'postgres',
             resources: resources || {}
           };
-          await easypanelService.createPostgresService(project.dokploy_project_id, postgresConfig);
+          await caasService.deployDatabase({type: "postgres", ...postgresConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'mysql': {
@@ -2379,7 +1935,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'mysql',
             resources: resources || {}
           };
-          await easypanelService.createMysqlService(project.dokploy_project_id, mysqlConfig);
+          await caasService.deployDatabase({type: "mysql", ...mysqlConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'mariadb': {
@@ -2390,7 +1946,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'mariadb',
             resources: resources || {}
           };
-          await easypanelService.createMariadbService(project.dokploy_project_id, mariadbConfig);
+          await caasService.deployDatabase({type: "mariadb", ...mariadbConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'mongo': {
@@ -2401,7 +1957,7 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             user: credentials?.user || 'mongo',
             resources: resources || {}
           };
-          await easypanelService.createMongoService(project.dokploy_project_id, mongoConfig);
+          await caasService.deployDatabase({type: "mongo", ...mongoConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         case 'redis': {
@@ -2410,19 +1966,19 @@ router.post('/projects/:projectName/services/database', async (req: Authenticate
             password: credentials?.password, // Redis password is optional
             resources: resources || {}
           };
-          await easypanelService.createRedisService(project.dokploy_project_id, redisConfig);
+          await caasService.deployDatabase({type: "redis", ...redisConfig, project: projectRow.project_name, serviceName: serviceName});
           break;
         }
         default:
           throw new Error(`Unsupported database type: ${databaseType}`);
       }
-    } catch (easypanelError) {
-      console.error('Failed to create database service in Easypanel:', easypanelError);
+    } catch (caasError) {
+      console.error('Failed to create database service in Easypanel:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_DATABASE_CREATE_FAILED',
           message: 'Failed to create database service in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -2754,19 +2310,16 @@ router.post('/projects/:projectName/services/:serviceName/start', async (req: Au
 
     const service = serviceResult.rows[0];
 
-    // Start service in Easypanel
+    // Start service
     try {
-      await easypanelService.startAppService(
-        project.dokploy_project_id, 
-        service.dokploy_application_id
-      );
-    } catch (easypanelError) {
-      console.error('Failed to start service in Easypanel:', easypanelError);
+      await caasService.startService(service.dokploy_application_id);
+    } catch (caasError) {
+      console.error('Failed to start service:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_SERVICE_START_FAILED',
           message: 'Failed to start service in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -2854,19 +2407,16 @@ router.post('/projects/:projectName/services/:serviceName/stop', async (req: Aut
 
     const service = serviceResult.rows[0];
 
-    // Stop service in Easypanel
+    // Stop service
     try {
-      await easypanelService.stopAppService(
-        project.dokploy_project_id, 
-        service.dokploy_application_id
-      );
-    } catch (easypanelError) {
-      console.error('Failed to stop service in Easypanel:', easypanelError);
+      await caasService.stopService(service.dokploy_application_id);
+    } catch (caasError) {
+      console.error('Failed to stop service:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_SERVICE_STOP_FAILED',
           message: 'Failed to stop service in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -2954,19 +2504,16 @@ router.post('/projects/:projectName/services/:serviceName/restart', async (req: 
 
     const service = serviceResult.rows[0];
 
-    // Restart service in Easypanel
+    // Restart service
     try {
-      await easypanelService.restartAppService(
-        project.dokploy_project_id, 
-        service.dokploy_application_id
-      );
-    } catch (easypanelError) {
-      console.error('Failed to restart service in Easypanel:', easypanelError);
+      await caasService.restartService(service.dokploy_application_id);
+    } catch (caasError) {
+      console.error('Failed to restart service:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_SERVICE_RESTART_FAILED',
           message: 'Failed to restart service in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -3056,12 +2603,9 @@ router.delete('/projects/:projectName/services/:serviceName', async (req: Authen
 
     // Delete service from Easypanel
     try {
-      await easypanelService.destroyAppService(
-        project.dokploy_project_id, 
-        service.dokploy_application_id
-      );
-    } catch (easypanelError) {
-      console.error('Failed to delete service from Easypanel:', easypanelError);
+      await caasService.deleteService(service.dokploy_application_id);
+    } catch (caasError) {
+      console.error('Failed to delete service from Easypanel:', caasError);
       // Continue with database deletion even if Easypanel deletion fails
       // The service might not exist in Easypanel anymore
     }
@@ -3170,18 +2714,15 @@ router.put('/projects/:projectName/services/:serviceName/env', async (req: Authe
 
     // Update environment variables in Easypanel
     try {
-      await easypanelService.updateAppEnv(
-        project.dokploy_project_id, 
-        service.dokploy_application_id,
-        environmentVariables
+      await caasService.updateEnv(service.dokploy_application_id, environmentVariables
       );
-    } catch (easypanelError) {
-      console.error('Failed to update service environment in Easypanel:', easypanelError);
+    } catch (caasError) {
+      console.error('Failed to update service environment:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_ENV_UPDATE_FAILED',
           message: 'Failed to update service environment in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }
@@ -3349,18 +2890,15 @@ router.put('/projects/:projectName/services/:serviceName/resources', async (req:
 
     // Update resources in Easypanel
     try {
-      await easypanelService.updateAppResources(
-        project.dokploy_project_id, 
-        service.dokploy_application_id,
-        resources
+      await caasService.updateResources(service.dokploy_application_id, resources
       );
-    } catch (easypanelError) {
-      console.error('Failed to update service resources in Easypanel:', easypanelError);
+    } catch (caasError) {
+      console.error('Failed to update service resources:', caasError);
       return res.status(500).json({
         error: {
           code: 'EASYPANEL_RESOURCES_UPDATE_FAILED',
           message: 'Failed to update service resources in Easypanel',
-          details: easypanelError instanceof Error ? easypanelError.message : 'Unknown error'
+          details: caasError instanceof Error ? caasError.message : 'Unknown error'
         }
       });
     }

@@ -913,9 +913,9 @@ class ContainerService {
   // ============================================================================
 
   /**
-   * Get Easypanel configuration (admin)
+   * Get CaaS (Container Platform) configuration (admin)
    */
-  async getEasypanelConfig(): Promise<{
+  async getCaasConfig(): Promise<{
     success: boolean;
     config?: EasypanelConfigResponse;
     error?: string;
@@ -934,136 +934,127 @@ class ContainerService {
         config: configData,
       };
     } catch (error) {
-      console.error('Get Easypanel config error:', error);
+      console.error('Get CaaS config error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to load Easypanel configuration',
+        error: error instanceof Error ? error.message : 'Failed to load container platform configuration',
       };
     }
   }
 
   /**
-   * Update Easypanel configuration (admin)
+   * Update CaaS (Container Platform) configuration (admin)
    */
-  async updateEasypanelConfig(config: EasypanelConfigRequest): Promise<{
+  async updateCaasConfig(config: EasypanelConfigRequest): Promise<{
     success: boolean;
     message?: string;
   }> {
     try {
       const response = await apiClient.post<{ success: boolean; message?: string }>('/containers/admin/config', config);
       if (response.success === false) {
-        throw new Error(response.message || 'Failed to update Easypanel configuration');
+        throw new Error(response.message || 'Failed to update container platform configuration');
       }
       return {
         success: true,
         message: response.message,
       };
     } catch (error: any) {
-      console.error('Update Easypanel config error:', error);
+      console.error('Update CaaS config error:', error);
       // Re-throw to let React Query handle it
       throw error;
     }
   }
 
   /**
-   * Test Easypanel connection (admin)
+   * Test CaaS (Container Platform) connection (admin)
+   */
+  async testCaasConnection(config?: EasypanelConfigRequest): Promise<{
+    success: boolean;
+    message?: string;
+  }> {
+    try {
+      const response = await apiClient.post<{success: boolean; message?: string}>('/containers/admin/config/test', config || {});
+      if (response.success === false) {
+        throw new Error(response.message || 'Connection test failed');
+      }
+      return {
+        success: true,
+        message: response.message,
+      };
+    } catch (error: any) {
+      console.error('Test CaaS connection error:', error);
+      // Re-throw to let React Query handle it
+      throw error;
+    }
+  }
+
+  /**
+   * Get Easypanel configuration (admin) - DEPRECATED, use getCaasConfig
+   * @deprecated Use getCaasConfig instead
+   */
+  async getEasypanelConfig(): Promise<{
+    success: boolean;
+    config?: EasypanelConfigResponse;
+    error?: string;
+  }> {
+    return this.getCaasConfig();
+  }
+
+  /**
+   * Update Easypanel configuration (admin) - DEPRECATED, use updateCaasConfig
+   * @deprecated Use updateCaasConfig instead
+   */
+  async updateEasypanelConfig(config: EasypanelConfigRequest): Promise<{
+    success: boolean;
+    message?: string;
+  }> {
+    return this.updateCaasConfig(config);
+  }
+
+  /**
+   * Test Easypanel connection (admin) - DEPRECATED, use testCaasConnection
+   * @deprecated Use testCaasConnection instead
    */
   async testEasypanelConnection(config?: EasypanelConfigRequest): Promise<{
     success: boolean;
     message?: string;
     user?: EasypanelUser;
   }> {
-    try {
-      const response = await apiClient.post<ConnectionTestResponse>('/containers/admin/config/test', config || {});
-      if (response.success === false) {
-        throw new Error(response.message || 'Connection test failed');
-      }
-      return {
-        success: true,
-        message: response.message,
-        user: response.user,
-      };
-    } catch (error: any) {
-      console.error('Test Easypanel connection error:', error);
-      // Re-throw to let React Query handle it
-      throw error;
-    }
+    return this.testCaasConnection(config);
   }
 
   /**
-   * Get Dokploy configuration (admin)
+   * Get Dokploy configuration (admin) - DEPRECATED, use getCaasConfig
+   * @deprecated Use getCaasConfig instead
    */
   async getDokployConfig(): Promise<{
     success: boolean;
     config?: EasypanelConfigResponse;
     error?: string;
   }> {
-    try {
-      const response = await apiClient.get<EasypanelConfigResponse | { config: EasypanelConfigResponse }>(
-        '/containers/admin/dokploy/config'
-      );
-
-      const configData =
-        response && typeof response === 'object' && 'config' in response
-          ? (response as { config: EasypanelConfigResponse }).config
-          : (response as EasypanelConfigResponse);
-      return {
-        success: true,
-        config: configData,
-      };
-    } catch (error) {
-      console.error('Get Dokploy config error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to load Dokploy configuration',
-      };
-    }
+    return this.getCaasConfig();
   }
 
   /**
-   * Update Dokploy configuration (admin)
+   * Update Dokploy configuration (admin) - DEPRECATED, use updateCaasConfig
+   * @deprecated Use updateCaasConfig instead
    */
   async updateDokployConfig(config: EasypanelConfigRequest): Promise<{
     success: boolean;
     message?: string;
   }> {
-    try {
-      const response = await apiClient.post<{ success: boolean; message?: string }>('/containers/admin/dokploy/config', config);
-      if (response.success === false) {
-        throw new Error(response.message || 'Failed to update Dokploy configuration');
-      }
-      return {
-        success: true,
-        message: response.message,
-      };
-    } catch (error: any) {
-      console.error('Update Dokploy config error:', error);
-      // Re-throw to let React Query handle it
-      throw error;
-    }
+    return this.updateCaasConfig(config);
   }
 
   /**
-   * Test Dokploy connection (admin)
+   * Test Dokploy connection (admin) - DEPRECATED, use testCaasConnection
+   * @deprecated Use testCaasConnection instead
    */
   async testDokployConnection(config?: EasypanelConfigRequest): Promise<{
     success: boolean;
     message?: string;
   }> {
-    try {
-      const response = await apiClient.post<{success: boolean; message?: string}>('/containers/admin/dokploy/config/test', config || {});
-      if (response.success === false) {
-        throw new Error(response.message || 'Connection test failed');
-      }
-      return {
-        success: true,
-        message: response.message,
-      };
-    } catch (error: any) {
-      console.error('Test Dokploy connection error:', error);
-      // Re-throw to let React Query handle it
-      throw error;
-    }
+    return this.testCaasConnection(config);
   }
 
   /**

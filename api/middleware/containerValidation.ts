@@ -496,10 +496,10 @@ export function validateCreateContainerTemplate(req: Request, res: Response, nex
 }
 
 /**
- * Validate Easypanel configuration request
+ * Validate CaaS configuration request
  * API key is optional when updating existing config, required for new configs
  */
-export async function validateEasypanelConfig(req: Request, res: Response, next: NextFunction) {
+export async function validateCaasConfig(req: Request, res: Response, next: NextFunction) {
   const errors: ValidationErrorDetail[] = [];
   const { apiUrl, apiKey } = req.body;
 
@@ -527,7 +527,7 @@ export async function validateEasypanelConfig(req: Request, res: Response, next:
   
   try {
     const existingResult = await query(
-      'SELECT id, api_key_encrypted FROM easypanel_config WHERE active = true LIMIT 1'
+      'SELECT id, api_key_encrypted FROM caas_config ORDER BY updated_at DESC LIMIT 1'
     );
     existingConfig = existingResult.rows.length > 0 ? existingResult.rows[0] : null;
   } catch (error) {
@@ -561,3 +561,6 @@ export async function validateEasypanelConfig(req: Request, res: Response, next:
 
   next();
 }
+
+// Legacy function for backward compatibility
+export const validateEasypanelConfig = validateCaasConfig;

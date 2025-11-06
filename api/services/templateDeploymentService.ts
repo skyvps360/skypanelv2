@@ -1,10 +1,10 @@
 /**
- * Template Deployment Service for Dokploy
- * Translates stored template schema definitions into Dokploy API calls
+ * Template Deployment Service for Container Platform
+ * Translates stored template schema definitions into CaaS API calls
  */
 
 import type { ContainerTemplate } from './containerTemplateService.js';
-import { dokployService } from './dokployService.js';
+import { caasService } from './caasService.js';
 
 interface DeployTemplateOptions {
   projectId: string;
