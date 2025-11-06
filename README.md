@@ -11,6 +11,8 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 
 ## Feature Highlights
 
+> **Latest Update**: Major admin user management improvements with enhanced organization management system featuring comprehensive modal-based UI, advanced user search capabilities, robust member management with role-based permissions, and improved error handling throughout the admin interface. Includes a completely rewritten validation system with real-time form validation, pattern matching, and custom validation rules. Enhanced testing suite with comprehensive unit tests for all modal components and API integrations. See [Organization Management API Documentation](./api-docs/admin/organizations.md) for details.
+
 ### Core VPS Management
 - **Multi-provider support**: Unified interface for Linode and DigitalOcean with provider abstraction and normalized APIs
 - **Flexible backup pricing**: Provider-specific backup options with admin-configurable upcharges and transparent pricing
@@ -24,8 +26,22 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 - **Multi-currency support**: Flexible pricing with currency formatting
 
 ### Administration & Management
-- **Comprehensive admin panel**: User management, provider configuration, and system monitoring
-- **Role-based access**: Admin and user roles with impersonation capabilities for support
+- **Enhanced admin panel**: Comprehensive user management with improved error handling, provider configuration, and system monitoring
+- **Advanced organization management**: Complete CRUD operations with enhanced modal-based UI featuring:
+  - **Organization creation**: Real-time user search with debounced queries, automatic slug generation, owner assignment with validation, and comprehensive form validation
+  - **Organization editing**: Pre-populated forms with change detection, validation for name/slug uniqueness, and owner information display with transfer guidance
+  - **Safe deletion**: Confirmation dialogs requiring exact name input, resource impact warnings showing member count and data cleanup, and cascading deletion protection
+  - **Member management**: Add, edit, and remove organization members with comprehensive role-based permissions including:
+    - **Advanced user search**: Real-time search with membership status indicators and duplicate prevention
+    - **Role management**: Complete role assignment system with ownership transfer capabilities
+    - **Safe member removal**: Protection against removing owners with proper validation and warnings
+    - **Ownership transfers**: Secure ownership transfer with admin-to-admin confirmation dialogs
+- **Enhanced user detail management**: Improved AdminUserDetail component with:
+  - **Robust error handling**: Comprehensive error states for network issues, invalid user IDs, and access denied scenarios
+  - **Reliable data loading**: Retry mechanisms, proper loading states, and graceful fallbacks
+  - **Enhanced user operations**: Improved edit, impersonation, and deletion workflows with better validation
+  - **Resource impact warnings**: Detailed deletion confirmations showing VPS instances, wallet balances, and organization memberships
+- **Role-based access**: Admin and user roles with enhanced impersonation capabilities including admin-to-admin confirmation
 - **Rate limiting**: Configurable API rate limits with different tiers for user types
 - **Activity logging**: Comprehensive audit trail for all system activities
 
@@ -50,9 +66,11 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 ### Developer Experience
 - **Modern tech stack**: React 18, TypeScript, Vite with hot reload and fast builds
 - **API-first design**: RESTful APIs with comprehensive documentation and type safety
+- **Comprehensive validation system**: Unified form validation with real-time feedback, pattern matching for emails/UUIDs/slugs, SSH key format validation, marketplace app region compatibility checking, and custom validation rules
 - **Database migrations**: Versioned schema management with rollback support
-- **Testing suite**: Vitest for unit tests and Supertest for API integration tests
-- **Development tools**: ESLint, TypeScript strict checking, and automated formatting
+- **Enhanced testing suite**: Comprehensive unit tests with Vitest, React Testing Library for component testing, and Supertest for API integration tests
+- **Test coverage**: Complete test coverage for admin modal components including form validation, API integration, error handling, and user interaction flows
+- **Development tools**: ESLint, TypeScript strict checking, automated formatting, and test-driven development workflow
 
 ## Available Pages & Features
 
@@ -60,7 +78,7 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 - **Dashboard**: Overview of VPS instances, billing summary, and recent activity
 - **VPS Management**: Create, manage, and monitor VPS instances with real-time status
 - **SSH Console**: Browser-based SSH access with full terminal functionality
-- **SSH Keys**: Manage SSH public keys for secure VPS access
+- **SSH Keys**: Manage SSH public keys for secure VPS access with comprehensive format validation supporting RSA, Ed25519, ECDSA, and DSS key types
 - **Billing**: Wallet management, PayPal top-ups, invoice history, and usage tracking
 - **Support**: Ticket system with real-time messaging and file attachments
 - **Settings**: Account management, preferences, and security settings
@@ -68,7 +86,20 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 
 ### Administrative Interface
 - **Admin Dashboard**: System overview with key metrics and quick actions
-- **User Management**: User accounts, roles, and impersonation capabilities
+- **Enhanced User Management**: Comprehensive user accounts management with improved error handling, roles, and enhanced impersonation capabilities including:
+  - **Robust user detail views**: Enhanced AdminUserDetail component with comprehensive error handling for invalid user IDs, network issues, and access denied scenarios
+  - **Reliable data loading**: Retry mechanisms, proper loading states, and graceful fallbacks for all user data
+  - **Enhanced user operations**: Improved edit, impersonation, and deletion workflows with better validation and user feedback
+  - **Resource impact warnings**: Detailed deletion confirmations showing VPS instances, wallet balances, organization memberships, and support tickets
+  - **Admin-to-admin impersonation**: Enhanced confirmation dialogs for admin-to-admin impersonation with security warnings
+- **Advanced Organization Management**: Complete CRUD operations with enhanced modal-based UI featuring:
+  - **Organization Creation Modal**: Real-time user search with debounced queries, automatic slug generation from organization names, owner assignment with validation, and comprehensive form validation
+  - **Organization Edit Modal**: Pre-populated forms with change detection, validation for name/slug uniqueness, and owner information display with transfer guidance
+  - **Organization Delete Dialog**: Safe deletion with confirmation requiring exact name input, resource impact warnings showing member count and data cleanup, and cascading deletion protection
+  - **Member Add Modal**: Advanced user search with membership status indicators, role selection with ownership transfer warnings, and validation to prevent duplicate memberships
+  - **Member Edit Modal**: Role management with ownership transfer capabilities, validation for role change restrictions, and comprehensive warnings for ownership changes
+  - **Member Remove Dialog**: Safe member removal with validation to prevent removing owners, confirmation dialogs with resource cleanup warnings, and proper error handling
+  - **Advanced user search system**: Real-time user search with organization membership filtering, pagination support, and membership status indicators
 - **VPS Plans**: Configure pricing, markups, and available instance types
 - **Provider Management**: Configure Linode/DigitalOcean APIs and settings
 - **Support Management**: Handle customer tickets and support requests
@@ -95,12 +126,15 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 - **Frontend (`src/`)**: React 18, Vite, TypeScript, Tailwind CSS, TanStack Query v5, Zustand, shadcn/ui components, React Router v7.
 - **Backend (`api/`)**: Express.js (ESM) with modular routes, service layer, JWT authentication, and comprehensive middleware.
 - **Database**: PostgreSQL with versioned migrations in `migrations/`; real-time notifications via LISTEN/NOTIFY.
-- **Infrastructure (`scripts/`)**: Migration runners, admin utilities, billing automation, SMTP testing, and operational tooling.
+- **Infrastructure (`scripts/`)**: Migration runners, admin utilities, organization management, billing automation, SMTP testing, and operational tooling.
 
 ## Repository Layout
 
 - `api/` – Express app, middleware, services, and database helpers.
 - `src/` – React SPA with routing, contexts, services, and UI components.
+  - `src/lib/validation.ts` – Comprehensive form validation system with schemas for admin operations
+  - `src/components/admin/` – Enhanced admin interface components with modal-based organization management
+  - `src/components/admin/__tests__/` – Comprehensive test suite for admin components with React Testing Library
 - `migrations/` – Versioned SQL migrations for schema and data changes.
 - `scripts/` – Node utilities for migrations, admin seeding, billing, SMTP, and diagnostics.
 - `public/` – Static assets served by Vite.
@@ -108,7 +142,7 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 
 ## Tech Stack
 
-- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, React Router v7, TanStack Query v5, Zustand, shadcn/ui components.
+- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, React Router v7, TanStack Query v5, Zustand, shadcn/ui components, comprehensive form validation system.
 - **Backend**: Node.js 20+, Express.js (ESM), TypeScript, PostgreSQL, Redis, Bull queues, Nodemailer, WebSockets (ssh2).
 - **Integrations**: PayPal REST SDK, Linode/Akamai API, DigitalOcean API, SMTP2GO, optional InfluxDB metrics.
 
@@ -251,6 +285,12 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 ### Backend Architecture
 - **Server startup**: Express boots from `api/server.ts`, initializes SSH WebSocket bridge, and schedules hourly billing
 - **Database access**: Use `api/lib/database.ts` (`query`, `transaction`) for atomic operations, especially billing
+- **Enhanced organization management**: Complete REST API with CRUD operations featuring:
+  - **Comprehensive member management**: Role assignments, ownership transfers, and member lifecycle management
+  - **Advanced user search**: Organization membership filtering, pagination support, and real-time query capabilities
+  - **Safe cascading deletion**: Resource validation, impact warnings, and proper cleanup procedures
+  - **Robust validation**: Server-side validation for all organization operations with proper error responses
+- **Enhanced user management API**: Improved user detail endpoints with comprehensive error handling, validation, and resource impact analysis
 - **Activity logging**: Use `logActivity` in `api/services/activityLogger.ts` for auditable events and notifications
 - **Rate limiting**: Configured in `api/middleware/rateLimiting.ts` with tiered limits for different user types
 
@@ -258,6 +298,18 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 - **API communication**: Route calls through `src/lib/api.ts` for consistent auth headers and error handling
 - **State management**: TanStack Query for server state, Zustand for client state, React Context for auth/theme
 - **Component library**: shadcn/ui components with Tailwind CSS for consistent styling
+- **Form validation**: Comprehensive validation system in `src/lib/validation.ts` with real-time feedback, pattern matching for emails/UUIDs/slugs, SSH key format validation with support for multiple key types (RSA, Ed25519, ECDSA), marketplace app region compatibility checking, and custom validation rules for admin forms
+- **Enhanced admin components**: Comprehensive admin interface improvements including:
+  - **Enhanced AdminUserDetail**: Robust error handling for invalid user IDs, network issues, and access denied scenarios with retry mechanisms and proper loading states
+  - **Advanced modal system**: Comprehensive organization management modals including:
+    - `OrganizationCreateModal`: Real-time user search with debounced queries, automatic slug generation from names, owner assignment with validation, and comprehensive form validation
+    - `OrganizationEditModal`: Pre-populated forms with change detection, validation for uniqueness checks, and owner information display with transfer guidance
+    - `OrganizationDeleteDialog`: Safe deletion with exact name confirmation, resource impact warnings showing affected resources, and cascading deletion protection
+    - `MemberAddModal`: Advanced user search with membership status indicators, role selection with ownership transfer warnings, and duplicate membership prevention
+    - `MemberEditModal`: Role management with ownership transfer capabilities, validation for role restrictions, and comprehensive warnings for ownership changes
+    - `MemberRemoveDialog`: Safe member removal with owner protection validation, confirmation dialogs with resource cleanup warnings, and proper error handling
+  - **Enhanced OrganizationManagement**: Unified interface with collapsible organization views, real-time member management, and comprehensive error handling
+- **Testing**: Comprehensive test coverage for all admin components with React Testing Library, including form validation, API integration, and error handling scenarios
 - **Routing**: React Router v7 with protected routes and role-based access control
 
 ### Configuration & Branding
@@ -275,8 +327,12 @@ SkyPanelV2 is an open-source cloud service reseller billing panel that provides 
 
 ### API Documentation
 
-- **[API Reference](./repo-docs/API_REFERENCE.md)** - Complete API endpoint reference
-
+- **[API Reference](./api-docs/README.md)** - Complete API endpoint reference
+- **[Admin API Documentation](./api-docs/admin/README.md)** - Administrative endpoints and organization management
+- **[Organization Management API](./api-docs/admin/organizations.md)** - Enhanced organization CRUD operations with comprehensive validation, error handling, and resource impact analysis
+- **[Organization Member Management](./api-docs/admin/organization-members.md)** - Advanced member management with role assignments, ownership transfers, and safe member removal
+- **[User Search API](./api-docs/admin/user-search.md)** - Enhanced user search with organization filtering, membership status indicators, and real-time query capabilities
+- **[Admin User Management](./api-docs/admin/user-detail.md)** - Enhanced user detail management with robust error handling and comprehensive resource impact analysis
 - **[Flexible Backup Pricing API](./repo-docs/FLEXIBLE_BACKUP_PRICING_API.md)** - Backup configuration and pricing endpoints
 - **[Multi-Provider VPS](./repo-docs/MULTI_PROVIDER_VPS.md)** - Multi-provider VPS management
 
@@ -288,9 +344,31 @@ Additional documentation for specific features is available in the `repo-docs/` 
 
 ## Testing & Quality
 
-- Vitest powers unit and integration specs (see `api/middleware/__tests__` for examples with Supertest).
-- React Testing Library covers UI flows where present.
-- `npm run test:watch` keeps feedback tight during development; CI runs `npm run test` + `npm run lint` + `npm run check`.
+### Test Suite Overview
+- **Unit Tests**: Comprehensive Vitest-powered unit tests for all components and utilities
+- **Component Tests**: React Testing Library tests for UI components with user interaction simulation
+- **API Integration Tests**: Supertest-based tests for backend endpoints (see `api/middleware/__tests__`)
+- **Admin Component Testing**: Complete test coverage for admin modal components including:
+  - `OrganizationCreateModal`: Form validation, user search, API integration, and error handling
+  - `OrganizationEditModal`: Data loading, form updates, and validation scenarios
+  - `MemberAddModal`: User search functionality, role selection, and duplicate prevention
+  - All modal components include comprehensive error scenario testing and edge case coverage
+
+### Testing Commands
+- `npm run test` – Run complete test suite once
+- `npm run test:watch` – Continuous testing during development with file watching
+- `npm run lint` – ESLint validation for code quality
+- `npm run check` – TypeScript type checking without compilation
+
+### Test Coverage Areas
+- **Form Validation**: Real-time validation, error states, and user feedback
+- **API Integration**: Mock API responses, error handling, and loading states
+- **User Interactions**: Click events, form submissions, and modal state management
+- **Error Scenarios**: Network failures, validation errors, and edge cases
+- **Authentication**: Mock auth contexts and role-based access testing
+
+### CI/CD Integration
+Continuous integration runs `npm run test` + `npm run lint` + `npm run check` for comprehensive quality assurance.
 
 ## Deployment
 
@@ -384,6 +462,19 @@ CMD ["npm", "start"]
 - **API unreachable**: Confirm backend is running on correct `PORT` from `.env` and all migrations completed
 - **Build failures**: Run `npm run check` for TypeScript errors, `npm run lint` for ESLint issues
 - **Database connection**: Use `node scripts/test-connection.js` to verify PostgreSQL connectivity
+- **Form validation errors**: Check validation schemas in `src/lib/validation.ts`, ensure proper field validation rules, and verify real-time validation feedback is working
+- **SSH key validation issues**: Ensure SSH keys follow proper format (ssh-rsa, ssh-ed25519, etc.), check key length requirements (100-8192 characters), and verify key content is base64 encoded
+- **Marketplace app validation errors**: Check region compatibility for DigitalOcean marketplace apps, verify app slug format, and ensure proper app configuration validation
+- **Admin user detail errors**: Check for proper error handling in AdminUserDetail component, verify user ID format validation, and ensure proper retry mechanisms for failed API calls
+- **Organization API errors**: Ensure admin role and proper authentication for organization management endpoints
+- **User search not working**: Verify admin authentication and check that user search API endpoint is accessible with proper query parameters and organization filtering
+- **Modal validation issues**: Check form validation logic, ensure proper error state management in organization modals, and verify real-time validation feedback
+- **Member management errors**: Ensure proper role validation, ownership transfer restrictions, and member removal protection for organization owners
+- **Organization deletion blocked**: Verify confirmation text matches exactly and check for proper resource cleanup warnings
+- **Impersonation failures**: Check admin-to-admin impersonation confirmation dialogs and ensure proper error handling for impersonation attempts
+- **User deletion issues**: Verify resource impact warnings are displayed correctly and confirmation dialogs show proper deletion consequences
+- **Test failures**: Run `npm run test` to identify failing tests, check mock configurations in test files, and ensure proper test environment setup
+- **Component test issues**: Verify React Testing Library setup, check mock implementations for dependencies like `sonner` and validation libraries, and ensure proper auth context mocking
 
 ### Provider Integration Issues
 - **Linode regions empty**: Validate `LINODE_API_TOKEN` and configure provider settings in admin panel

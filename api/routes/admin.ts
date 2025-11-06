@@ -3,7 +3,7 @@
  * Manage support tickets and VPS plans
  */
 import express, { Request, Response } from "express";
-import { body, param, validationResult } from "express-validator";
+import { body, param, query as queryValidator, validationResult } from "express-validator";
 import { authenticateToken } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
@@ -46,6 +46,15 @@ import {
   upsertRateLimitOverride,
   deleteRateLimitOverride,
 } from "../services/rateLimitOverrideService.js";
+import { 
+  OrganizationValidation, 
+  MemberValidation, 
+  UserValidation,
+  BusinessValidation,
+  formatValidationErrors,
+  formatBusinessLogicError,
+  formatServerError
+} from '../lib/validation.js';
 
 const router = express.Router();
 
@@ -3344,7 +3353,7 @@ router.post(
   }
 );
 
-// Get comprehensive user details including VPS, containers, and billing
+// Get comprehensive user details including VPS, billing, and activity
 router.get(
   "/users/:id/detail",
   authenticateToken,
@@ -3361,70 +3370,108 @@ router.get(
 
       const { id } = req.params;
 
-      // Get user profile information
-      const userResult = await query(
-        `SELECT 
-          u.id,
-          u.email,
-          u.name,
-          u.role,
-          u.phone,
-          u.timezone,
-          u.preferences,
-          u.created_at,
-          u.updated_at,
-          COALESCE(
-            jsonb_agg(
-              DISTINCT jsonb_build_object(
-                'organizationId', om.organization_id,
-                'organizationName', org.name,
-                'organizationSlug', org.slug,
-                'role', om.role,
-                'joinedAt', om.created_at
-              )
-            ) FILTER (WHERE om.organization_id IS NOT NULL),
-            '[]'::jsonb
-          ) AS organizations
-        FROM users u
-        LEFT JOIN organization_members om ON om.user_id = u.id
-        LEFT JOIN organizations org ON org.id = om.organization_id
-        WHERE u.id = $1
-        GROUP BY u.id`,
-        [id]
-      );
+      // Validate UUID format more strictly
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        res.status(400).json({ error: "Invalid user ID format" });
+        return;
+      }
 
-      if (userResult.rows.length === 0) {
+      // Get user profile information with retry mechanism
+      let userResult;
+      let retryCount = 0;
+      const maxRetries = 2;
+
+      while (retryCount <= maxRetries) {
+        try {
+          userResult = await query(
+            `SELECT 
+              u.id,
+              u.email,
+              u.name,
+              u.role,
+              u.phone,
+              u.timezone,
+              u.preferences,
+              u.created_at,
+              u.updated_at,
+              COALESCE(
+                jsonb_agg(
+                  DISTINCT jsonb_build_object(
+                    'organizationId', om.organization_id,
+                    'organizationName', org.name,
+                    'organizationSlug', org.slug,
+                    'role', om.role,
+                    'joinedAt', om.created_at
+                  )
+                ) FILTER (WHERE om.organization_id IS NOT NULL),
+                '[]'::jsonb
+              ) AS organizations
+            FROM users u
+            LEFT JOIN organization_members om ON om.user_id = u.id
+            LEFT JOIN organizations org ON org.id = om.organization_id
+            WHERE u.id = $1
+            GROUP BY u.id`,
+            [id]
+          );
+          break;
+        } catch (queryErr: any) {
+          retryCount++;
+          if (retryCount > maxRetries) {
+            throw queryErr;
+          }
+          // Wait briefly before retry
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      if (!userResult || userResult.rows.length === 0) {
         res.status(404).json({ error: "User not found" });
         return;
       }
 
       const user = userResult.rows[0];
 
-      // Get user's VPS instances
-      const vpsResult = await query(
-        `SELECT 
-          v.id,
-          v.label,
-          v.status,
-          v.ip_address,
-          v.created_at,
-          p.name as plan_name,
-          sp.name as provider_name,
-          v.configuration->>'region' as region_label
-        FROM vps_instances v
-        JOIN organizations org ON org.id = v.organization_id
-        JOIN organization_members om ON om.organization_id = org.id
-        LEFT JOIN vps_plans p ON p.id = v.plan_id
-        LEFT JOIN service_providers sp ON sp.id = p.provider_id
-        WHERE om.user_id = $1
-        ORDER BY v.created_at DESC`,
-        [id]
-      );
+      // Get user's VPS instances with better error handling
+      let vpsInstances: any[] = [];
+      try {
+        const vpsResult = await query(
+          `SELECT 
+            v.id,
+            v.label,
+            v.status,
+            v.ip_address,
+            v.provider_type,
+            v.backup_frequency,
+            v.created_at,
+            v.updated_at,
+            p.name as plan_name,
+            p.base_price,
+            p.markup_price,
+            sp.name as provider_name,
+            sp.type as provider_type_name,
+            org.name as organization_name,
+            COALESCE(v.configuration->>'region', 'unknown') as region_label
+          FROM vps_instances v
+          JOIN organizations org ON org.id = v.organization_id
+          JOIN organization_members om ON om.organization_id = org.id
+          LEFT JOIN vps_plans p ON p.id::text = v.plan_id OR p.id = v.plan_id::uuid
+          LEFT JOIN service_providers sp ON sp.id = v.provider_id
+          WHERE om.user_id = $1
+          ORDER BY v.created_at DESC`,
+          [id]
+        );
+        vpsInstances = vpsResult.rows || [];
+      } catch (vpsErr: any) {
+        console.warn("Error fetching VPS instances for user:", vpsErr.message);
+        vpsInstances = [];
+      }
 
-      // Get user's billing information
+      // Get user's billing information with proper error handling
       const billing = {
         wallet_balance: 0,
         monthly_spend: 0,
+        total_spend: 0,
         total_payments: 0,
         last_payment_date: null,
         last_payment_amount: null,
@@ -3432,79 +3479,86 @@ router.get(
       };
 
       try {
-        // Get wallet balance
+        // Get wallet balance from wallets table (not wallet_balances)
         const walletResult = await query(
-          `SELECT balance
-          FROM wallet_balances wb
-          JOIN organizations org ON org.id = wb.organization_id
+          `SELECT COALESCE(SUM(w.balance), 0) as total_balance
+          FROM wallets w
+          JOIN organizations org ON org.id = w.organization_id
           JOIN organization_members om ON om.organization_id = org.id
-          WHERE om.user_id = $1
-          ORDER BY wb.updated_at DESC
-          LIMIT 1`,
+          WHERE om.user_id = $1`,
           [id]
         );
 
         if (walletResult.rows.length > 0) {
-          billing.wallet_balance = parseFloat(walletResult.rows[0].balance) || 0;
+          billing.wallet_balance = parseFloat(walletResult.rows[0].total_balance) || 0;
         }
 
-        // Get monthly spend (current month)
+        // Get spending data from payment_transactions
         const currentMonth = new Date();
         const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
         
         const spendResult = await query(
-          `SELECT COALESCE(SUM(amount), 0) as monthly_spend
-          FROM billing_transactions bt
-          JOIN organizations org ON org.id = bt.organization_id
+          `SELECT 
+            COALESCE(SUM(CASE WHEN pt.created_at >= $2 THEN pt.amount ELSE 0 END), 0) as monthly_spend,
+            COALESCE(SUM(pt.amount), 0) as total_spend,
+            COUNT(*) as total_payments
+          FROM payment_transactions pt
+          JOIN organizations org ON org.id = pt.organization_id
           JOIN organization_members om ON om.organization_id = org.id
           WHERE om.user_id = $1 
-          AND bt.type = 'charge'
-          AND bt.created_at >= $2`,
+          AND pt.status = 'completed'`,
           [id, startOfMonth.toISOString()]
         );
 
         if (spendResult.rows.length > 0) {
-          billing.monthly_spend = parseFloat(spendResult.rows[0].monthly_spend) || 0;
+          const spendData = spendResult.rows[0];
+          billing.monthly_spend = parseFloat(spendData.monthly_spend) || 0;
+          billing.total_spend = parseFloat(spendData.total_spend) || 0;
+          billing.total_payments = parseInt(spendData.total_payments) || 0;
         }
 
-        // Get payment history
+        // Get recent payment history
         const paymentsResult = await query(
           `SELECT 
-            bt.id,
-            bt.amount,
-            bt.status,
-            bt.created_at
-          FROM billing_transactions bt
-          JOIN organizations org ON org.id = bt.organization_id
+            pt.id,
+            pt.amount,
+            pt.status,
+            pt.payment_method,
+            pt.description,
+            pt.created_at
+          FROM payment_transactions pt
+          JOIN organizations org ON org.id = pt.organization_id
           JOIN organization_members om ON om.organization_id = org.id
           WHERE om.user_id = $1 
-          AND bt.type = 'payment'
-          ORDER BY bt.created_at DESC
+          AND pt.status = 'completed'
+          ORDER BY pt.created_at DESC
           LIMIT 10`,
           [id]
         );
 
-        billing.payment_history = paymentsResult.rows;
-        billing.total_payments = paymentsResult.rows.length;
+        billing.payment_history = paymentsResult.rows || [];
 
-        if (paymentsResult.rows.length > 0) {
+        if (paymentsResult.rows && paymentsResult.rows.length > 0) {
           const lastPayment = paymentsResult.rows[0];
           billing.last_payment_date = lastPayment.created_at;
           billing.last_payment_amount = parseFloat(lastPayment.amount) || 0;
         }
       } catch (billingErr: any) {
-        // Billing tables might not exist, continue with default values
-        console.warn("Billing data not available:", billingErr.message);
+        console.warn("Error fetching billing data for user:", billingErr.message);
+        // Continue with default billing values
       }
 
-      // Get recent activity
+      // Get recent activity with better error handling
       let activity: any[] = [];
       try {
         const activityResult = await query(
           `SELECT 
             id,
             event_type,
+            entity_type,
+            entity_id,
             message,
+            status,
             created_at
           FROM activity_logs
           WHERE user_id = $1
@@ -3512,26 +3566,82 @@ router.get(
           LIMIT 20`,
           [id]
         );
-        activity = activityResult.rows;
+        activity = activityResult.rows || [];
       } catch (activityErr: any) {
-        // Activity table might not exist
-        console.warn("Activity data not available:", activityErr.message);
+        console.warn("Error fetching activity data for user:", activityErr.message);
+        activity = [];
       }
+
+      // Get support tickets
+      let supportTickets: any[] = [];
+      try {
+        const ticketsResult = await query(
+          `SELECT 
+            st.id,
+            st.subject,
+            st.status,
+            st.priority,
+            st.category,
+            st.created_at,
+            st.updated_at,
+            org.name as organization_name
+          FROM support_tickets st
+          JOIN organizations org ON org.id = st.organization_id
+          JOIN organization_members om ON om.organization_id = org.id
+          WHERE om.user_id = $1
+          ORDER BY st.created_at DESC
+          LIMIT 10`,
+          [id]
+        );
+        supportTickets = ticketsResult.rows || [];
+      } catch (ticketsErr: any) {
+        console.warn("Error fetching support tickets for user:", ticketsErr.message);
+        supportTickets = [];
+      }
+
+      // Calculate statistics
+      const statistics = {
+        totalVPS: vpsInstances.length,
+        activeVPS: vpsInstances.filter(vps => vps.status === 'running').length,
+        totalSpend: billing.total_spend,
+        monthlySpend: billing.monthly_spend,
+        totalOrganizations: user.organizations.length,
+        totalSupportTickets: supportTickets.length,
+        openSupportTickets: supportTickets.filter(ticket => ticket.status === 'open').length
+      };
 
       // Build comprehensive response
       const detailedUser = {
-        user,
-        vpsInstances: vpsResult.rows,
+        user: {
+          ...user,
+          // Ensure preferences is always an object
+          preferences: user.preferences || {}
+        },
+        vpsInstances,
         billing,
-        activity
+        activity,
+        supportTickets,
+        statistics
       };
 
       res.json(detailedUser);
     } catch (err: any) {
       console.error("Admin user comprehensive detail error:", err);
-      res
-        .status(500)
-        .json({ error: err.message || "Failed to fetch comprehensive user details" });
+      
+      // Provide more specific error messages
+      let errorMessage = "Failed to fetch user details";
+      if (err.message?.includes("invalid input syntax for type uuid")) {
+        errorMessage = "Invalid user ID format";
+      } else if (err.message?.includes("connection")) {
+        errorMessage = "Database connection error";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      res.status(500).json({ 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      });
     }
   }
 );
@@ -3708,6 +3818,1171 @@ router.delete(
     } catch (err: any) {
       console.error("Admin user delete error:", err);
       res.status(500).json({ error: err.message || "Failed to delete user" });
+    }
+  }
+);
+
+// Update user account information
+router.put(
+  "/users/:id",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("update_user"),
+  [
+    param("id").isUUID().withMessage("Invalid user id"),
+    body("name").optional().isString().trim().isLength({ min: 2 }).withMessage("Name must be at least 2 characters"),
+    body("email").optional().isEmail().withMessage("Valid email is required"),
+    body("role").optional().isIn(['user', 'admin']).withMessage("Role must be 'user' or 'admin'"),
+    body("phone").optional().isString().trim(),
+    body("timezone").optional().isString().trim(),
+  ],
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ errors: errors.array() });
+        return;
+      }
+
+      const { id } = req.params;
+      const { name, email, role, phone, timezone } = req.body as {
+        name?: string;
+        email?: string;
+        role?: string;
+        phone?: string;
+        timezone?: string;
+      };
+
+      // Check if user exists
+      const userCheck = await query(
+        "SELECT id, email, name, role FROM users WHERE id = $1",
+        [id]
+      );
+      
+      if (userCheck.rows.length === 0) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const currentUser = userCheck.rows[0];
+
+      // Prevent self-role modification
+      if (role && role !== currentUser.role && currentUser.id === req.user?.id) {
+        res.status(403).json({ error: "Cannot modify your own role" });
+        return;
+      }
+
+      // Check email uniqueness if email is being updated
+      if (email && email !== currentUser.email) {
+        const emailCheck = await query(
+          "SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id != $2",
+          [email, id]
+        );
+
+        if (emailCheck.rows.length > 0) {
+          res.status(400).json({ error: "Email address is already in use" });
+          return;
+        }
+      }
+
+      // Build update query dynamically
+      const updateFields: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+
+      if (name !== undefined) {
+        updateFields.push(`name = $${paramIndex}`);
+        values.push(name);
+        paramIndex++;
+      }
+
+      if (email !== undefined) {
+        updateFields.push(`email = $${paramIndex}`);
+        values.push(email.toLowerCase());
+        paramIndex++;
+      }
+
+      if (role !== undefined) {
+        updateFields.push(`role = $${paramIndex}`);
+        values.push(role);
+        paramIndex++;
+      }
+
+      if (phone !== undefined) {
+        updateFields.push(`phone = $${paramIndex}`);
+        values.push(phone || null);
+        paramIndex++;
+      }
+
+      if (timezone !== undefined) {
+        updateFields.push(`timezone = $${paramIndex}`);
+        values.push(timezone || null);
+        paramIndex++;
+      }
+
+      if (updateFields.length === 0) {
+        res.status(400).json({ error: "No fields to update" });
+        return;
+      }
+
+      // Add updated_at timestamp
+      updateFields.push(`updated_at = $${paramIndex}`);
+      values.push(new Date().toISOString());
+      paramIndex++;
+
+      // Add user ID for WHERE clause
+      values.push(id);
+
+      const updateQuery = `
+        UPDATE users 
+        SET ${updateFields.join(', ')} 
+        WHERE id = $${paramIndex}
+        RETURNING id, email, name, role, phone, timezone, created_at, updated_at
+      `;
+
+      const result = await query(updateQuery, values);
+
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const updatedUser = result.rows[0];
+
+      // Log the update
+      if (req.user?.id) {
+        const changes = [];
+        if (name !== undefined && name !== currentUser.name) changes.push(`name: "${currentUser.name}" → "${name}"`);
+        if (email !== undefined && email !== currentUser.email) changes.push(`email: "${currentUser.email}" → "${email}"`);
+        if (role !== undefined && role !== currentUser.role) changes.push(`role: "${currentUser.role}" → "${role}"`);
+        if (phone !== undefined) changes.push(`phone updated`);
+        if (timezone !== undefined) changes.push(`timezone updated`);
+
+        await logActivity(
+          {
+            userId: req.user.id,
+            organizationId: req.user.organizationId ?? null,
+            eventType: "user_updated",
+            entityType: "user",
+            entityId: id,
+            message: `Updated user account: ${updatedUser.email}`,
+            status: "success",
+            metadata: {
+              updated_user_email: updatedUser.email,
+              updated_user_name: updatedUser.name,
+              changes: changes.join(', '),
+            },
+          },
+          req
+        );
+      }
+
+      res.json({ user: updatedUser });
+    } catch (err: any) {
+      console.error("Admin user update error:", err);
+      res.status(500).json({ error: err.message || "Failed to update user" });
+    }
+  }
+);
+
+// ============================================================================
+// ORGANIZATION MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// Create new organization
+router.post(
+  "/organizations",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("create_organization"),
+  OrganizationValidation.create,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { name, slug, ownerId, description } = req.body as {
+        name: string;
+        slug: string;
+        ownerId: string;
+        description?: string;
+      };
+
+      // Business logic validation
+      const ownerExists = await BusinessValidation.userExists(ownerId);
+      if (!ownerExists) {
+        res.status(400).json(formatBusinessLogicError("Owner user not found", "USER_NOT_FOUND"));
+        return;
+      }
+
+      const nameUnique = await BusinessValidation.isOrganizationNameUnique(name);
+      if (!nameUnique) {
+        res.status(400).json(formatBusinessLogicError("Organization name already exists", "NAME_NOT_UNIQUE"));
+        return;
+      }
+
+      const slugUnique = await BusinessValidation.isOrganizationSlugUnique(slug);
+      if (!slugUnique) {
+        res.status(400).json(formatBusinessLogicError("Organization slug already exists", "SLUG_NOT_UNIQUE"));
+        return;
+      }
+
+      const now = new Date().toISOString();
+
+      // Get owner details for response
+      const ownerResult = await query(
+        "SELECT id, name, email, role FROM users WHERE id = $1",
+        [ownerId]
+      );
+      const owner = ownerResult.rows[0];
+
+      // Begin transaction for atomic organization creation
+      await query('BEGIN');
+
+      try {
+        // Create organization
+        const orgResult = await query(
+          `INSERT INTO organizations (name, slug, owner_id, settings, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING *`,
+          [name, slug, ownerId, description ? { description } : {}, now, now]
+        );
+
+        const organization = orgResult.rows[0];
+
+        // Add owner as organization member
+        await query(
+          `INSERT INTO organization_members (organization_id, user_id, role, created_at)
+           VALUES ($1, $2, $3, $4)`,
+          [organization.id, ownerId, 'owner', now]
+        );
+
+        // Create wallet for organization
+        await query(
+          `INSERT INTO wallets (organization_id, balance, currency, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [organization.id, 0.00, 'USD', now, now]
+        );
+
+        await query('COMMIT');
+
+        // Log activity
+        if (req.user?.id) {
+          await logActivity(
+            {
+              userId: req.user.id,
+              organizationId: organization.id,
+              eventType: "organization.create",
+              entityType: "organization",
+              entityId: organization.id,
+              message: `Created organization "${name}"`,
+              status: "success",
+              metadata: {
+                organizationName: name,
+                organizationSlug: slug,
+                ownerId: ownerId,
+              },
+            },
+            req
+          );
+        }
+
+        // Return organization with owner details
+        res.status(201).json({
+          organization: {
+            ...organization,
+            owner_name: owner.name,
+            owner_email: owner.email,
+            member_count: 1,
+            members: [{
+              userId: owner.id,
+              userName: owner.name,
+              userEmail: owner.email,
+              role: 'owner',
+              userRole: owner.role,
+              joinedAt: now
+            }]
+          }
+        });
+      } catch (transactionError) {
+        await query('ROLLBACK');
+        throw transactionError;
+      }
+    } catch (err: any) {
+      console.error("Admin organization create error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to create organization", "ORGANIZATION_CREATE_ERROR"));
+    }
+  }
+);
+
+// Update organization
+router.put(
+  "/organizations/:id",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("update_organization"),
+  OrganizationValidation.update,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { id } = req.params;
+      const { name, slug, description } = req.body as {
+        name?: string;
+        slug?: string;
+        description?: string;
+      };
+
+      // Check if organization exists
+      const organizationExists = await BusinessValidation.organizationExists(id);
+      if (!organizationExists) {
+        res.status(404).json(formatBusinessLogicError("Organization not found", "ORGANIZATION_NOT_FOUND"));
+        return;
+      }
+
+      // Get existing organization data
+      const orgResult = await query("SELECT * FROM organizations WHERE id = $1", [id]);
+      const existingOrg = orgResult.rows[0];
+
+      // Business logic validation for uniqueness
+      if (name && name !== existingOrg.name) {
+        const nameUnique = await BusinessValidation.isOrganizationNameUnique(name, id);
+        if (!nameUnique) {
+          res.status(400).json(formatBusinessLogicError("Organization name already exists", "NAME_NOT_UNIQUE"));
+          return;
+        }
+      }
+
+      if (slug && slug !== existingOrg.slug) {
+        const slugUnique = await BusinessValidation.isOrganizationSlugUnique(slug, id);
+        if (!slugUnique) {
+          res.status(400).json(formatBusinessLogicError("Organization slug already exists", "SLUG_NOT_UNIQUE"));
+          return;
+        }
+      }
+
+      // Build update query
+      const updateFields: string[] = [];
+      const values: any[] = [];
+      let paramCount = 1;
+
+      if (name !== undefined) {
+        updateFields.push(`name = $${paramCount}`);
+        values.push(name);
+        paramCount++;
+      }
+
+      if (slug !== undefined) {
+        updateFields.push(`slug = $${paramCount}`);
+        values.push(slug);
+        paramCount++;
+      }
+
+      if (description !== undefined) {
+        const newSettings = { ...existingOrg.settings, description };
+        updateFields.push(`settings = $${paramCount}`);
+        values.push(JSON.stringify(newSettings));
+        paramCount++;
+      }
+
+      updateFields.push(`updated_at = $${paramCount}`);
+      values.push(new Date().toISOString());
+      paramCount++;
+
+      values.push(id);
+
+      // Execute update
+      const updateResult = await query(
+        `UPDATE organizations SET ${updateFields.join(", ")} WHERE id = $${paramCount} RETURNING *`,
+        values
+      );
+
+      const updatedOrg = updateResult.rows[0];
+
+      // Get organization with members for response
+      const orgWithMembersResult = await query(
+        `SELECT 
+          org.id,
+          org.name,
+          org.slug,
+          org.owner_id,
+          org.settings,
+          org.created_at,
+          org.updated_at,
+          owner.name AS owner_name,
+          owner.email AS owner_email,
+          COUNT(DISTINCT om.user_id) AS member_count,
+          COALESCE(
+            jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'userId', mem.id,
+                'userName', mem.name,
+                'userEmail', mem.email,
+                'role', om.role,
+                'userRole', mem.role,
+                'joinedAt', om.created_at
+              )
+            ) FILTER (WHERE mem.id IS NOT NULL),
+            '[]'::jsonb
+          ) AS members
+        FROM organizations org
+        LEFT JOIN users owner ON owner.id = org.owner_id
+        LEFT JOIN organization_members om ON om.organization_id = org.id
+        LEFT JOIN users mem ON mem.id = om.user_id
+        WHERE org.id = $1
+        GROUP BY org.id, owner.id`,
+        [id]
+      );
+
+      // Log activity
+      if (req.user?.id) {
+        await logActivity(
+          {
+            userId: req.user.id,
+            organizationId: id,
+            eventType: "organization.update",
+            entityType: "organization",
+            entityId: id,
+            message: `Updated organization "${updatedOrg.name}"`,
+            status: "success",
+            metadata: {
+              organizationName: updatedOrg.name,
+              organizationSlug: updatedOrg.slug,
+              changes: { name, slug, description },
+            },
+          },
+          req
+        );
+      }
+
+      res.json({ organization: orgWithMembersResult.rows[0] });
+    } catch (err: any) {
+      console.error("Admin organization update error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to update organization", "ORGANIZATION_UPDATE_ERROR"));
+    }
+  }
+);
+
+// Delete organization
+router.delete(
+  "/organizations/:id",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("delete_organization"),
+  OrganizationValidation.delete,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { id } = req.params;
+
+      // Check if organization exists
+      const organizationExists = await BusinessValidation.organizationExists(id);
+      if (!organizationExists) {
+        res.status(404).json(formatBusinessLogicError("Organization not found", "ORGANIZATION_NOT_FOUND"));
+        return;
+      }
+
+      // Get organization name for logging
+      const orgNameResult = await query("SELECT name FROM organizations WHERE id = $1", [id]);
+      const organizationName = orgNameResult.rows[0].name;
+
+      // Get resource counts for confirmation
+      const vpsCount = await query(
+        "SELECT COUNT(*) as count FROM vps_instances WHERE organization_id = $1",
+        [id]
+      );
+
+      const memberCount = await query(
+        "SELECT COUNT(*) as count FROM organization_members WHERE organization_id = $1",
+        [id]
+      );
+
+      const ticketCount = await query(
+        "SELECT COUNT(*) as count FROM support_tickets WHERE organization_id = $1",
+        [id]
+      );
+
+      // Begin transaction for cascading deletion
+      await query('BEGIN');
+
+      try {
+        // Delete VPS instances (this will cascade to billing cycles)
+        await query(
+          "DELETE FROM vps_instances WHERE organization_id = $1",
+          [id]
+        );
+
+        // Delete support tickets and replies
+        await query(
+          "DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE organization_id = $1)",
+          [id]
+        );
+        await query(
+          "DELETE FROM support_tickets WHERE organization_id = $1",
+          [id]
+        );
+
+        // Delete payment transactions
+        await query(
+          "DELETE FROM payment_transactions WHERE organization_id = $1",
+          [id]
+        );
+
+        // Delete wallets
+        await query(
+          "DELETE FROM wallets WHERE organization_id = $1",
+          [id]
+        );
+
+        // Delete organization members
+        await query(
+          "DELETE FROM organization_members WHERE organization_id = $1",
+          [id]
+        );
+
+        // Delete activity logs
+        await query(
+          "DELETE FROM activity_logs WHERE organization_id = $1",
+          [id]
+        );
+
+        // Finally, delete the organization
+        await query(
+          "DELETE FROM organizations WHERE id = $1",
+          [id]
+        );
+
+        await query('COMMIT');
+
+        // Log activity
+        if (req.user?.id) {
+          await logActivity(
+            {
+              userId: req.user.id,
+              organizationId: null,
+              eventType: "organization.delete",
+              entityType: "organization",
+              entityId: id,
+              message: `Deleted organization "${organizationName}"`,
+              status: "success",
+              metadata: {
+                organizationName,
+                resourcesDeleted: {
+                  vpsInstances: parseInt(vpsCount.rows[0].count),
+                  members: parseInt(memberCount.rows[0].count),
+                  supportTickets: parseInt(ticketCount.rows[0].count),
+                },
+              },
+            },
+            req
+          );
+        }
+
+        res.status(204).send();
+      } catch (deleteErr: any) {
+        await query('ROLLBACK');
+        throw deleteErr;
+      }
+    } catch (err: any) {
+      console.error("Admin organization delete error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to delete organization", "ORGANIZATION_DELETE_ERROR"));
+    }
+  }
+);
+
+// ============================================================================
+// ORGANIZATION MEMBER MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// Add member to organization
+router.post(
+  "/organizations/:id/members",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("add_organization_member"),
+  MemberValidation.add,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { id: organizationId } = req.params;
+      const { userId, role } = req.body as {
+        userId: string;
+        role: 'owner' | 'admin' | 'member';
+      };
+
+      // Business logic validation
+      const organizationExists = await BusinessValidation.organizationExists(organizationId);
+      if (!organizationExists) {
+        res.status(404).json(formatBusinessLogicError("Organization not found", "ORGANIZATION_NOT_FOUND"));
+        return;
+      }
+
+      const userExists = await BusinessValidation.userExists(userId);
+      if (!userExists) {
+        res.status(400).json(formatBusinessLogicError("User not found", "USER_NOT_FOUND"));
+        return;
+      }
+
+      const isAlreadyMember = await BusinessValidation.isUserMemberOfOrganization(userId, organizationId);
+      if (isAlreadyMember) {
+        res.status(400).json(formatBusinessLogicError("User is already a member of this organization", "USER_ALREADY_MEMBER"));
+        return;
+      }
+
+      // Get organization and user details for response
+      const orgResult = await query("SELECT name, owner_id FROM organizations WHERE id = $1", [organizationId]);
+      const organization = orgResult.rows[0];
+
+      const userResult = await query("SELECT id, name, email, role as user_role FROM users WHERE id = $1", [userId]);
+      const user = userResult.rows[0];
+
+      // If adding as owner, handle ownership transfer
+      if (role === 'owner') {
+        await query('BEGIN');
+        try {
+          // Update current owner to admin
+          await query(
+            "UPDATE organization_members SET role = 'admin' WHERE organization_id = $1 AND role = 'owner'",
+            [organizationId]
+          );
+
+          // Update organization owner
+          await query(
+            "UPDATE organizations SET owner_id = $1, updated_at = $2 WHERE id = $3",
+            [userId, new Date().toISOString(), organizationId]
+          );
+
+          // Add new member as owner
+          await query(
+            "INSERT INTO organization_members (organization_id, user_id, role, created_at) VALUES ($1, $2, $3, $4)",
+            [organizationId, userId, role, new Date().toISOString()]
+          );
+
+          await query('COMMIT');
+        } catch (ownershipErr) {
+          await query('ROLLBACK');
+          throw ownershipErr;
+        }
+      } else {
+        // Add member with specified role
+        await query(
+          "INSERT INTO organization_members (organization_id, user_id, role, created_at) VALUES ($1, $2, $3, $4)",
+          [organizationId, userId, role, new Date().toISOString()]
+        );
+      }
+
+      // Log activity
+      if (req.user?.id) {
+        await logActivity(
+          {
+            userId: req.user.id,
+            organizationId: organizationId,
+            eventType: "organization_member.add",
+            entityType: "organization_member",
+            entityId: `${organizationId}-${userId}`,
+            message: `Added ${user.name} as ${role} to organization "${organization.name}"`,
+            status: "success",
+            metadata: {
+              organizationName: organization.name,
+              memberName: user.name,
+              memberEmail: user.email,
+              memberRole: role,
+            },
+          },
+          req
+        );
+      }
+
+      // Return member details
+      res.status(201).json({
+        member: {
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email,
+          role: role,
+          userRole: user.user_role,
+          joinedAt: new Date().toISOString()
+        }
+      });
+    } catch (err: any) {
+      console.error("Admin add organization member error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to add organization member", "MEMBER_ADD_ERROR"));
+    }
+  }
+);
+
+// Update member role
+router.put(
+  "/organizations/:id/members/:userId",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("update_organization_member"),
+  MemberValidation.update,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { id: organizationId, userId } = req.params;
+      const { role } = req.body as { role: 'owner' | 'admin' | 'member' };
+
+      // Business logic validation
+      const organizationExists = await BusinessValidation.organizationExists(organizationId);
+      if (!organizationExists) {
+        res.status(404).json(formatBusinessLogicError("Organization not found", "ORGANIZATION_NOT_FOUND"));
+        return;
+      }
+
+      const isUserMember = await BusinessValidation.isUserMemberOfOrganization(userId, organizationId);
+      if (!isUserMember) {
+        res.status(404).json(formatBusinessLogicError("Member not found in organization", "MEMBER_NOT_FOUND"));
+        return;
+      }
+
+      // Get organization and member details
+      const orgResult = await query("SELECT name, owner_id FROM organizations WHERE id = $1", [organizationId]);
+      const organization = orgResult.rows[0];
+
+      const memberResult = await query(
+        `SELECT om.role as current_role, u.name, u.email, u.role as user_role, om.created_at
+         FROM organization_members om
+         JOIN users u ON u.id = om.user_id
+         WHERE om.organization_id = $1 AND om.user_id = $2`,
+        [organizationId, userId]
+      );
+      const member = memberResult.rows[0];
+
+      // If changing to owner, handle ownership transfer
+      if (role === 'owner') {
+        await query('BEGIN');
+        try {
+          // Update current owner to admin
+          await query(
+            "UPDATE organization_members SET role = 'admin' WHERE organization_id = $1 AND role = 'owner'",
+            [organizationId]
+          );
+
+          // Update organization owner
+          await query(
+            "UPDATE organizations SET owner_id = $1, updated_at = $2 WHERE id = $3",
+            [userId, new Date().toISOString(), organizationId]
+          );
+
+          // Update member role to owner
+          await query(
+            "UPDATE organization_members SET role = $1 WHERE organization_id = $2 AND user_id = $3",
+            [role, organizationId, userId]
+          );
+
+          await query('COMMIT');
+        } catch (ownershipErr) {
+          await query('ROLLBACK');
+          throw ownershipErr;
+        }
+      } else {
+        // Regular role update
+        await query(
+          "UPDATE organization_members SET role = $1 WHERE organization_id = $2 AND user_id = $3",
+          [role, organizationId, userId]
+        );
+      }
+
+      // Log activity
+      if (req.user?.id) {
+        await logActivity(
+          {
+            userId: req.user.id,
+            organizationId: organizationId,
+            eventType: "organization_member.update",
+            entityType: "organization_member",
+            entityId: `${organizationId}-${userId}`,
+            message: `Changed ${member.name}'s role from ${member.current_role} to ${role} in organization "${organization.name}"`,
+            status: "success",
+            metadata: {
+              organizationName: organization.name,
+              memberName: member.name,
+              memberEmail: member.email,
+              oldRole: member.current_role,
+              newRole: role,
+            },
+          },
+          req
+        );
+      }
+
+      // Return updated member details
+      res.json({
+        member: {
+          userId: userId,
+          userName: member.name,
+          userEmail: member.email,
+          role: role,
+          userRole: member.user_role,
+          joinedAt: member.created_at
+        }
+      });
+    } catch (err: any) {
+      console.error("Admin update organization member error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to update organization member", "MEMBER_UPDATE_ERROR"));
+    }
+  }
+);
+
+// Remove member from organization
+router.delete(
+  "/organizations/:id/members/:userId",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("remove_organization_member"),
+  MemberValidation.remove,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { id: organizationId, userId } = req.params;
+
+      // Business logic validation
+      const organizationExists = await BusinessValidation.organizationExists(organizationId);
+      if (!organizationExists) {
+        res.status(404).json(formatBusinessLogicError("Organization not found", "ORGANIZATION_NOT_FOUND"));
+        return;
+      }
+
+      const isUserMember = await BusinessValidation.isUserMemberOfOrganization(userId, organizationId);
+      if (!isUserMember) {
+        res.status(404).json(formatBusinessLogicError("Member not found in organization", "MEMBER_NOT_FOUND"));
+        return;
+      }
+
+      const isOwner = await BusinessValidation.isUserOrganizationOwner(userId, organizationId);
+      if (isOwner) {
+        res.status(400).json(formatBusinessLogicError("Cannot remove organization owner. Transfer ownership first.", "CANNOT_REMOVE_OWNER"));
+        return;
+      }
+
+      // Get organization and member details for logging
+      const orgResult = await query("SELECT name, owner_id FROM organizations WHERE id = $1", [organizationId]);
+      const organization = orgResult.rows[0];
+
+      const memberResult = await query(
+        `SELECT om.role, u.name, u.email
+         FROM organization_members om
+         JOIN users u ON u.id = om.user_id
+         WHERE om.organization_id = $1 AND om.user_id = $2`,
+        [organizationId, userId]
+      );
+      const member = memberResult.rows[0];
+
+      // Remove member
+      await query(
+        "DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2",
+        [organizationId, userId]
+      );
+
+      // Log activity
+      if (req.user?.id) {
+        await logActivity(
+          {
+            userId: req.user.id,
+            organizationId: organizationId,
+            eventType: "organization_member.remove",
+            entityType: "organization_member",
+            entityId: `${organizationId}-${userId}`,
+            message: `Removed ${member.name} (${member.role}) from organization "${organization.name}"`,
+            status: "success",
+            metadata: {
+              organizationName: organization.name,
+              memberName: member.name,
+              memberEmail: member.email,
+              memberRole: member.role,
+            },
+          },
+          req
+        );
+      }
+
+      res.status(204).send();
+    } catch (err: any) {
+      console.error("Admin remove organization member error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to remove organization member", "MEMBER_REMOVE_ERROR"));
+    }
+  }
+);
+
+// ============================================================================
+// USER SEARCH ENDPOINT
+// ============================================================================
+
+// Search users for organization member addition
+router.get(
+  "/users/search",
+  authenticateToken,
+  requireAdmin,
+  UserValidation.search,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const searchQuery = (req.query.q as string) || '';
+      const organizationId = req.query.organizationId as string;
+      const page = parseInt((req.query.page as string) || '1');
+      const limit = parseInt((req.query.limit as string) || '20');
+      const offset = (page - 1) * limit;
+
+      let baseQuery = `
+        SELECT 
+          u.id,
+          u.name,
+          u.email,
+          u.role,
+          u.created_at,
+          CASE 
+            WHEN om.user_id IS NOT NULL THEN true 
+            ELSE false 
+          END as is_already_member,
+          COALESCE(
+            jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'id', org.id,
+                'name', org.name,
+                'role', om2.role
+              )
+            ) FILTER (WHERE org.id IS NOT NULL),
+            '[]'::jsonb
+          ) AS organizations
+        FROM users u
+        LEFT JOIN organization_members om ON om.user_id = u.id AND om.organization_id = $1
+        LEFT JOIN organization_members om2 ON om2.user_id = u.id
+        LEFT JOIN organizations org ON org.id = om2.organization_id
+      `;
+
+      const params: any[] = [organizationId || null];
+      let paramCount = 2;
+
+      // Add search conditions
+      if (searchQuery) {
+        baseQuery += ` WHERE (
+          LOWER(u.name) LIKE LOWER($${paramCount}) OR 
+          LOWER(u.email) LIKE LOWER($${paramCount})
+        )`;
+        params.push(`%${searchQuery}%`);
+        paramCount++;
+      }
+
+      baseQuery += `
+        GROUP BY u.id, u.name, u.email, u.role, u.created_at, om.user_id
+        ORDER BY 
+          CASE WHEN om.user_id IS NOT NULL THEN 1 ELSE 0 END,
+          u.name ASC
+        LIMIT $${paramCount} OFFSET $${paramCount + 1}
+      `;
+
+      params.push(limit, offset);
+
+      const result = await query(baseQuery, params);
+
+      // Get total count for pagination
+      let countQuery = `
+        SELECT COUNT(DISTINCT u.id) as total
+        FROM users u
+      `;
+
+      const countParams: any[] = [];
+      let countParamCount = 1;
+
+      if (searchQuery) {
+        countQuery += ` WHERE (
+          LOWER(u.name) LIKE LOWER($${countParamCount}) OR 
+          LOWER(u.email) LIKE LOWER($${countParamCount})
+        )`;
+        countParams.push(`%${searchQuery}%`);
+      }
+
+      const countResult = await query(countQuery, countParams);
+      const total = parseInt(countResult.rows[0]?.total || '0');
+
+      // Format results
+      const users = result.rows.map((user: any) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        created_at: user.created_at,
+        isAlreadyMember: user.is_already_member,
+        organizations: user.organizations || []
+      }));
+
+      res.json({
+        users,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1
+        }
+      });
+    } catch (err: any) {
+      console.error("Admin user search error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to search users", "USER_SEARCH_ERROR"));
+    }
+  }
+);
+
+// ============================================================================
+// USER MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// Update user
+router.put(
+  "/users/:id",
+  authenticateToken,
+  requireAdmin,
+  auditLogger("update_user"),
+  UserValidation.update,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { id } = req.params;
+      const { name, email, role, phone, timezone } = req.body as {
+        name?: string;
+        email?: string;
+        role?: string;
+        phone?: string;
+        timezone?: string;
+      };
+
+      // Business logic validation
+      const userExists = await BusinessValidation.userExists(id);
+      if (!userExists) {
+        res.status(404).json(formatBusinessLogicError("User not found", "USER_NOT_FOUND"));
+        return;
+      }
+
+      // Check email uniqueness if being updated
+      if (email) {
+        const emailUnique = await BusinessValidation.isUserEmailUnique(email, id);
+        if (!emailUnique) {
+          res.status(400).json(formatBusinessLogicError("Email address already exists", "EMAIL_NOT_UNIQUE"));
+          return;
+        }
+      }
+
+      // Build update query
+      const updateFields: string[] = [];
+      const values: any[] = [];
+      let paramCount = 1;
+
+      if (name !== undefined) {
+        updateFields.push(`name = $${paramCount}`);
+        values.push(name.trim());
+        paramCount++;
+      }
+
+      if (email !== undefined) {
+        updateFields.push(`email = $${paramCount}`);
+        values.push(email.trim().toLowerCase());
+        paramCount++;
+      }
+
+      if (role !== undefined) {
+        updateFields.push(`role = $${paramCount}`);
+        values.push(role);
+        paramCount++;
+      }
+
+      if (phone !== undefined) {
+        updateFields.push(`phone = $${paramCount}`);
+        values.push(phone.trim() || null);
+        paramCount++;
+      }
+
+      if (timezone !== undefined) {
+        updateFields.push(`timezone = $${paramCount}`);
+        values.push(timezone.trim() || null);
+        paramCount++;
+      }
+
+      if (updateFields.length === 0) {
+        res.status(400).json(formatBusinessLogicError("No fields to update", "NO_UPDATES"));
+        return;
+      }
+
+      updateFields.push(`updated_at = $${paramCount}`);
+      values.push(new Date().toISOString());
+      paramCount++;
+
+      values.push(id);
+
+      // Execute update
+      const updateResult = await query(
+        `UPDATE users SET ${updateFields.join(", ")} WHERE id = $${paramCount} RETURNING *`,
+        values
+      );
+
+      const updatedUser = updateResult.rows[0];
+
+      // Log activity
+      if (req.user?.id) {
+        await logActivity(
+          {
+            userId: req.user.id,
+            organizationId: req.user.organizationId ?? null,
+            eventType: "user.update",
+            entityType: "user",
+            entityId: id,
+            message: `Updated user "${updatedUser.name}"`,
+            status: "success",
+            metadata: {
+              userName: updatedUser.name,
+              userEmail: updatedUser.email,
+              changes: { name, email, role, phone, timezone },
+            },
+          },
+          req
+        );
+      }
+
+      // Return updated user (excluding sensitive fields)
+      const { password, ...userResponse } = updatedUser;
+      res.json({ user: userResponse });
+    } catch (err: any) {
+      console.error("Admin user update error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to update user", "USER_UPDATE_ERROR"));
     }
   }
 );

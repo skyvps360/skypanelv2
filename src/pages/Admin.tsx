@@ -417,10 +417,10 @@ interface NewVPSPlanState {
   selectedProviderId: string;
   selectedType: string;
   markupPrice: number;
-  backupPriceMonthly: number | "";
-  backupPriceHourly: number | "";
-  backupUpchargeMonthly: number | "";
-  backupUpchargeHourly: number | "";
+  backupPriceMonthly: number | string;
+  backupPriceHourly: number | string;
+  backupUpchargeMonthly: number | string;
+  backupUpchargeHourly: number | string;
   dailyBackupsEnabled: boolean;
   weeklyBackupsEnabled: boolean;
   active: boolean;
@@ -5141,8 +5141,12 @@ const Admin: React.FC = () => {
         user={selectedUserForEdit}
         isOpen={userEditModalOpen}
         onClose={handleCloseUserEditModal}
-        onSave={handleSaveUserUpdate}
-        isSaving={savingUserUpdate}
+        onSuccess={() => {
+          // Refresh the users list
+          fetchAdminUsers();
+          // Close the modal
+          handleCloseUserEditModal();
+        }}
       />
 
       {/* Admin Impersonation Confirmation Dialog */}

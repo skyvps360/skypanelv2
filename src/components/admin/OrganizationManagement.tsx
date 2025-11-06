@@ -16,6 +16,7 @@ import {
   Trash2,
   UserPlus,
   Calendar,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,13 +39,21 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 
+// Import modal components
+import { OrganizationCreateModal } from './OrganizationCreateModal';
+import { OrganizationEditModal } from './OrganizationEditModal';
+import { OrganizationDeleteDialog } from './OrganizationDeleteDialog';
+import { MemberAddModal } from './MemberAddModal';
+import { MemberEditModal } from './MemberEditModal';
+import { MemberRemoveDialog } from './MemberRemoveDialog';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 interface OrganizationMember {
   userId: string;
   userName: string;
   userEmail: string;
-  role: string;
+  role: 'owner' | 'admin' | 'member';
   userRole: string; // admin or user
   joinedAt: string;
 }
@@ -75,10 +84,28 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedOrgs, setExpandedOrgs] = useState<Set<string>>(new Set());
 
+  // Modal states
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [memberAddModalOpen, setMemberAddModalOpen] = useState(false);
+  const [memberEditModalOpen, setMemberEditModalOpen] = useState(false);
+  const [memberRemoveDialogOpen, setMemberRemoveDialogOpen] = useState(false);
+
+  // Selected data for modals
+  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+  const [selectedMember, setSelectedMember] = useState<OrganizationMember | null>(null);
+  const [selectedOrgForMember, setSelectedOrgForMember] = useState<string>('');
+
+  // Error and loading states
+  const [error, setError] = useState<string>('');
+  const [operationLoading, setOperationLoading] = useState(false);
+
   const fetchOrganizations = useCallback(async () => {
     if (!token) return;
     
     setLoading(true);
+    setError('');
     try {
       const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE_URL}/api/admin/organizations`, {
@@ -93,7 +120,9 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
       const data = await res.json();
       setOrganizations(data.organizations || []);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to load organizations');
+      const errorMessage = error.message || 'Failed to load organizations';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -135,6 +164,54 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
     });
   };
 
+  // Modal handlers
+  const handleCreateOrganization = () => {
+    setCreateModalOpen(true);
+  };
+
+  const handleEditOrganization = (org: Organization) => {
+    setSelectedOrganization(org);
+    setEditModalOpen(true);
+  };
+
+  const handleDeleteOrganization = (org: Organization) => {
+    setSelectedOrganization(org);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleAddMember = (orgId: string) => {
+    setSelectedOrgForMember(orgId);
+    setMemberAddModalOpen(true);
+  };
+
+  const handleEditMember = (member: OrganizationMember, orgId: string) => {
+    setSelectedMember(member);
+    setSelectedOrgForMember(orgId);
+    setMemberEditModalOpen(true);
+  };
+
+  const handleRemoveMember = (member: OrganizationMember, orgId: string) => {
+    setSelectedMember(member);
+    setSelectedOrgForMember(orgId);
+    setMemberRemoveDialogOpen(true);
+  };
+
+  const handleModalSuccess = () => {
+    // Clear any previous errors
+    setError('');
+    // Refresh the organizations list
+    fetchOrganizations();
+    // Clear selected data
+    setSelectedOrganization(null);
+    setSelectedMember(null);
+    setSelectedOrgForMember('');
+  };
+
+  const handleRefresh = async () => {
+    setError('');
+    await fetchOrganizations();
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-center lg:justify-between">
@@ -152,13 +229,18 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={fetchOrganizations}
-            disabled={loading}
+            onClick={handleRefresh}
+            disabled={loading || operationLoading}
           >
-            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            <RefreshCw className={cn('h-4 w-4', (loading || operationLoading) && 'animate-spin')} />
             {loading ? 'Refreshing…' : 'Refresh'}
           </Button>
-          <Button size="sm" className="gap-2">
+          <Button 
+            size="sm" 
+            className="gap-2" 
+            onClick={handleCreateOrganization}
+            disabled={loading || operationLoading}
+          >
             <Plus className="h-4 w-4" />
             New Organization
           </Button>
@@ -190,6 +272,25 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
             )}
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+            <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="font-medium">Error</span>
+            </div>
+            <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={handleRefresh}
+            >
+              Try Again
+            </Button>
+          </div>
+        )}
 
         {/* Organizations List */}
         <div className="space-y-2">
@@ -248,8 +349,10 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
-                          toast.info('Edit organization - coming soon');
+                          handleEditOrganization(org);
                         }}
+                        disabled={loading || operationLoading}
+                        title="Edit organization"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -258,8 +361,10 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
-                          toast.info('Delete organization - coming soon');
+                          handleDeleteOrganization(org);
                         }}
+                        disabled={loading || operationLoading}
+                        title="Delete organization"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -273,7 +378,13 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                           <Users className="h-4 w-4" />
                           Members ({org.memberCount})
                         </h4>
-                        <Button size="sm" variant="outline" className="gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="gap-2"
+                          onClick={() => handleAddMember(org.id)}
+                          disabled={loading || operationLoading}
+                        >
                           <UserPlus className="h-4 w-4" />
                           Add Member
                         </Button>
@@ -318,7 +429,14 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant="secondary">
+                                  <Badge 
+                                    variant="outline"
+                                    className={cn(
+                                      member.role === 'owner' && 'border-yellow-400/30 bg-yellow-400/10 text-yellow-600 dark:text-yellow-400',
+                                      member.role === 'admin' && 'border-blue-400/30 bg-blue-400/10 text-blue-600 dark:text-blue-400',
+                                      member.role === 'member' && 'border-gray-400/30 bg-gray-400/10 text-gray-600 dark:text-gray-400'
+                                    )}
+                                  >
                                     {member.role.charAt(0).toUpperCase() +
                                       member.role.slice(1)}
                                   </Badge>
@@ -331,20 +449,21 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => {
-                                        if (onUserAction) {
-                                          onUserAction(member.userId, 'view');
-                                        }
-                                      }}
+                                      onClick={() => handleEditMember(member, org.id)}
+                                      title="Edit member role"
+                                      disabled={loading || operationLoading}
                                     >
                                       <Edit className="h-3 w-3" />
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => {
-                                        toast.info('Remove member - coming soon');
-                                      }}
+                                      onClick={() => handleRemoveMember(member, org.id)}
+                                      title={member.role === 'owner' ? 'Cannot remove owner' : 'Remove member'}
+                                      disabled={loading || operationLoading || member.role === 'owner'}
+                                      className={cn(
+                                        member.role === 'owner' && 'opacity-50 cursor-not-allowed'
+                                      )}
                                     >
                                       <Trash2 className="h-3 w-3" />
                                     </Button>
@@ -363,6 +482,53 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
           )}
         </div>
       </CardContent>
+
+      {/* Modals and Dialogs */}
+      <OrganizationCreateModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        onSuccess={handleModalSuccess}
+      />
+
+      <OrganizationEditModal
+        organization={selectedOrganization}
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        onSuccess={handleModalSuccess}
+      />
+
+      <OrganizationDeleteDialog
+        organization={selectedOrganization}
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onSuccess={handleModalSuccess}
+      />
+
+      <MemberAddModal
+        organizationId={selectedOrgForMember}
+        organizationName={organizations.find(org => org.id === selectedOrgForMember)?.name}
+        open={memberAddModalOpen}
+        onOpenChange={setMemberAddModalOpen}
+        onSuccess={handleModalSuccess}
+      />
+
+      <MemberEditModal
+        member={selectedMember}
+        organizationId={selectedOrgForMember}
+        organizationName={organizations.find(org => org.id === selectedOrgForMember)?.name}
+        open={memberEditModalOpen}
+        onOpenChange={setMemberEditModalOpen}
+        onSuccess={handleModalSuccess}
+      />
+
+      <MemberRemoveDialog
+        member={selectedMember}
+        organizationId={selectedOrgForMember}
+        organizationName={organizations.find(org => org.id === selectedOrgForMember)?.name}
+        open={memberRemoveDialogOpen}
+        onOpenChange={setMemberRemoveDialogOpen}
+        onSuccess={handleModalSuccess}
+      />
     </Card>
   );
 };
