@@ -3671,6 +3671,263 @@ router.get('/admin/subscriptions', requireAdminRole, async (req: AuthenticatedRe
   }
 });
 
+// ============================================================
+// Admin Organization Management Routes
+// ============================================================
+
+/**
+ * GET /api/containers/admin/organizations
+ * List all organizations with optional filtering (Admin only)
+ */
+router.get('/admin/organizations', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { status, search, hasSubscription } = req.query;
+    
+    const filters: any = {};
+    if (status) filters.status = status as string;
+    if (search) filters.search = search as string;
+    if (hasSubscription !== undefined) filters.hasSubscription = hasSubscription === 'true';
+    
+    const organizations = await adminOrganizationService.listOrganizations(filters);
+    
+    res.json({
+      success: true,
+      organizations
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/admin/organizations/:organizationId
+ * Get detailed organization information (Admin only)
+ */
+router.get('/admin/organizations/:organizationId', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { organizationId } = req.params;
+    
+    const organization = await adminOrganizationService.getOrganization(organizationId);
+    
+    if (!organization) {
+      return res.status(404).json({
+        error: {
+          code: ERROR_CODES.PROJECT_NOT_FOUND,
+          message: 'Organization not found'
+        }
+      });
+    }
+    
+    res.json({
+      success: true,
+      organization
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/containers/admin/organizations/:organizationId
+ * Update organization details (Admin only)
+ */
+router.put('/admin/organizations/:organizationId', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { organizationId } = req.params;
+    const { name, status } = req.body;
+    
+    const updates: any = {};
+    if (name) updates.name = name;
+    if (status) updates.status = status;
+    
+    const organization = await adminOrganizationService.updateOrganization(organizationId, updates);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'admin.organization.update',
+      entityType: 'organization',
+      entityId: organizationId,
+      metadata: { updates }
+    });
+    
+    res.json({
+      success: true,
+      organization
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/containers/admin/organizations/:organizationId/members
+ * List organization members (Admin only)
+ */
+router.get('/admin/organizations/:organizationId/members', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { organizationId } = req.params;
+    
+    const members = await adminOrganizationService.listMembers(organizationId);
+    
+    res.json({
+      success: true,
+      members
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/admin/organizations/:organizationId/members
+ * Add member to organization (Admin only)
+ */
+router.post('/admin/organizations/:organizationId/members', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { organizationId } = req.params;
+    const { email, role } = req.body;
+    
+    if (!email || !role) {
+      return res.status(400).json({
+        error: {
+          code: ERROR_CODES.MISSING_REQUIRED_FIELDS,
+          message: 'Email and role are required'
+        }
+      });
+    }
+    
+    const member = await adminOrganizationService.addMember(organizationId, { email, role });
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'admin.organization.member.add',
+      entityType: 'organization',
+      entityId: organizationId,
+      metadata: { memberEmail: email, role }
+    });
+    
+    res.json({
+      success: true,
+      member
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/containers/admin/organizations/:organizationId/members/:userId
+ * Update member role (Admin only)
+ */
+router.put('/admin/organizations/:organizationId/members/:userId', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { organizationId, userId } = req.params;
+    const { role } = req.body;
+    
+    if (!role) {
+      return res.status(400).json({
+        error: {
+          code: ERROR_CODES.MISSING_REQUIRED_FIELDS,
+          message: 'Role is required'
+        }
+      });
+    }
+    
+    await adminOrganizationService.updateMemberRole(organizationId, userId, role);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'admin.organization.member.update',
+      entityType: 'organization',
+      entityId: organizationId,
+      metadata: { userId, role }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Member role updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/containers/admin/organizations/:organizationId/members/:userId
+ * Remove member from organization (Admin only)
+ */
+router.delete('/admin/organizations/:organizationId/members/:userId', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { organizationId, userId } = req.params;
+    
+    await adminOrganizationService.removeMember(organizationId, userId);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'admin.organization.member.remove',
+      entityType: 'organization',
+      entityId: organizationId,
+      metadata: { userId }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Member removed successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/containers/admin/organizations/bulk-update
+ * Bulk update organizations (Admin only)
+ */
+router.post('/admin/organizations/bulk-update', requireAdminRole, async (req: AuthenticatedRequest, res: Response, next: any) => {
+  try {
+    const { adminOrganizationService } = await import('../services/adminOrganizationService.js');
+    const { updates } = req.body;
+    
+    if (!updates || !Array.isArray(updates)) {
+      return res.status(400).json({
+        error: {
+          code: ERROR_CODES.MISSING_REQUIRED_FIELDS,
+          message: 'Updates array is required'
+        }
+      });
+    }
+    
+    const result = await adminOrganizationService.bulkUpdateOrganizations(updates);
+    
+    await logActivity({
+      userId: req.user!.id,
+      organizationId: req.user!.organizationId!,
+      eventType: 'admin.organizations.bulk.update',
+      entityType: 'organization',
+      entityId: null,
+      metadata: { successful: result.successful, failed: result.failed }
+    });
+    
+    res.json({
+      success: true,
+      result
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * GET /api/containers/admin/services
  * List all container services across all organizations
