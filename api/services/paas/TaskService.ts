@@ -170,6 +170,7 @@ export class TaskService {
             SELECT row_to_json(app_data) FROM (
               SELECT 
                 a.id,
+                a.user_id,
                 a.name,
                 a.slug,
                 a.system_domain,
@@ -212,6 +213,7 @@ export class TaskService {
       if (row.resource_data) {
         const data = row.resource_data;
         task.task_data = {
+          user_id: data.user_id,
           slug: data.slug,
           system_domain: data.system_domain,
           custom_domains: data.custom_domains || [],

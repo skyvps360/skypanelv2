@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { authenticateToken } from '../../../middleware/auth.js';
 import { applicationService, deploymentScheduler } from '../../../services/paas/index.js';
+import {
+  validateApplicationName,
+  validateGitUrl,
+  validateGitBranch,
+  validateInstanceCount
+} from '../../../middleware/paasValidation.js';
 
 const router = Router();
 
@@ -35,7 +41,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, validateApplicationName, async (req, res) => {
   try {
     const { name, runtime_id, plan_id, region } = req.body;
 
@@ -59,7 +65,7 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, validateApplicationName, validateGitUrl, validateGitBranch, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const app = await applicationService.getById(id);
@@ -212,7 +218,7 @@ router.post('/:id/start', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/:id/scale', authenticateToken, async (req, res) => {
+router.post('/:id/scale', authenticateToken, validateInstanceCount, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { instance_count } = req.body;

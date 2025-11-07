@@ -25,7 +25,7 @@ router.get('/:appId/env', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/:appId/env', authenticateToken, async (req, res) => {
+router.post('/:appId/env', authenticateToken, validateEnvVarKeys, validateEnvVarValues, async (req, res) => {
   try {
     const appId = parseInt(req.params.appId);
     const { key, value } = req.body;
@@ -57,7 +57,7 @@ router.post('/:appId/env', authenticateToken, async (req, res) => {
   }
 });
 
-router.put('/:appId/env/:key', authenticateToken, async (req, res) => {
+router.put('/:appId/env/:key', authenticateToken, validateEnvVarValues, async (req, res) => {
   try {
     const appId = parseInt(req.params.appId);
     const key = req.params.key;

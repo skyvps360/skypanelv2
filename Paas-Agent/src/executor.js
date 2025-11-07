@@ -182,6 +182,7 @@ async function executeDeploy(config, task) {
     cpuLimit: taskData.cpu_limit,
     memoryLimit: taskData.memory_limit,
     volumes: [],
+    userId: taskData.user_id || null
   });
 
   // Cleanup workspace
@@ -271,6 +272,7 @@ async function executeScale(config, task) {
           cpuLimit: taskData.cpu_limit,
           memoryLimit: taskData.memory_limit,
           volumes: [],
+          userId: taskData.user_id || null
         });
         
         logger.info(`✅ Created instance ${i + 1} of ${targetCount}`);

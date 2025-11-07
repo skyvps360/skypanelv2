@@ -74,12 +74,51 @@ export async function createContainer(containerConfig) {
     port, 
     cpuLimit, 
     memoryLimit,
-    volumes 
+    volumes,
+    userId 
   } = containerConfig;
 
   logger.info(`🐳 Creating container: ${containerName}`);
 
   try {
+    // Security configurations
+    const securityOpts = [
+      'no-new-privileges:true',  // Prevent privilege escalation
+      'seccomp=unconfined',       // Add seccomp profile in production
+    ];
+    
+    // Drop all capabilities except essential ones
+    const capDrop = [
+      'ALL'
+    ];
+    
+    const capAdd = [
+      'NET_BIND_SERVICE',  // Allow binding to ports < 1024 if needed
+      'CHOWN',
+      'SETGID',
+      'SETUID'
+    ];
+    
+    // Create isolated network for this user/org
+    const networkName = userId ? `paas-net-${userId}` : 'paas-network';
+    
+    // Ensure network exists
+    try {
+      await docker.getNetwork(networkName).inspect();
+    } catch (err) {
+      await docker.createNetwork({
+        Name: networkName,
+        Driver: 'bridge',
+        Internal: false,
+        EnableIPv6: false,
+        Options: {
+          'com.docker.network.bridge.enable_icc': 'true',
+          'com.docker.network.bridge.enable_ip_masquerade': 'true'
+        }
+      });
+      logger.info(`📡 Created network: ${networkName}`);
+    }
+    
     const container = await docker.createContainer({
       Image: imageName,
       name: containerName,
@@ -87,35 +126,68 @@ export async function createContainer(containerConfig) {
       ExposedPorts: {
         [`${port}/tcp`]: {}
       },
+      User: '1000:1000',  // Run as non-root user
       HostConfig: {
-        PortBindings: {
-          [`${port}/tcp`]: [{ HostPort: '0' }] // Dynamic port
-        },
+        // Network configuration
+        NetworkMode: networkName,
+        
+        // Port configuration (internal only, nginx handles external)
+        PublishAllPorts: false,
+        
+        // Resource limits
         CpuQuota: cpuLimit ? cpuLimit * 1000 : undefined,
+        CpuPeriod: 100000,
         Memory: memoryLimit ? memoryLimit * 1024 * 1024 : undefined,
+        MemorySwap: memoryLimit ? memoryLimit * 1024 * 1024 : undefined, // No swap
+        
+        // Storage
         Binds: volumes || [],
+        
+        // Security
+        Privileged: false,
+        ReadonlyRootfs: false,
+        SecurityOpt: securityOpts,
+        CapDrop: capDrop,
+        CapAdd: capAdd,
+        
+        // Restart policy
         RestartPolicy: {
           Name: 'unless-stopped',
           MaximumRetryCount: 3
-        }
+        },
+        
+        // Isolation
+        PidsLimit: 512,  // Limit number of processes
+        
+        // No access to host devices
+        Devices: []
       },
       Labels: {
         'paas.app.id': appId.toString(),
         'paas.managed': 'true',
+        'paas.user.id': userId || 'unknown'
+      },
+      // Healthcheck
+      Healthcheck: {
+        Test: ['CMD-SHELL', `nc -z localhost ${port} || exit 1`],
+        Interval: 30000000000,  // 30 seconds in nanoseconds
+        Timeout: 10000000000,   // 10 seconds
+        Retries: 3,
+        StartPeriod: 60000000000 // 60 seconds
       }
     });
 
     await container.start();
     
     const info = await container.inspect();
-    const hostPort = info.NetworkSettings.Ports[`${port}/tcp`]?.[0]?.HostPort || '0';
 
-    logger.info(`✅ Container started: ${containerName} (port ${hostPort})`);
+    logger.info(`✅ Container started: ${containerName} (network: ${networkName})`);
     
     return { 
       success: true, 
       containerId: container.id,
-      hostPort: parseInt(hostPort),
+      hostPort: 0,  // Not exposed directly
+      networkName
     };
   } catch (error) {
     logger.error(`❌ Container creation failed: ${error.message}`);
