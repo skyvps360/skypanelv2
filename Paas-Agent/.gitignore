@@ -1,0 +1,27 @@
+# Logs
+*.log
+agent-error.log
+agent.log
+
+# Config
+config.json
+
+# Dependencies
+node_modules/
+
+# Workspaces
+workspaces/
+
+# Build outputs
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

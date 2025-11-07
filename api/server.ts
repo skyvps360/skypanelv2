@@ -5,6 +5,7 @@
 import app from "./app.js";
 import { initSSHBridge } from "./services/sshBridge.js";
 import { BillingService } from "./services/billingService.js";
+import { paasMonitor } from "./services/paasMonitor.js";
 
 /**
  * start server with port
@@ -18,6 +19,9 @@ const server = app.listen(PORT, () => {
 
   // Start hourly billing scheduler
   startBillingScheduler();
+  
+  // Start PaaS node health monitoring
+  paasMonitor.start();
 });
 
 /**
@@ -66,6 +70,7 @@ async function runHourlyBilling(runType: "initial" | "scheduled") {
  */
 process.on("SIGTERM", () => {
   console.log("SIGTERM signal received");
+  paasMonitor.stop();
   server.close(() => {
     console.log("Server closed");
     process.exit(0);
@@ -74,6 +79,7 @@ process.on("SIGTERM", () => {
 
 process.on("SIGINT", () => {
   console.log("SIGINT signal received");
+  paasMonitor.stop();
   server.close(() => {
     console.log("Server closed");
     process.exit(0);

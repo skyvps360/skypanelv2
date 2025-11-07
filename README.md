@@ -13,7 +13,19 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 ## Feature Highlights
 
-> **Latest Update**: Major admin user management improvements with enhanced organization management system featuring comprehensive modal-based UI, advanced user search capabilities, robust member management with role-based permissions, and improved error handling throughout the admin interface. Includes a completely rewritten validation system with real-time form validation, pattern matching, and custom validation rules. Enhanced testing suite with comprehensive unit tests for all modal components and API integrations. See [Organization Management API Documentation](./api-docs/admin/organizations.md) for details.
+> **Latest Update**: **Platform-as-a-Service (PaaS) Integration** - Full Heroku/Railway-like deployment platform with git-based deployments, multi-runtime support (Node.js, Python, PHP, Docker), automatic buildpack detection, resource limits, environment variables, and worker node management. See [PaaS Documentation](./.kiro/specs/paas-integration/FINAL_SETUP.md) for complete setup guide.
+
+### 🆕 Platform-as-a-Service (PaaS)
+- **Git-based deployments**: Deploy applications directly from GitHub repositories
+- **Multi-runtime support**: Node.js, Python, PHP, and custom Dockerfile support
+- **Automatic buildpacks**: Auto-detect project type and generate Dockerfile
+- **Worker node management**: Deploy and manage multiple worker nodes
+- **Resource limits**: Configure CPU, RAM, and storage limits per application
+- **Environment variables**: Secure encrypted environment variable management
+- **Build history**: Track all deployments with logs and commit information
+- **Health monitoring**: Real-time node health, capacity tracking, and alerting
+- **Task queue system**: Reliable deployment orchestration with status tracking
+- **Container management**: Start, stop, restart, and scale applications
 
 ### Core VPS Management
 - **Multi-provider support**: Unified interface for Linode and DigitalOcean with provider abstraction and normalized APIs

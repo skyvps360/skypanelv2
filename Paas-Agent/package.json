@@ -1,0 +1,22 @@
+{
+  "name": "skypanel-paas-agent",
+  "version": "1.0.0",
+  "description": "SkyPanel PaaS Worker Node Agent",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": ["paas", "docker", "deployment", "agent"],
+  "author": "SkyPanel",
+  "license": "PROPRIETARY",
+  "dependencies": {
+    "dockerode": "^4.0.2",
+    "simple-git": "^3.25.0",
+    "node-fetch": "^3.3.2",
+    "systeminformation": "^5.22.7",
+    "tar-fs": "^3.0.5",
+    "winston": "^3.11.0"
+  }
+}

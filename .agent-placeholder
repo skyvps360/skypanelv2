@@ -1,0 +1,5 @@
+# PaaS Agent Directory
+
+This directory will contain the worker node agent implementation.
+
+See `.kiro/specs/paas-integration/IMPLEMENTATION_PROGRESS.md` for details on what needs to be built.
