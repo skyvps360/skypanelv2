@@ -65,10 +65,10 @@ export class BillingService {
     }
   }
   /**
-   * Run hourly billing for all active VPS instances
+   * Run hourly billing for all active VPS instances and PaaS resources
    */
   static async runHourlyBilling(): Promise<BillingResult> {
-    console.log('🔄 Starting hourly VPS billing process...');
+    console.log('🔄 Starting hourly billing process (VPS + PaaS)...');
     
     const result: BillingResult = {
       success: true,
@@ -86,7 +86,8 @@ export class BillingService {
         console.warn('Skipping hourly billing because last_billed_at column is missing.');
         return result;
       }
-      // Get all active VPS instances that need billing
+      
+      // Process VPS billing
       const activeInstances = await this.getActiveVPSInstances();
       console.log(`📊 Found ${activeInstances.length} active VPS instances to process`);
 
@@ -117,8 +118,24 @@ export class BillingService {
           console.error(`❌ Error billing VPS ${instance.label}:`, error);
         }
       }
+      
+      // Process PaaS billing
+      try {
+        const { paasBillingService } = await import('./paas/BillingService.js');
+        const paasResult = await paasBillingService.processHourlyBilling();
+        
+        result.billedInstances += paasResult.processed;
+        result.totalAmount += paasResult.totalCharges;
+        
+        if (paasResult.errors.length > 0) {
+          result.errors.push(...paasResult.errors);
+        }
+      } catch (error) {
+        console.error('❌ PaaS billing failed:', error);
+        result.errors.push(`PaaS billing error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
 
-      if (result.failedInstances.length > 0) {
+      if (result.failedInstances.length > 0 || result.errors.length > 0) {
         result.success = false;
       }
 

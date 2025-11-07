@@ -8,6 +8,7 @@ import environmentRouter from './environment.js';
 import databasesRouter from './databases.js';
 import configRouter from './config.js';
 import internalRouter from './internal.js';
+import agentRouter from './agent.js';
 
 const router = Router();
 
@@ -26,5 +27,8 @@ router.use('/', configRouter);
 
 // Internal routes (for agent communication)
 router.use('/internal', internalRouter);
+
+// Agent distribution
+router.use('/agent', agentRouter);
 
 export default router;

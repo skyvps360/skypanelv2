@@ -6,6 +6,7 @@ import { planService } from './PlanService.js';
 import { runtimeService } from './RuntimeService.js';
 import { environmentService } from './EnvironmentService.js';
 import { databaseService } from './DatabaseService.js';
+import { paasBillingService } from './BillingService.js';
 
 export class DeploymentScheduler {
   async scheduleDeployment(applicationId: number, gitCommit?: {
@@ -25,6 +26,20 @@ export class DeploymentScheduler {
     const runtime = await runtimeService.getById(app.runtime_id!);
     if (!runtime) {
       return { success: false, error: 'Runtime not found' };
+    }
+    
+    // Check wallet balance
+    const balanceCheck = await paasBillingService.checkSufficientBalance(
+      app.user_id,
+      app.plan_id!,
+      app.instance_count
+    );
+    
+    if (!balanceCheck.sufficient) {
+      return { 
+        success: false, 
+        error: `Insufficient balance. Required: $${balanceCheck.required.toFixed(2)}, Available: $${balanceCheck.balance.toFixed(2)}` 
+      };
     }
 
     const node = await this.selectNode(app.region, plan);

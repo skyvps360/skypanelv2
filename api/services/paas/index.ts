@@ -7,6 +7,7 @@ export { EnvironmentService, environmentService } from './EnvironmentService.js'
 export { DatabaseService, databaseService } from './DatabaseService.js';
 export { TaskService, taskService } from './TaskService.js';
 export { DeploymentScheduler, deploymentScheduler } from './DeploymentScheduler.js';
+export { PaaSBillingService, paasBillingService } from './BillingService.js';
 
 export type { PaaSPlan } from './PlanService.js';
 export type { PaaSRuntime } from './RuntimeService.js';
@@ -16,3 +17,4 @@ export type { PaaSBuild } from './BuildService.js';
 export type { PaaSEnvironmentVar } from './EnvironmentService.js';
 export type { PaaSDatabase } from './DatabaseService.js';
 export type { PaaSTask, DeploymentTask } from './TaskService.js';
+export type { PaaSBillingRecord } from './BillingService.js';
