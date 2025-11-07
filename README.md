@@ -7,7 +7,9 @@
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
-SkyPanelV2 is an open-source cloud service reseller billing panel that provides a white-label control plane for cloud hosting businesses. It enables service providers to offer VPS hosting services through a unified interface with integrated billing, customer management, and comprehensive administrative tools.
+SkyPanelV2 is an open-source cloud service billing panel that provides a white-label control plane for cloud hosting businesses. It enables service providers to offer VPS hosting services through a unified interface with integrated billing, customer management, and comprehensive administrative tools.
+
+THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 ## Feature Highlights
 
