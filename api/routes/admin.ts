@@ -55,12 +55,16 @@ import {
   formatBusinessLogicError,
   formatServerError
 } from '../lib/validation.js';
+import paasAdminRouter from './admin/paas.js';
 
 const router = express.Router();
 
 // Apply security middleware to all admin routes
 router.use(adminSecurityHeaders);
 router.use(requestSizeLimit(500)); // 500KB limit for admin operations
+
+// Mount PaaS admin routes
+router.use('/paas', authenticateToken, requireAdmin, paasAdminRouter);
 
 // Enhanced Rate Limiting:
 // Admin routes automatically receive higher rate limits (1000 requests per 15 minutes)
