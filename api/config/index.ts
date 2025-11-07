@@ -43,6 +43,9 @@ export interface Config {
   SSH_CRED_SECRET?: string;
   CONTACT_FORM_RECIPIENT?: string;
   COMPANY_BRAND_NAME: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  GITHUB_OAUTH_CALLBACK?: string;
 }
 
 /**
@@ -160,6 +163,9 @@ function getConfig(): Config {
       process.env.COMPANY_BRAND_NAME?.trim() ||
       process.env.COMPANY_NAME?.trim() ||
       'SkyPanelV2',
+    GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
+    GITHUB_OAUTH_CALLBACK: process.env.GITHUB_OAUTH_CALLBACK,
   };
 
   // Debug logging
@@ -175,7 +181,8 @@ function getConfig(): Config {
       admin: `${config.rateLimiting.adminMaxRequests}/${config.rateLimiting.adminWindowMs}ms`,
       trustProxy: config.rateLimiting.trustProxy
     },
-    companyBrandName: config.COMPANY_BRAND_NAME
+    companyBrandName: config.COMPANY_BRAND_NAME,
+    githubConfigured: !!config.GITHUB_CLIENT_ID && !!config.GITHUB_CLIENT_SECRET && !!config.GITHUB_OAUTH_CALLBACK
   });
 
   return config;

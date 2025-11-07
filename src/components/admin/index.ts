@@ -8,3 +8,6 @@ export { OrganizationDeleteDialog } from './OrganizationDeleteDialog';
 export { MemberAddModal } from './MemberAddModal';
 export { MemberEditModal } from './MemberEditModal';
 export { MemberRemoveDialog } from './MemberRemoveDialog';
+export { PaaSPlansModal } from './PaaSPlansModal';
+export { PaaSRuntimesModal } from './PaaSRuntimesModal';
+export { PaaSNodesModal } from './PaaSNodesModal';

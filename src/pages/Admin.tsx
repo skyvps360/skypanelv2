@@ -42,6 +42,7 @@ import { RateLimitMonitoring } from "@/components/admin/RateLimitMonitoring";
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { FAQItemManager } from "@/components/admin/FAQItemManager";
 import { UpdatesManager } from "@/components/admin/UpdatesManager";
+import { PaaSPlansModal, PaaSRuntimesModal, PaaSNodesModal } from "@/components/admin";
 import { ContactCategoryManager } from "@/components/admin/ContactCategoryManager";
 import { ContactMethodManager } from "@/components/admin/ContactMethodManager";
 import PlatformAvailabilityManager from "@/components/admin/PlatformAvailabilityManager";
@@ -140,7 +141,8 @@ type AdminSection =
   | "rate-limiting"
   | "faq-management"
   | "platform"
-  | "contact-management";
+  | "contact-management"
+  | "paas";
 
 const ADMIN_SECTIONS: AdminSection[] = [
   "dashboard",
@@ -158,6 +160,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "faq-management",
   "platform",
   "contact-management",
+  "paas",
 ];
 
 const DEFAULT_ADMIN_SECTION: AdminSection = "dashboard";
@@ -780,6 +783,10 @@ const Admin: React.FC = () => {
   const [rdnsBaseDomain, setRdnsBaseDomain] = useState<string>("");
   const [rdnsLoading, setRdnsLoading] = useState<boolean>(false);
   const [rdnsSaving, setRdnsSaving] = useState<boolean>(false);
+  // PaaS Modals
+  const [paasPlansOpen, setPaasPlansOpen] = useState(false);
+  const [paasRuntimesOpen, setPaasRuntimesOpen] = useState(false);
+  const [paasNodesOpen, setPaasNodesOpen] = useState(false);
 
   const authHeader = useMemo(
     () => ({ Authorization: `Bearer ${token}` }),
@@ -2156,6 +2163,18 @@ const Admin: React.FC = () => {
           { label: "Attention", value: formatCountValue(attentionServers) },
         ],
         actionLabel: "Manage servers",
+      },
+      {
+        id: "paas",
+        title: "App Hosting (PaaS)",
+        description: "Plans, runtimes, and worker nodes.",
+        icon: Box,
+        accent: "text-teal-600",
+        summary: [
+          { label: "Sections", value: "3" },
+          { label: "Status", value: "Beta" },
+        ],
+        actionLabel: "Open PaaS",
       },
       {
         id: "vps-plans",
@@ -3778,6 +3797,49 @@ const Admin: React.FC = () => {
         <FAQItemManager token={token || ""} />
         <UpdatesManager token={token || ""} />
       </div>
+    </SectionPanel>
+
+    <SectionPanel section="paas" activeSection={activeTab}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">PaaS Management</h2>
+            <p className="text-sm text-muted-foreground">Manage plans, runtimes, and worker nodes for application hosting.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Plans</CardTitle>
+              <CardDescription>Create and manage application hosting plans</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => setPaasPlansOpen(true)}>Open Plans</Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Runtimes</CardTitle>
+              <CardDescription>Node.js, Python, PHP, or custom images</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => setPaasRuntimesOpen(true)}>Open Runtimes</Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Worker Nodes</CardTitle>
+              <CardDescription>Register nodes and view status</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => setPaasNodesOpen(true)}>Open Nodes</Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      <PaaSPlansModal open={paasPlansOpen} onOpenChange={setPaasPlansOpen} />
+      <PaaSRuntimesModal open={paasRuntimesOpen} onOpenChange={setPaasRuntimesOpen} />
+      <PaaSNodesModal open={paasNodesOpen} onOpenChange={setPaasNodesOpen} />
     </SectionPanel>
 
     <SectionPanel section="platform" activeSection={activeTab}>

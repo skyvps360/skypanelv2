@@ -52,9 +52,12 @@ import AboutUs from "./pages/AboutUs";
 import Contact from "./pages/Contact";
 import Status from "./pages/Status";
 import TermsOfService from "./pages/TermsOfService";
+import PaaS from "./pages/PaaS";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Pricing from "./pages/Pricing";
 import SSHKeys from "./pages/SSHKeys";
+import Apps from "./pages/Apps";
+import AppDetails from "./pages/AppDetails";
 
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 
@@ -278,6 +281,22 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/apps"
+          element={
+            <ProtectedRoute>
+              <Apps />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/apps/:id"
+          element={
+            <ProtectedRoute>
+              <AppDetails />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/billing"
           element={
             <ProtectedRoute>
@@ -370,6 +389,7 @@ function AppRoutes() {
         <Route path="/about" element={<AboutUs />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/status" element={<Status />} />
+        <Route path="/paas" element={<PaaS />} />
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="*" element={<Navigate to="/" replace />} />

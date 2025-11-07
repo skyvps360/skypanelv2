@@ -13,7 +13,7 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 ## Feature Highlights
 
-> **Latest Update**: Major admin user management improvements with enhanced organization management system featuring comprehensive modal-based UI, advanced user search capabilities, robust member management with role-based permissions, and improved error handling throughout the admin interface. Includes a completely rewritten validation system with real-time form validation, pattern matching, and custom validation rules. Enhanced testing suite with comprehensive unit tests for all modal components and API integrations. See [Organization Management API Documentation](./api-docs/admin/organizations.md) for details.
+> **Latest Update**: Enhanced pricing page with modern UI redesign featuring improved card layouts, "Popular" plan highlighting, FAQ section, enhanced features showcase, and comprehensive call-to-action sections. Fixed missing navigation header and footer on privacy policy and terms of service pages for consistent user experience across all public pages. Improved visual hierarchy with gradient backgrounds, better responsive design, and enhanced user engagement elements. See [Organization Management API Documentation](./api-docs/admin/organizations.md) for admin features.
 
 ### Core VPS Management
 - **Multi-provider support**: Unified interface for Linode and DigitalOcean with provider abstraction and normalized APIs
@@ -111,13 +111,13 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 ### Public Pages
 - **Homepage**: Marketing landing page with feature highlights
-- **Pricing**: Public pricing information and plan comparisons
+- **Pricing**: Enhanced public pricing page with modern UI redesign, plan comparisons, FAQ section, and responsive card layouts with "Popular" plan highlighting
 - **FAQ**: Customer help documentation and common questions
 - **About Us**: Company information and team details
 - **Contact**: Contact form and support information
 - **Status**: System status and uptime monitoring
-- **Terms of Service**: Legal terms and conditions
-- **Privacy Policy**: Privacy policy and data handling information
+- **Terms of Service**: Legal terms and conditions with consistent navigation and footer
+- **Privacy Policy**: Privacy policy and data handling information with consistent navigation and footer
 
 ### API Documentation
 - **API Reference**: Interactive API documentation for developers

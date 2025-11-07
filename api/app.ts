@@ -33,6 +33,9 @@ import healthRoutes from './routes/health.js';
 import contactRouter from './routes/contact.js';
 import adminContactRoutes from './routes/admin/contact.js';
 import adminPlatformRoutes from './routes/admin/platform.js';
+import adminPaaSRoutes from './routes/admin/paas.js';
+import paasRoutes from './routes/paas.js';
+import internalPaaSRoutes from './routes/internal/paas.js';
 import faqRoutes from './routes/faq.js';
 import adminFaqRoutes from './routes/adminFaq.js';
 import sshKeysRoutes from './routes/sshKeys.js';
@@ -103,7 +106,14 @@ app.use(cors({
 }))
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }))
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
+      req.rawBody = Buffer.from(buf)
+    },
+  })
+)
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Request logging middleware
@@ -129,9 +139,47 @@ app.use('/api/pricing', pricingRoutes)
 app.use('/api/contact', contactRouter);
 app.use('/api/admin/contact', adminContactRoutes);
 app.use('/api/admin/platform', adminPlatformRoutes);
+app.use('/api/admin/paas', adminPaaSRoutes);
+app.use('/api/paas', paasRoutes)
+app.use('/api/internal/paas', internalPaaSRoutes)
 app.use('/api/faq', faqRoutes)
 app.use('/api/admin/faq', adminFaqRoutes)
 app.use('/api/ssh-keys', sshKeysRoutes)
+
+// Minimal agent installer endpoint (control-plane root scope)
+app.get('/agent/install.sh', (_req: Request, res: Response) => {
+  const script = `#!/bin/bash
+CONTROL_PLANE_URL="$1"
+REGISTRATION_TOKEN="$2"
+
+if [ -z "$CONTROL_PLANE_URL" ] || [ -z "$REGISTRATION_TOKEN" ]; then
+  echo "Usage: install.sh <control-plane-url> <registration-token>" >&2
+  exit 1
+fi
+
+# Install Docker if missing
+if ! command -v docker >/dev/null 2>&1; then
+  curl -fsSL https://get.docker.com | sh
+  systemctl enable docker
+  systemctl start docker
+fi
+
+# Install Node.js 20 if missing
+if ! command -v node >/dev/null 2>&1; then
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
+fi
+
+# Register node via HTTP
+curl -sSL -X POST "${'${'}CONTROL_PLANE_URL${'}'}/api/internal/paas/nodes/register" \
+  -H 'Content-Type: application/json' \
+  -d '{"registrationToken":"'"${'${'}REGISTRATION_TOKEN${'}'}"'"}'
+
+echo "Registration attempted. Please check control plane for node status."
+`
+  res.setHeader('Content-Type', 'text/plain')
+  res.send(script)
+})
 
 // Health check routes are now handled by the dedicated health router
 

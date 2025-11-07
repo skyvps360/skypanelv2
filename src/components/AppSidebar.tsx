@@ -2,6 +2,8 @@ import * as React from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Activity,
+  AppWindow,
+  Box,
   CreditCard,
   BookOpen,
   Key,
@@ -45,6 +47,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
   const currentHash = location.hash?.slice(1) ?? "";
   const isDashboardActive = pathname === "/dashboard";
   const isVpsActive = pathname.startsWith("/vps");
+  const isAppsActive = pathname.startsWith("/apps");
   const isActivityActive = pathname.startsWith("/activity");
   const isBillingActive = pathname.startsWith("/billing");
   const isSshKeysActive = pathname.startsWith("/ssh-keys");
@@ -71,6 +74,15 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             isActive: activeAnchor === "support",
             items: [
               { title: "Tickets", url: `/admin#support`, isActive: activeAnchor === "support" },
+            ],
+          },
+          {
+            title: "PaaS",
+            icon: Box,
+            url: `/admin#paas`,
+            isActive: activeAnchor === "paas",
+            items: [
+              { title: "Overview", url: `/admin#paas`, isActive: activeAnchor === "paas" },
             ],
           },
           {
@@ -140,6 +152,12 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
           ],
         },
         {
+          title: "Apps",
+          url: "/apps",
+          icon: AppWindow,
+          isActive: isAppsActive,
+        },
+        {
           title: "SSH Keys",
           url: "/ssh-keys",
           icon: Key,
@@ -172,6 +190,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
       isBillingActive,
       isApiDocsActive,
       isDashboardActive,
+      isAppsActive,
       isSshKeysActive,
       isVpsActive,
       pathname,

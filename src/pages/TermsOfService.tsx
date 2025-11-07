@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { BRAND_NAME } from "../lib/brand";
+import MarketingNavbar from "@/components/MarketingNavbar";
+import MarketingFooter from "@/components/MarketingFooter";
 
 const lastUpdated = "October 20, 2025";
 
@@ -186,7 +188,9 @@ const sections = [
 
 export default function TermsOfService() {
   return (
-    <div className="container mx-auto max-w-6xl px-4 py-12">
+    <div className="min-h-screen bg-background">
+      <MarketingNavbar />
+      <div className="container mx-auto max-w-6xl px-4 py-12">
       <div className="grid gap-10 lg:grid-cols-[2fr,1fr]">
         <div>
           <div className="space-y-4">
@@ -271,6 +275,8 @@ export default function TermsOfService() {
           </Card>
         </aside>
       </div>
+      <MarketingFooter />
     </div>
+  </div>
   );
 }
