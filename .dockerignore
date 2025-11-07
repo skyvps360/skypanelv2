@@ -1,0 +1,28 @@
+# Build artifacts
+node_modules
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+!docker/.env.example
+
+# Testing and logs
+coverage
+logs
+*.log
+
+# Editor settings
+.vscode
+.idea
+
+# Git metadata
+.git
+.gitignore
+
+# OS clutter
+.DS_Store
+Thumbs.db

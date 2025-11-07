@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OrganizationCreateModal } from '../OrganizationCreateModal';
 import { renderWithAuth } from '@/test-utils';
+import { validateForm } from '@/lib/validation';
 
 // Mock dependencies
 vi.mock('sonner', () => ({
@@ -117,9 +118,8 @@ describe('OrganizationCreateModal', () => {
   });
 
   it('validates form data before submission', () => {
-    const { validateForm } = require('@/lib/validation');
     renderWithAuth(<OrganizationCreateModal {...mockProps} />);
-    
+
     // Component should use validation
     expect(validateForm).toBeDefined();
   });

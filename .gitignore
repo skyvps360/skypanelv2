@@ -28,6 +28,7 @@ dist-ssr
 .env
 .env.local
 .env.production
+docker/.env
 
 # Upload directories
 uploads/

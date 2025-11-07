@@ -1,7 +1,7 @@
 /**
  * Server-side validation utilities for admin user management
  */
-import { body, param, query as queryValidator, ValidationChain } from 'express-validator';
+import { body, param, query as queryValidator } from 'express-validator';
 
 /**
  * Common validation patterns
@@ -9,7 +9,7 @@ import { body, param, query as queryValidator, ValidationChain } from 'express-v
 export const ValidationPatterns = {
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   slug: /^[a-z0-9-]+$/,
-  phone: /^[\+]?[1-9][\d]{0,15}$/,
+   phone: /^\+?[1-9]\d{0,15}$/,
   timezone: /^[A-Za-z_]+\/[A-Za-z_]+$/,
   uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 } as const;
@@ -174,7 +174,7 @@ export const UserValidation = {
       .optional()
       .custom((value) => {
         if (!value || !value.trim()) return true;
-        const cleanPhone = value.replace(/[\s\-\(\)]/g, '');
+          const cleanPhone = value.replace(/[\s-()]/g, '');
         if (!ValidationPatterns.phone.test(cleanPhone)) {
           throw new Error('Please enter a valid phone number');
         }

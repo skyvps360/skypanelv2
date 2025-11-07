@@ -118,7 +118,7 @@ function getPatternErrorMessage(fieldName: string, pattern: RegExp): string {
 export const ValidationPatterns = {
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   slug: /^[a-z0-9-]+$/,
-  phone: /^[\+]?[1-9][\d]{0,15}$/,
+  phone: /^\+?[1-9]\d{0,15}$/,
   timezone: /^[A-Za-z_]+\/[A-Za-z_]+$/,
   uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 } as const;
@@ -210,7 +210,7 @@ export const ValidationSchemas = {
     phone: {
       custom: (value: string) => {
         if (!value || !value.trim()) return null;
-        const cleanPhone = value.replace(/[\s\-\(\)]/g, '');
+        const cleanPhone = value.replace(/[\s-()]/g, '');
         return ValidationPatterns.phone.test(cleanPhone) ? null : 'Please enter a valid phone number';
       },
     },

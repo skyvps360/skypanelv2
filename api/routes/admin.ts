@@ -4816,7 +4816,7 @@ router.get(
       `;
 
       const countParams: any[] = [];
-      let countParamCount = 1;
+      const countParamCount = 1;
 
       if (searchQuery) {
         countQuery += ` WHERE (
