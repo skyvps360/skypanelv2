@@ -9,6 +9,7 @@ import databasesRouter from './databases.js';
 import configRouter from './config.js';
 import internalRouter from './internal.js';
 import agentRouter from './agent.js';
+import githubRouter from './github.js';
 
 const router = Router();
 
@@ -24,6 +25,9 @@ router.use('/applications', environmentRouter);
 router.use('/databases', databasesRouter);
 router.use('/applications', databasesRouter);
 router.use('/', configRouter);
+
+// GitHub integration
+router.use('/github', githubRouter);
 
 // Internal routes (for agent communication)
 router.use('/internal', internalRouter);

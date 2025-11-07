@@ -266,6 +266,26 @@ CREATE INDEX idx_paas_tasks_priority ON paas_tasks(priority, created_at);
 CREATE INDEX idx_paas_tasks_resource ON paas_tasks(resource_type, resource_id);
 
 -- ============================================================
+-- User OAuth Tokens
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS user_oauth_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL,        -- github, gitlab, bitbucket
+    access_token TEXT NOT NULL,           -- Encrypted
+    refresh_token TEXT,                   -- Encrypted (if applicable)
+    token_type VARCHAR(50) DEFAULT 'Bearer',
+    expires_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, provider)
+);
+
+CREATE INDEX idx_oauth_tokens_user ON user_oauth_tokens(user_id);
+CREATE INDEX idx_oauth_tokens_provider ON user_oauth_tokens(provider);
+
+-- ============================================================
 -- Triggers
 -- ============================================================
 
