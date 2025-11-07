@@ -158,4 +158,4 @@ Example: `paas-app-123`
 
 ## License
 
-Copyright © 2025 SkyPanel. All rights reserved.
+Copyright © 2025 SkyVPS360. All rights reserved.
