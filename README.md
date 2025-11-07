@@ -414,45 +414,6 @@ pm2 monit
 pm2 logs
 ```
 
-#### Docker Deployment
-
-##### Option 1: Docker Compose (Recommended)
-Docker Compose manages PostgreSQL, Redis, and the application together:
-
-1. Configure `docker/.env` with your production values:
-   ```bash
-   cp docker/.env.example docker/.env
-   # Edit docker/.env with your settings
-   ```
-
-2. Build and start all services:
-   ```bash
-   # Build and start (postgres, redis, app)
-   docker-compose up -d --build
-   
-   # View logs
-   docker-compose logs -f app
-   
-   # Stop all services
-   docker-compose down
-   ```
-
-The database URL in `docker/.env` should use `postgres` as the hostname to connect to the PostgreSQL container.
-
-##### Option 2: Single Container with External Database
-If you have external PostgreSQL/Redis, you can run just the app container:
-
-1. Configure `docker/.env` with external database URLs
-2. Build and run:
-   ```bash
-   docker build -t skypanelv2 .
-   docker run --env-file ./docker/.env -p 3001:3001 skypanelv2
-   ```
-
-See `docker/README.md` for detailed Docker setup instructions.
-
-The Express API now serves the Vite `dist/` build directly, so requests to `/` return the SPA while `/api/*` continues to hit the backend. Override any other `VITE_*` values by passing `--build-arg KEY=value` during `docker build`.
-
 ### Production Checklist
 
 #### Security
