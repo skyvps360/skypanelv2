@@ -29,6 +29,9 @@ COPY --from=build /app/dist ./dist
 # Copy compiled backend (TypeScript -> JavaScript in api/)
 COPY --from=build /app/api ./api
 
+# Copy src/ directory (needed by backend for theme presets)
+COPY --from=build /app/src ./src
+
 # Copy migration scripts and SQL files
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/migrations ./migrations
@@ -41,6 +44,8 @@ COPY ecosystem.config.cjs ./
 RUN echo '#!/bin/sh\n\
 set -e\n\
 echo "🔄 Running database migrations..."\n\
+# Ensure we use environment variables from docker-compose, not .env file\n\
+export NODE_ENV="${NODE_ENV:-production}"\n\
 node scripts/run-migration.js || echo "⚠️ Migrations failed or already applied"\n\
 echo "🚀 Starting application server..."\n\
 exec node --import tsx api/server.ts\n\
