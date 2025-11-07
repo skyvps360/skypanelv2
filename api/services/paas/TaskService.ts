@@ -172,17 +172,18 @@ export class TaskService {
                 a.id,
                 a.name,
                 a.slug,
+                a.system_domain,
+                a.custom_domains,
                 a.git_repo_url,
                 a.git_branch,
                 a.git_oauth_token,
-                a.port,
-                a.instances,
+                a.instance_count,
                 r.name as runtime_name,
                 r.runtime_type,
                 r.version,
-                r.docker_image,
-                r.build_command,
-                r.start_command,
+                r.base_image as docker_image,
+                r.default_build_cmd as build_command,
+                r.default_start_cmd as start_command,
                 p.cpu_limit,
                 p.memory_limit,
                 p.storage_limit
@@ -211,11 +212,15 @@ export class TaskService {
       if (row.resource_data) {
         const data = row.resource_data;
         task.task_data = {
+          slug: data.slug,
+          system_domain: data.system_domain,
+          custom_domains: data.custom_domains || [],
           git_repo_url: data.git_repo_url,
           git_branch: data.git_branch || 'main',
           git_oauth_token: data.git_oauth_token,
-          port: data.port || 3000,
-          instances: data.instances || 1,
+          port: 3000,
+          instance_count: data.instance_count || 1,
+          current_instance_count: data.instance_count || 1,
           runtime: {
             name: data.runtime_name,
             runtime_type: data.runtime_type,
@@ -227,7 +232,7 @@ export class TaskService {
           cpu_limit: data.cpu_limit,
           memory_limit: data.memory_limit,
           storage_limit: data.storage_limit,
-          env_vars: {} // Would need to fetch from paas_environment_vars
+          env_vars: JSON.parse(row.payload || '{}').environmentVars || {}
         };
       }
 
