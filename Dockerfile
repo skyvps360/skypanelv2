@@ -18,6 +18,7 @@ FROM node:22-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV IN_DOCKER=true
 
 # Install only production dependencies
 COPY package*.json ./

@@ -15,6 +15,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3001}
       CLIENT_URL: ${CLIENT_URL:-http://localhost:3001}
+      IN_DOCKER: "true"
       
       # Database and Redis
       DATABASE_URL: ${DATABASE_URL:-postgresql://skypanel:skypanel@postgres:5432/skypanel}

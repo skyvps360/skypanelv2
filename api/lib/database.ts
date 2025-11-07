@@ -1,8 +1,11 @@
 import { Pool, PoolClient } from 'pg';
 import dotenv from 'dotenv';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables ONLY if not in Docker (Docker passes env vars directly)
+// In Docker, environment variables come from docker-compose.yml, not .env files
+if (!process.env.IN_DOCKER) {
+  dotenv.config();
+}
 
 // Get PostgreSQL configuration from environment variables
 const databaseUrl = process.env.DATABASE_URL;

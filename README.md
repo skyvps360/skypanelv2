@@ -414,20 +414,42 @@ pm2 monit
 pm2 logs
 ```
 
-#### Docker Deployment (single container)
-1. Copy `.env.example` to `.env` and fill in production values. At minimum set `PORT`, database/Redis URLs, and `VITE_API_URL=/api` so the frontend hits the in-container API.
-2. Build the image:
+#### Docker Deployment
+
+##### Option 1: Docker Compose (Recommended)
+Docker Compose manages PostgreSQL, Redis, and the application together:
+
+1. Configure `docker/.env` with your production values:
    ```bash
-   docker build \
-     --build-arg VITE_API_URL="https://panel.example.com/api" \
-     --build-arg VITE_COMPANY_NAME="SkyPanel" \
-     -t skypanelv2 .
+   cp docker/.env.example docker/.env
+   # Edit docker/.env with your settings
    ```
-3. Run the container (both API + built UI are served on the same port):
+
+2. Build and start all services:
    ```bash
-   docker run --env-file .env -p 3001:3001 skypanelv2
+   # Build and start (postgres, redis, app)
+   docker-compose up -d --build
+   
+   # View logs
+   docker-compose logs -f app
+   
+   # Stop all services
+   docker-compose down
    ```
-4. `.dockerignore` keeps unnecessary files (node_modules, env files, logs, etc.) out of the build context—add any other secrets or large assets you do not want baked into the image.
+
+The database URL in `docker/.env` should use `postgres` as the hostname to connect to the PostgreSQL container.
+
+##### Option 2: Single Container with External Database
+If you have external PostgreSQL/Redis, you can run just the app container:
+
+1. Configure `docker/.env` with external database URLs
+2. Build and run:
+   ```bash
+   docker build -t skypanelv2 .
+   docker run --env-file ./docker/.env -p 3001:3001 skypanelv2
+   ```
+
+See `docker/README.md` for detailed Docker setup instructions.
 
 The Express API now serves the Vite `dist/` build directly, so requests to `/` return the SPA while `/api/*` continues to hit the backend. Override any other `VITE_*` values by passing `--build-arg KEY=value` during `docker build`.
 

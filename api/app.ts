@@ -3,8 +3,11 @@
  */
 
 // Load environment variables FIRST before any other imports
+// ONLY if not in Docker (Docker passes env vars directly)
 import dotenv from 'dotenv'
-dotenv.config()
+if (!process.env.IN_DOCKER) {
+  dotenv.config()
+}
 
 import express, {
   type Request,
