@@ -11,6 +11,7 @@ FROM deps AS build
 COPY . .
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=${VITE_API_URL}
+# Build both frontend (Vite) and backend (TypeScript compilation)
 RUN npm run build
 
 FROM node:22-slim AS production
@@ -18,22 +19,35 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
 
-COPY --from=deps /app/node_modules ./node_modules
+# Install only production dependencies
 COPY package*.json ./
-COPY tsconfig.json ./tsconfig.json
-COPY vite.config.ts ./vite.config.ts
-COPY tailwind.config.js ./tailwind.config.js
-COPY postcss.config.js ./postcss.config.js
-COPY eslint.config.js ./eslint.config.js
-COPY ecosystem.config.cjs ./ecosystem.config.cjs
-COPY components.json ./components.json
+RUN npm ci --only=production
+
+# Copy built frontend (from Vite build)
 COPY --from=build /app/dist ./dist
-COPY api ./api
-COPY scripts ./scripts
-COPY migrations ./migrations
+
+# Copy compiled backend (TypeScript -> JavaScript in api/)
+COPY --from=build /app/api ./api
+
+# Copy migration scripts and SQL files
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/migrations ./migrations
+
+# Copy necessary config files for runtime
+COPY tsconfig.json ./
+COPY ecosystem.config.cjs ./
+
+# Create entrypoint script for migrations + server startup
+RUN echo '#!/bin/sh\n\
+set -e\n\
+echo "🔄 Running database migrations..."\n\
+node scripts/run-migration.js || echo "⚠️ Migrations failed or already applied"\n\
+echo "🚀 Starting application server..."\n\
+exec node --import tsx api/server.ts\n\
+' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3001
 RUN chown -R node:node /app
 USER node
 
-CMD ["node", "--import", "tsx", "api/server.ts"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
