@@ -141,20 +141,13 @@ export function PaaSPlansManagement() {
         toast.success("Plan updated successfully");
       } else {
         await api.post('/admin/paas/plans', data);
-        toast.error(
-          title: 'Success',
-          description: 'Plan created successfully',
-        });
+        toast.success('Plan created successfully');
       }
 
       handleCloseDialog();
       fetchPlans();
     } catch (error: any) {
-      toast.error(
-        title: 'Error',
-        description: error.response?.data?.error || 'Failed to save plan',
-        )
-      });
+      toast.error(error.response?.data?.error || 'Failed to save plan');
     }
   };
 
@@ -165,17 +158,10 @@ export function PaaSPlansManagement() {
 
     try {
       await api.delete(`/admin/paas/plans/${id}`);
-      toast.error(
-        title: 'Success',
-        description: 'Plan deleted successfully',
-      });
+      toast.success('Plan deleted successfully');
       fetchPlans();
     } catch (error: any) {
-      toast.error(
-        title: 'Error',
-        description: error.response?.data?.error || 'Failed to delete plan',
-        )
-      });
+      toast.error(error.response?.data?.error || 'Failed to delete plan');
     }
   };
 
