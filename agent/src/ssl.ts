@@ -67,7 +67,7 @@ export async function ensureCertificate(cfg: AgentConfig, domains: string[]): Pr
   })
 
   await fs.writeFile(certPath, certificate)
-  await fs.writeFile(keyPath, forge.privateKeyToPem(privateKey))
+  await fs.writeFile(keyPath, privateKey)
   const meta: CertificateInfo = {
     certPath,
     keyPath,
@@ -95,9 +95,8 @@ async function loadOrCreateAccountKey(accountKeyPath: string): Promise<string> {
     return fs.readFile(accountKeyPath, 'utf8')
   }
   const key = await forge.createPrivateKey()
-  const pem = forge.privateKeyToPem(key)
-  await fs.writeFile(accountKeyPath, pem)
-  return pem
+  await fs.writeFile(accountKeyPath, key)
+  return key.toString()
 }
 
 async function readMeta(metaPath: string): Promise<CertificateInfo | null> {

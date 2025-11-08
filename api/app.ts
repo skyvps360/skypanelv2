@@ -146,36 +146,171 @@ app.use('/api/faq', faqRoutes)
 app.use('/api/admin/faq', adminFaqRoutes)
 app.use('/api/ssh-keys', sshKeysRoutes)
 
+// Agent download endpoint
+app.get('/agent/download', async (_req: Request, res: Response) => {
+  try {
+    const agentPath = path.join(__dirname, '../agent/dist')
+    const fs = await import('fs/promises')
+    const archiver = await import('archiver')
+    
+    // Create tar.gz of agent/dist directory
+    res.setHeader('Content-Type', 'application/gzip')
+    res.setHeader('Content-Disposition', 'attachment; filename="skypanel-agent.tar.gz"')
+    
+    const archive = (archiver as any).default('tar', { gzip: true })
+    archive.pipe(res)
+    archive.directory(agentPath, 'skypanel-agent')
+    await archive.finalize()
+  } catch (err) {
+    console.error('Agent download error:', err)
+    res.status(500).json({ success: false, error: 'Agent package not available' })
+  }
+})
+
 // Minimal agent installer endpoint (control-plane root scope)
 app.get('/agent/install.sh', (_req: Request, res: Response) => {
   const script = `#!/bin/bash
+set -e
+
 CONTROL_PLANE_URL="$1"
 REGISTRATION_TOKEN="$2"
 
 if [ -z "$CONTROL_PLANE_URL" ] || [ -z "$REGISTRATION_TOKEN" ]; then
   echo "Usage: install.sh <control-plane-url> <registration-token>" >&2
+  echo "Example: bash install.sh https://panel.example.com abc123token" >&2
   exit 1
 fi
 
+echo "=== SkyPanel PaaS Agent Installation ==="
+echo "Control Plane: $CONTROL_PLANE_URL"
+echo ""
+
 # Install Docker if missing
 if ! command -v docker >/dev/null 2>&1; then
+  echo "Installing Docker..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable docker
   systemctl start docker
+  echo "Docker installed successfully"
+else
+  echo "Docker already installed"
 fi
 
 # Install Node.js 20 if missing
 if ! command -v node >/dev/null 2>&1; then
+  echo "Installing Node.js 20..."
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y nodejs
+  echo "Node.js installed successfully"
+else
+  echo "Node.js already installed"
 fi
 
-# Register node via HTTP
-curl -sSL -X POST "${'${'}CONTROL_PLANE_URL${'}'}/api/internal/paas/nodes/register" \
-  -H 'Content-Type: application/json' \
-  -d '{"registrationToken":"'"${'${'}REGISTRATION_TOKEN${'}'}"'"}'
+# Install Nginx for ingress
+if ! command -v nginx >/dev/null 2>&1; then
+  echo "Installing Nginx..."
+  apt-get update
+  apt-get install -y nginx
+  systemctl enable nginx
+  echo "Nginx installed successfully"
+else
+  echo "Nginx already installed"
+fi
 
-echo "Registration attempted. Please check control plane for node status."
+# Create directory structure
+echo "Setting up agent directories..."
+mkdir -p /opt/skypanel-agent
+mkdir -p /etc/skypanel/nginx/conf.d
+mkdir -p /var/log/skypanel
+
+# Download agent package
+echo "Downloading agent package..."
+cd /opt/skypanel-agent
+curl -sSL "${'${'}CONTROL_PLANE_URL${'}'}/agent/download" -o agent.tar.gz
+tar -xzf agent.tar.gz
+rm agent.tar.gz
+cd skypanel-agent
+
+# Install dependencies
+echo "Installing agent dependencies..."
+npm install --production
+
+# Register node with control plane
+echo "Registering node with control plane..."
+REGISTER_RESPONSE=$(curl -sSL -X POST "${'${'}CONTROL_PLANE_URL${'}'}/api/internal/paas/nodes/register" \
+  -H 'Content-Type: application/json' \
+  -d '{"registrationToken":"'"${'${'}REGISTRATION_TOKEN${'}'}"'","hostAddress":"'$(hostname -f)'"}')
+
+# Extract node ID and JWT secret from response
+NODE_ID=$(echo "$REGISTER_RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4)
+JWT_SECRET=$(echo "$REGISTER_RESPONSE" | grep -o '"jwtSecret":"[^"]*' | cut -d'"' -f4)
+REGION=$(echo "$REGISTER_RESPONSE" | grep -o '"region":"[^"]*' | cut -d'"' -f4)
+
+if [ -z "$NODE_ID" ] || [ -z "$JWT_SECRET" ]; then
+  echo "ERROR: Registration failed. Response: $REGISTER_RESPONSE"
+  exit 1
+fi
+
+echo "Node registered successfully!"
+echo "  Node ID: $NODE_ID"
+echo "  Region: $REGION"
+
+# Create config.json
+cat > config.json <<EOF
+{
+  "controlPlaneUrl": "$CONTROL_PLANE_URL",
+  "nodeId": "$NODE_ID",
+  "jwtSecret": "$JWT_SECRET",
+  "region": "$REGION",
+  "maxContainers": 50,
+  "maxCpuPercent": 90,
+  "maxMemoryPercent": 90,
+  "ingressType": "nginx",
+  "sslProvider": "letsencrypt",
+  "logLevel": "info",
+  "dataDir": "/opt/skypanel-agent/.data",
+  "ingressConfigPath": "/etc/skypanel/nginx/conf.d",
+  "nginxReloadCommand": "nginx -s reload",
+  "certEmail": "admin@example.com",
+  "challengeDir": "/opt/skypanel-agent/.data/acme-challenges",
+  "letsencryptDirectory": "production",
+  "backupProvider": "local"
+}
+EOF
+
+# Create systemd service
+cat > /etc/systemd/system/skypanel-agent.service <<EOF
+[Unit]
+Description=SkyPanel PaaS Agent
+After=network.target docker.service nginx.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/skypanel-agent/skypanel-agent
+ExecStart=/usr/bin/node /opt/skypanel-agent/skypanel-agent/index.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/skypanel/agent.log
+StandardError=append:/var/log/skypanel/agent-error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start agent service
+echo "Starting SkyPanel agent service..."
+systemctl daemon-reload
+systemctl enable skypanel-agent
+systemctl start skypanel-agent
+
+echo ""
+echo "=== Installation Complete ==="
+echo "Agent is now running and connected to the control plane"
+echo "Check status: systemctl status skypanel-agent"
+echo "View logs: journalctl -u skypanel-agent -f"
+echo ""
 `
   res.setHeader('Content-Type', 'text/plain')
   res.send(script)
