@@ -37,6 +37,9 @@ import faqRoutes from './routes/faq.js';
 import adminFaqRoutes from './routes/adminFaq.js';
 import sshKeysRoutes from './routes/sshKeys.js';
 import pricingRoutes from './routes/pricing.js';
+import paasRoutes from './routes/paas.js';
+import adminPaasRoutes from './routes/admin-paas.js';
+import workerPaasRoutes from './routes/worker-paas.js';
 import { notificationService } from './services/notificationService.js';
 import { performStartupValidation, initializeConfigurationMonitoring } from './services/rateLimitConfigValidator.js';
 import { initializeMetricsCollection, startMetricsPersistence } from './services/rateLimitMetrics.js';
@@ -132,6 +135,10 @@ app.use('/api/admin/platform', adminPlatformRoutes);
 app.use('/api/faq', faqRoutes)
 app.use('/api/admin/faq', adminFaqRoutes)
 app.use('/api/ssh-keys', sshKeysRoutes)
+// Worker routes must come before the generic /api/paas mount so they bypass auth middleware
+app.use('/api/paas/worker', workerPaasRoutes)
+app.use('/api/paas', paasRoutes)
+app.use('/api/admin/paas', adminPaasRoutes)
 
 // Health check routes are now handled by the dedicated health router
 

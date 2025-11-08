@@ -13,6 +13,7 @@ import {
   Settings,
   Users,
   type LucideIcon,
+  Cloud,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -97,6 +98,23 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             ],
           },
           {
+            title: "PaaS",
+            icon: Cloud,
+            url: `/admin#paas-overview`,
+            isActive: [
+              "paas-overview",
+              "paas-plans",
+              "paas-workers",
+              "paas-addons",
+            ].includes(activeAnchor),
+            items: [
+              { title: "Overview", url: `/admin#paas-overview`, isActive: activeAnchor === "paas-overview" },
+              { title: "Plans", url: `/admin#paas-plans`, isActive: activeAnchor === "paas-plans" },
+              { title: "Workers", url: `/admin#paas-workers`, isActive: activeAnchor === "paas-workers" },
+              { title: "Add-ons", url: `/admin#paas-addons`, isActive: activeAnchor === "paas-addons" },
+            ],
+          },
+          {
             title: "Platform Settings",
             icon: Settings,
             url: `/admin#platform`,
@@ -136,6 +154,11 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               title: "VPS",
               url: "/vps",
               isActive: isVpsActive,
+            },
+            {
+              title: "PaaS",
+              url: "/paas",
+              isActive: pathname.startsWith("/paas"),
             },
           ],
         },

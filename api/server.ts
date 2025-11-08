@@ -5,6 +5,8 @@
 import app from "./app.js";
 import { initSSHBridge } from "./services/sshBridge.js";
 import { BillingService } from "./services/billingService.js";
+import { BuildService } from "./services/buildService.js";
+import { WorkerNodeService } from "./services/workerNodeService.js";
 
 /**
  * start server with port
@@ -35,29 +37,71 @@ function startBillingScheduler() {
   setInterval(async () => {
     await runHourlyBilling("scheduled");
   }, 60 * 60 * 1000); // Run every hour (3600000 ms)
+
+  // Schedule PaaS maintenance tasks (every 5 minutes)
+  setInterval(async () => {
+    await runPaaSMaintenance();
+  }, 5 * 60 * 1000); // Run every 5 minutes (300000 ms)
 }
 
 /**
- * Run hourly billing for all active VPS instances
+ * Run hourly billing for all active VPS and PaaS instances
  */
 async function runHourlyBilling(runType: "initial" | "scheduled") {
   try {
-    console.log(`🔄 Starting ${runType} hourly VPS billing process...`);
-    const result = await BillingService.runHourlyBilling();
+    console.log(`🔄 Starting ${runType} hourly billing process...`);
+
+    // Run VPS billing
+    console.log(`📊 Running VPS billing...`);
+    const vpsResult = await BillingService.runHourlyBilling();
     console.log(
-      `✅ Billing completed: ${
-        result.billedInstances
-      } instances billed, $${result.totalAmount.toFixed(2)} total`
+      `✅ VPS billing completed: ${
+        vpsResult.billedInstances
+      } instances billed, $${vpsResult.totalAmount.toFixed(2)} total`
     );
 
-    if (result.failedInstances.length > 0) {
+    // Run PaaS billing
+    console.log(`🚀 Running PaaS billing...`);
+    const paasResult = await BillingService.runPaaSHourlyBilling();
+    console.log(
+      `✅ PaaS billing completed: ${
+        paasResult.billedApps
+      } apps billed, $${paasResult.totalAmount.toFixed(2)} total`
+    );
+
+    const totalBilled = vpsResult.totalAmount + paasResult.totalAmount;
+    const totalInstances = vpsResult.billedInstances + paasResult.billedApps;
+    const allErrors = [...vpsResult.errors, ...paasResult.errors];
+    const allFailedInstances = [...vpsResult.failedInstances, ...paasResult.failedApps];
+
+    console.log(
+      `🏁 Combined billing completed: ${totalInstances} services billed, $${totalBilled.toFixed(2)} total`
+    );
+
+    if (allErrors.length > 0) {
       console.warn(
-        `⚠️ ${result.failedInstances.length} instances failed billing:`,
-        result.errors
+        `⚠️ ${allErrors.length} services failed billing:`,
+        allErrors
       );
     }
   } catch (error) {
     console.error(`❌ Error in ${runType} billing:`, error);
+  }
+}
+
+/**
+ * Run PaaS maintenance tasks
+ */
+async function runPaaSMaintenance() {
+  try {
+    // Process queued builds
+    await BuildService.processQueuedBuilds();
+
+    // Mark offline worker nodes (after 5 minutes of no heartbeat)
+    await WorkerNodeService.markOfflineNodes(5);
+
+  } catch (error) {
+    console.error('❌ Error in PaaS maintenance:', error);
   }
 }
 

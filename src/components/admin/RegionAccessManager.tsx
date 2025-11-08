@@ -357,7 +357,7 @@ export const RegionAccessManager: React.FC<RegionAccessManagerProps> = ({ token 
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">Provider</span>
             <Select
-              value={selectedProviderId || undefined}
+              value={selectedProviderId}
               onValueChange={handleProviderChange}
               disabled={loadingProviders || saving || providers.length === 0}
             >

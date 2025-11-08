@@ -14,6 +14,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  Rocket,
   Server,
   Settings,
   Sun,
@@ -48,6 +49,7 @@ interface NavItem {
 const navigationItems: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "VPS", href: "/vps", icon: Server },
+  { name: "PaaS", href: "/paas", icon: Rocket },
   { name: "Activity", href: "/activity", icon: Activity },
   { name: "Billing", href: "/billing", icon: CreditCard },
 ];
@@ -69,7 +71,12 @@ const Navigation: React.FC = () => {
     }
   };
 
-  const isActive = (href: string) => location.pathname === href;
+  const isActive = (href: string) => {
+    if (href === "/paas") {
+      return location.pathname.startsWith("/paas");
+    }
+    return location.pathname === href;
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">

@@ -25,6 +25,12 @@ export const authenticateToken = async (
       return res.status(401).json({ error: 'Access token required' });
     }
 
+    // Validate token format before verification
+    if (!token || token === 'null' || token === 'undefined' || token.split('.').length !== 3) {
+      console.error('Invalid token format:', { token: token?.substring(0, 20) + '...' });
+      return res.status(401).json({ error: 'Invalid token format' });
+    }
+
     // Verify JWT token
     const decoded = jwt.verify(token, config.JWT_SECRET) as any;
     

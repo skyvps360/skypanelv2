@@ -55,6 +55,7 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Pricing from "./pages/Pricing";
 import SSHKeys from "./pages/SSHKeys";
+import PaaS from "./pages/PaaS";
 
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 
@@ -250,6 +251,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <VPS />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/paas/*"
+          element={
+            <ProtectedRoute>
+              <PaaS />
             </ProtectedRoute>
           }
         />

@@ -59,6 +59,42 @@ Admin users have elevated rate limits:
 - **POST** `/api/admin/rate-limits/overrides` - Create rate limit override
 - **DELETE** `/api/admin/rate-limits/overrides/:userId` - Delete rate limit override
 
+### Worker Nodes Management
+- **GET** `/api/admin/paas/workers` - List worker nodes and stats
+- **GET** `/api/admin/paas/workers/:workerId` - Get a worker node
+- **POST** `/api/admin/paas/workers` - Create a new worker node
+- **PUT** `/api/admin/paas/workers/:workerId` - Update worker configuration
+- **PUT** `/api/admin/paas/workers/:workerId/status` - Update worker status (`online | offline | busy | maintenance | error`)
+- **DELETE** `/api/admin/paas/workers/:workerId` - Delete a worker node
+- **POST** `/api/admin/paas/workers/maintenance` - Run maintenance (mark stale nodes offline)
+
+Payload examples:
+
+Update Worker Configuration:
+
+```json
+{
+  "name": "worker-01",
+  "hostname": "build-server-01",
+  "ipAddress": "192.168.1.100",
+  "port": 3001,
+  "maxConcurrentBuilds": 4,
+  "capabilities": { "nodejs": true, "docker": true },
+  "resourceLimits": { "cpu": 2, "memoryGb": 8 },
+  "metadata": { "rack": "A", "zone": "us-east-1a" }
+}
+```
+
+Update Worker Status:
+
+```json
+{ "status": "maintenance" }
+```
+
+Notes:
+- All endpoints require admin JWT and role `admin`.
+- Status values are strictly validated. Invalid values return `400` with `Invalid status value`.
+
 ## Security Features
 
 ### Audit Logging

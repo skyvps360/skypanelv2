@@ -13,6 +13,9 @@ import {
   CheckCircle,
   ClipboardList,
   Clock,
+  Cloud,
+  Container,
+  Database,
   DollarSign,
   Edit,
   FileCode,
@@ -20,9 +23,12 @@ import {
   GripVertical,
   HelpCircle,
   LifeBuoy,
+  Monitor,
+  Package,
   Palette,
   Plus,
   RefreshCw,
+  Rocket,
   Search,
   Server,
   ServerCog,
@@ -48,6 +54,10 @@ import PlatformAvailabilityManager from "@/components/admin/PlatformAvailability
 import { RegionAccessManager } from "@/components/admin/RegionAccessManager";
 import MarketplaceManager from "@/components/admin/MarketplaceManager";
 import { AdminSupportView } from "@/components/admin/AdminSupportView";
+import { PaaSOverview } from "@/components/admin/PaaSOverview";
+import { PaaSPlansManager } from "@/components/admin/PaaSPlansManager";
+import { WorkerNodesManager } from "@/components/admin/WorkerNodesManager";
+import { AddOnsManager } from "@/components/admin/AddOnsManager";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 
 import { useTheme } from "@/contexts/ThemeContext";
@@ -140,7 +150,11 @@ type AdminSection =
   | "rate-limiting"
   | "faq-management"
   | "platform"
-  | "contact-management";
+  | "contact-management"
+  | "paas-overview"
+  | "paas-plans"
+  | "paas-workers"
+  | "paas-addons";
 
 const ADMIN_SECTIONS: AdminSection[] = [
   "dashboard",
@@ -158,6 +172,10 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "faq-management",
   "platform",
   "contact-management",
+  "paas-overview",
+  "paas-plans",
+  "paas-workers",
+  "paas-addons",
 ];
 
 const DEFAULT_ADMIN_SECTION: AdminSection = "dashboard";
@@ -2199,6 +2217,56 @@ const Admin: React.FC = () => {
           { label: "Inactive", value: formatCountValue(inactiveProviders) },
         ],
         actionLabel: "Review integrations",
+      },
+      // PaaS Panels
+      {
+        id: "paas-overview",
+        title: "PaaS Overview",
+        description: "Monitor apps, builds, and platform health.",
+        icon: Rocket,
+    accent: "text-pink-600",
+        summary: [
+          { label: "Apps", value: "—" },
+          { label: "Builds", value: "—" },
+          { label: "Workers", value: "—" },
+        ],
+        actionLabel: "Open PaaS",
+      },
+      {
+        id: "paas-plans",
+        title: "PaaS Plans",
+        description: "Manage tiers, limits, and pricing.",
+        icon: ServerCog,
+    accent: "text-emerald-600",
+        summary: [
+          { label: "Active plans", value: "—" },
+          { label: "Hidden", value: "—" },
+        ],
+        actionLabel: "Manage plans",
+      },
+      {
+        id: "paas-workers",
+        title: "Worker Nodes",
+        description: "Track capacity and node health.",
+        icon: Server,
+    accent: "text-blue-600",
+        summary: [
+          { label: "Online", value: "—" },
+          { label: "Busy", value: "—" },
+        ],
+        actionLabel: "Manage workers",
+      },
+      {
+        id: "paas-addons",
+        title: "Add‑on Services",
+        description: "Curate databases and managed extras.",
+        icon: Package,
+    accent: "text-violet-600",
+        summary: [
+          { label: "Types", value: "—" },
+          { label: "Active", value: "—" },
+        ],
+        actionLabel: "Manage add‑ons",
       },
     ];
   }, [
@@ -4945,6 +5013,23 @@ const Admin: React.FC = () => {
         </SectionPanel>
         <SectionPanel section="regions" activeSection={activeTab}>
           <RegionAccessManager token={token || ""} />
+        </SectionPanel>
+
+        {/* PaaS Sections */}
+        <SectionPanel section="paas-overview" activeSection={activeTab}>
+          <PaaSOverview />
+        </SectionPanel>
+
+        <SectionPanel section="paas-plans" activeSection={activeTab}>
+          <PaaSPlansManager />
+        </SectionPanel>
+
+        <SectionPanel section="paas-workers" activeSection={activeTab}>
+          <WorkerNodesManager />
+        </SectionPanel>
+
+        <SectionPanel section="paas-addons" activeSection={activeTab}>
+          <AddOnsManager />
         </SectionPanel>
       </div>
 

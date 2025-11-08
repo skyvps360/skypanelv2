@@ -21,6 +21,15 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 - **SSH console access**: WebSocket-based SSH bridge for direct VPS terminal access
 - **Real-time monitoring**: Live status updates and resource monitoring across all instances
 
+### Platform as a Service (PaaS)
+- **Node.js application hosting**: Docker-based deployment platform for Node.js applications with GitHub integration
+- **Automated deployments**: Pull from GitHub repositories with configurable build and start commands
+- **Worker node orchestration**: Self-registering build agents with automatic load balancing and capacity management
+- **Managed add-ons**: PostgreSQL, Redis, MySQL, and MongoDB database provisioning with encrypted connection strings
+- **Hourly billing integration**: PaaS services billed through existing wallet system with detailed usage tracking
+- **Environment variable management**: Secure configuration management for application deployments
+- **Deployment history**: Complete audit trail of all deployments with build logs and rollback capabilities
+
 ### Billing & Payments
 - **PayPal integration**: Prepaid wallet system with automated hourly billing reconciliation
 - **Invoice management**: Automated invoice generation with downloadable PDF artifacts
@@ -77,11 +86,13 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 ## Available Pages & Features
 
 ### Customer Portal
-- **Dashboard**: Overview of VPS instances, billing summary, and recent activity
+- **Dashboard**: Overview of VPS instances, PaaS applications, billing summary, and recent activity
 - **VPS Management**: Create, manage, and monitor VPS instances with real-time status
+- **PaaS Dashboard**: Deploy and manage Node.js applications with GitHub integration
+- **Application Management**: Create, configure, and monitor PaaS applications with deployment history
 - **SSH Console**: Browser-based SSH access with full terminal functionality
 - **SSH Keys**: Manage SSH public keys for secure VPS access with comprehensive format validation supporting RSA, Ed25519, ECDSA, and DSS key types
-- **Billing**: Wallet management, PayPal top-ups, invoice history, and usage tracking
+- **Billing**: Wallet management, PayPal top-ups, invoice history, and usage tracking for VPS and PaaS services
 - **Support**: Ticket system with real-time messaging and file attachments
 - **Settings**: Account management, preferences, and security settings
 - **Activity**: Comprehensive activity log with filtering and search
@@ -108,6 +119,10 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 - **Platform Settings**: System configuration, themes, and branding options
 - **Rate Limiting**: Configure API rate limits for different user tiers
 - **FAQ Management**: Manage help documentation and frequently asked questions
+- **PaaS Overview**: System health monitoring and statistics for the Platform as a Service infrastructure
+- **PaaS Plans Management**: Configure pricing, resource limits, and features for PaaS service plans
+- **Worker Node Management**: Monitor and manage build agents with capacity tracking and health status
+- **Add-ons Management**: Configure and manage managed database services (PostgreSQL, Redis, MySQL, MongoDB)
 
 ### Public Pages
 - **Homepage**: Marketing landing page with feature highlights
@@ -127,6 +142,7 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 - **Frontend (`src/`)**: React 18, Vite, TypeScript, Tailwind CSS, TanStack Query v5, Zustand, shadcn/ui components, React Router v7.
 - **Backend (`api/`)**: Express.js (ESM) with modular routes, service layer, JWT authentication, and comprehensive middleware.
+- **PaaS System**: Docker-based deployment platform with worker node orchestration, GitHub integration, and managed service provisioning.
 - **Database**: PostgreSQL with versioned migrations in `migrations/`; real-time notifications via LISTEN/NOTIFY.
 - **Infrastructure (`scripts/`)**: Migration runners, admin utilities, organization management, billing automation, SMTP testing, and operational tooling.
 
@@ -137,6 +153,8 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
   - `src/lib/validation.ts` – Comprehensive form validation system with schemas for admin operations
   - `src/components/admin/` – Enhanced admin interface components with modal-based organization management
   - `src/components/admin/__tests__/` – Comprehensive test suite for admin components with React Testing Library
+  - `src/components/paas/` – PaaS customer interface components for application management and deployment
+  - `src/pages/PaaS.tsx` – Main PaaS page with routing for application lifecycle management
 - `migrations/` – Versioned SQL migrations for schema and data changes.
 - `scripts/` – Node utilities for migrations, admin seeding, billing, SMTP, and diagnostics.
 - `public/` – Static assets served by Vite.
@@ -146,7 +164,8 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 - **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, React Router v7, TanStack Query v5, Zustand, shadcn/ui components, comprehensive form validation system.
 - **Backend**: Node.js 20+, Express.js (ESM), TypeScript, PostgreSQL, Redis, Bull queues, Nodemailer, WebSockets (ssh2).
-- **Integrations**: PayPal REST SDK, Linode/Akamai API, DigitalOcean API, SMTP2GO, optional InfluxDB metrics.
+- **PaaS Stack**: Docker containerization, GitHub API integration, worker node orchestration, managed database provisioning.
+- **Integrations**: PayPal REST SDK, Linode/Akamai API, DigitalOcean API, SMTP2GO, GitHub API, optional InfluxDB metrics.
 
 ## Prerequisites
 
@@ -287,6 +306,8 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 ### Backend Architecture
 - **Server startup**: Express boots from `api/server.ts`, initializes SSH WebSocket bridge, and schedules hourly billing
 - **Database access**: Use `api/lib/database.ts` (`query`, `transaction`) for atomic operations, especially billing
+- **PaaS services**: Modular service layer for application lifecycle, build orchestration, worker node management, and add-on provisioning
+- **Worker node agent**: Standalone Node.js application for Docker-based builds with self-registration and task execution
 - **Enhanced organization management**: Complete REST API with CRUD operations featuring:
   - **Comprehensive member management**: Role assignments, ownership transfers, and member lifecycle management
   - **Advanced user search**: Organization membership filtering, pagination support, and real-time query capabilities
@@ -337,6 +358,8 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 - **[Admin User Management](./api-docs/admin/user-detail.md)** - Enhanced user detail management with robust error handling and comprehensive resource impact analysis
 - **[Flexible Backup Pricing API](./repo-docs/FLEXIBLE_BACKUP_PRICING_API.md)** - Backup configuration and pricing endpoints
 - **[Multi-Provider VPS](./repo-docs/MULTI_PROVIDER_VPS.md)** - Multi-provider VPS management
+- **[PaaS API Documentation](./api-docs/paas/README.md)** - Platform as a Service API endpoints for application management, deployments, and add-ons
+- **[Worker Node API](./api-docs/paas/worker-nodes.md)** - Worker node registration, heartbeat, and build job assignment endpoints
 
 ### Configuration Documentation
 

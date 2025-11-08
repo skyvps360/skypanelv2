@@ -549,7 +549,7 @@ const MarketplaceManager: React.FC<MarketplaceManagerProps> = ({ token }) => {
             <div className="flex w-full flex-col gap-2 xl:max-w-sm">
               <label className="text-sm font-medium text-foreground">Provider</label>
               <Select
-                value={selectedProviderId || undefined}
+                value={selectedProviderId}
                 onValueChange={setSelectedProviderId}
                 disabled={loadingProviders || saving || providers.length === 0}
               >
