@@ -71,8 +71,6 @@ export default function Apps() {
   )
   const usageBreakdown = useMemo(() => Object.entries(usageSummary?.totals ?? {}), [usageSummary])
 
-  const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : undefined), [token])
-
   const fetchData = useCallback(async () => {
     if (!token || !authHeaders) return
     setLoading(true)

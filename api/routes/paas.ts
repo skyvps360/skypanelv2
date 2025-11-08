@@ -718,3 +718,8 @@ authed.post('/billing/spending-alert', async (req: any, res) => {
   const alert = await PaasBillingService.upsertSpendingAlert(req.user!.organizationId!, threshold)
   res.json({ success: true, data: alert })
 })
+
+// Mount authenticated routes
+router.use(authed)
+
+export { authed }
