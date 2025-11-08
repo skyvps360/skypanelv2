@@ -18,6 +18,8 @@ import {
   Settings,
   Sun,
   User,
+  Database,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +50,8 @@ interface NavItem {
 const navigationItems: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "VPS", href: "/vps", icon: Server },
+  { name: "Applications", href: "/applications", icon: Package },
+  { name: "Databases", href: "/databases", icon: Database },
   { name: "Activity", href: "/activity", icon: Activity },
   { name: "Billing", href: "/billing", icon: CreditCard },
 ];
