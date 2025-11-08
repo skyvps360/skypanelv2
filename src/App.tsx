@@ -55,6 +55,7 @@ import TermsOfService from "./pages/TermsOfService";
 import PaaS from "./pages/PaaS";
 import Applications from "./pages/Applications";
 import ApplicationDetails from "./pages/ApplicationDetails";
+import Databases from "./pages/Databases";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Pricing from "./pages/Pricing";
 import SSHKeys from "./pages/SSHKeys";
@@ -405,6 +406,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <ApplicationDetails />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/databases"
+          element={
+            <ProtectedRoute>
+              <Databases />
             </ProtectedRoute>
           }
         />
