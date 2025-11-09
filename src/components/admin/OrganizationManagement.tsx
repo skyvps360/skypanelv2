@@ -69,6 +69,7 @@ interface Organization {
   updatedAt: string;
   members: OrganizationMember[];
   memberCount: number;
+  paasAppCount?: number;
 }
 
 interface OrganizationManagementProps {
@@ -108,7 +109,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
     setError('');
     try {
       const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch(`${API_BASE_URL}/api/admin/organizations`, {
+      const res = await fetch(`${API_BASE_URL}/admin/organizations`, {
         headers: authHeader,
       });
       
@@ -330,6 +331,11 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                             <Badge variant="outline" className="text-xs">
                               {org.memberCount} member{org.memberCount !== 1 ? 's' : ''}
                             </Badge>
+                            {org.paasAppCount !== undefined && org.paasAppCount > 0 && (
+                              <Badge variant="secondary" className="text-xs">
+                                {org.paasAppCount} PaaS app{org.paasAppCount !== 1 ? 's' : ''}
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             Owner: {org.ownerName} ({org.ownerEmail})

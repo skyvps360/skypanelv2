@@ -2375,7 +2375,7 @@ router.get(
   async (_req: Request, res: Response) => {
     try {
       const result = await query(
-        `SELECT 
+        `SELECT
           org.id,
           org.name,
           org.slug,
@@ -2385,6 +2385,7 @@ router.get(
           owner.name AS owner_name,
           owner.email AS owner_email,
           COUNT(DISTINCT om.user_id) AS member_count,
+          COUNT(DISTINCT pa.id) AS paas_app_count,
           COALESCE(
             jsonb_agg(
               DISTINCT jsonb_build_object(
@@ -2402,6 +2403,7 @@ router.get(
         LEFT JOIN users owner ON owner.id = org.owner_id
         LEFT JOIN organization_members om ON om.organization_id = org.id
         LEFT JOIN users mem ON mem.id = om.user_id
+        LEFT JOIN paas_applications pa ON pa.organization_id = org.id
         GROUP BY org.id, owner.id
         ORDER BY org.created_at DESC`
       );

@@ -25,9 +25,14 @@
     "seed:admin": "node scripts/seed-admin.js",
     "db:reset": "node scripts/reset-database.js",
     "db:reset:confirm": "node scripts/reset-database.js --confirm",
-    "db:fresh": "node scripts/reset-database.js --confirm && node scripts/run-migration.js"
+    "db:fresh": "node scripts/reset-database.js --confirm && node scripts/run-migration.js",
+    "paas:init": "tsx scripts/init-paas.ts",
+    "worker": "tsx api/worker/index.ts",
+    "dev:worker": "nodemon --exec tsx api/worker/index.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.927.0",
+    "@aws-sdk/lib-storage": "^3.927.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

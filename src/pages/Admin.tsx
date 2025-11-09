@@ -49,6 +49,10 @@ import { RegionAccessManager } from "@/components/admin/RegionAccessManager";
 import MarketplaceManager from "@/components/admin/MarketplaceManager";
 import { AdminSupportView } from "@/components/admin/AdminSupportView";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { PaaSOverview } from "@/components/admin/PaaSOverview";
+import { PaaSAllAppsAdmin } from "@/components/admin/PaaSAllAppsAdmin";
+import { PaaSWorkerManagement } from "@/components/admin/PaaSWorkerManagement";
+import { PaaSSettingsAdmin } from "@/components/admin/PaaSSettingsAdmin";
 
 import { useTheme } from "@/contexts/ThemeContext";
 import { Badge } from "@/components/ui/badge";
@@ -140,7 +144,11 @@ type AdminSection =
   | "rate-limiting"
   | "faq-management"
   | "platform"
-  | "contact-management";
+  | "contact-management"
+  | "paas-overview"
+  | "paas-apps"
+  | "paas-workers"
+  | "paas-settings";
 
 const ADMIN_SECTIONS: AdminSection[] = [
   "dashboard",
@@ -158,6 +166,10 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "faq-management",
   "platform",
   "contact-management",
+  "paas-overview",
+  "paas-apps",
+  "paas-workers",
+  "paas-settings",
 ];
 
 const DEFAULT_ADMIN_SECTION: AdminSection = "dashboard";
@@ -2304,6 +2316,12 @@ const Admin: React.FC = () => {
       case "contact-management":
         // Contact management will handle its own data fetching
         break;
+      case "paas-overview":
+      case "paas-apps":
+      case "paas-workers":
+      case "paas-settings":
+        // PaaS sections handle their own data fetching
+        break;
       default:
         break;
     }
@@ -3963,6 +3981,22 @@ const Admin: React.FC = () => {
           </TabsContent>
         </Tabs>
       </div>
+    </SectionPanel>
+
+    <SectionPanel section="paas-overview" activeSection={activeTab}>
+      <PaaSOverview />
+    </SectionPanel>
+
+    <SectionPanel section="paas-apps" activeSection={activeTab}>
+      <PaaSAllAppsAdmin />
+    </SectionPanel>
+
+    <SectionPanel section="paas-workers" activeSection={activeTab}>
+      <PaaSWorkerManagement />
+    </SectionPanel>
+
+    <SectionPanel section="paas-settings" activeSection={activeTab}>
+      <PaaSSettingsAdmin />
     </SectionPanel>
 
     <SectionPanel section="stackscripts" activeSection={activeTab}>

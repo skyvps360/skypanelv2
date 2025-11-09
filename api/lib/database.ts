@@ -144,3 +144,129 @@ export interface UserApiKey {
   created_at: string;
   updated_at: string;
 }
+
+// PaaS Types
+export interface PaasApplication {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  git_url?: string;
+  git_branch: string;
+  buildpack?: string;
+  plan_id?: string;
+  status: 'inactive' | 'building' | 'deploying' | 'running' | 'stopped' | 'failed' | 'suspended';
+  subdomain?: string;
+  stack: string;
+  replicas: number;
+  metadata: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaasDeployment {
+  id: string;
+  application_id: string;
+  version: number;
+  git_commit?: string;
+  slug_url?: string;
+  slug_size_bytes?: number;
+  buildpack_used?: string;
+  build_log?: string;
+  status: 'pending' | 'building' | 'build_failed' | 'deploying' | 'deployed' | 'failed' | 'rolled_back';
+  error_message?: string;
+  build_started_at?: string;
+  build_completed_at?: string;
+  deployed_at?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaasWorkerNode {
+  id: string;
+  name: string;
+  ip_address: string;
+  ssh_port: number;
+  ssh_user: string;
+  ssh_key_encrypted?: string;
+  swarm_node_id?: string;
+  swarm_role: 'manager' | 'worker';
+  status: 'provisioning' | 'active' | 'draining' | 'down' | 'unreachable';
+  capacity_cpu?: number;
+  capacity_ram_mb?: number;
+  used_cpu: number;
+  used_ram_mb: number;
+  labels: any;
+  metadata: any;
+  last_heartbeat_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaasEnvironmentVar {
+  id: string;
+  application_id: string;
+  key: string;
+  value_encrypted: string;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaasDomain {
+  id: string;
+  application_id: string;
+  domain: string;
+  is_verified: boolean;
+  ssl_enabled: boolean;
+  ssl_cert_path?: string;
+  ssl_cert_expires_at?: string;
+  dns_verification_token?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaasPlan {
+  id: string;
+  name: string;
+  slug: string;
+  cpu_cores: number;
+  ram_mb: number;
+  max_replicas: number;
+  disk_gb: number;
+  price_per_hour: number;
+  price_per_month?: number;
+  is_active: boolean;
+  features: any;
+  metadata: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaasResourceUsage {
+  id: string;
+  application_id: string;
+  organization_id: string;
+  deployment_id?: string;
+  cpu_cores: number;
+  ram_mb: number;
+  replicas: number;
+  hours: number;
+  cost: number;
+  recorded_at: string;
+  billing_cycle_id?: string;
+  created_at: string;
+}
+
+export interface PaasSettings {
+  id: string;
+  key: string;
+  value_encrypted?: string;
+  value_type: 'string' | 'number' | 'boolean' | 'json';
+  description?: string;
+  is_sensitive: boolean;
+  category: string;
+  created_at: string;
+  updated_at: string;
+}

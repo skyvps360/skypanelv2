@@ -539,4 +539,299 @@ export class BillingService {
       console.error(`Error stopping billing for VPS ${vpsInstanceId}:`, error);
     }
   }
+
+  /**
+   * ========================================================================
+   * PaaS BILLING METHODS
+   * ========================================================================
+   */
+
+  /**
+   * Run hourly billing for all active PaaS applications
+   */
+  static async runPaaSHourlyBilling(): Promise<BillingResult> {
+    console.log('🔄 Starting hourly PaaS billing process...');
+
+    const result: BillingResult = {
+      success: true,
+      billedInstances: 0,
+      totalAmount: 0,
+      totalHours: 0,
+      failedInstances: [],
+      errors: []
+    };
+
+    try {
+      // Get all active PaaS applications that need billing
+      const activeApps = await this.getActivePaaSApplications();
+      console.log(`📊 Found ${activeApps.length} active PaaS applications to process`);
+
+      for (const app of activeApps) {
+        try {
+          const billingOutcome = await this.billPaaSApplication(app);
+          if (!billingOutcome.success) {
+            result.failedInstances.push(app.id);
+            result.errors.push(`Failed to bill PaaS app ${app.name} (${app.id})`);
+            console.error(`❌ Failed to bill PaaS app ${app.name} (${app.id})`);
+            continue;
+          }
+
+          if (billingOutcome.hoursCharged === 0) {
+            console.log(`⏭️ No billable hours yet for PaaS app ${app.name} (${app.id}); skipping.`);
+            continue;
+          }
+
+          result.billedInstances++;
+          result.totalAmount += billingOutcome.amountCharged;
+          result.totalHours += billingOutcome.hoursCharged;
+          console.log(
+            `✅ Successfully billed PaaS app ${app.name} (${app.id}) - ${billingOutcome.hoursCharged}h @ $${app.hourlyRate.toFixed(4)}/h (charged $${billingOutcome.amountCharged.toFixed(4)})`
+          );
+        } catch (error) {
+          result.failedInstances.push(app.id);
+          result.errors.push(`Error billing PaaS app ${app.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          console.error(`❌ Error billing PaaS app ${app.name}:`, error);
+        }
+      }
+
+      if (result.failedInstances.length > 0) {
+        result.success = false;
+      }
+
+      console.log(
+        `🏁 PaaS billing completed: ${result.billedInstances} billed, ${result.failedInstances.length} failed, ${result.totalHours}h charged, $${result.totalAmount.toFixed(2)} total`
+      );
+      return result;
+
+    } catch (error) {
+      console.error('💥 Critical error in PaaS hourly billing process:', error);
+      result.success = false;
+      result.errors.push(`Critical billing error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return result;
+    }
+  }
+
+  /**
+   * Get all active PaaS applications that need billing
+   */
+  private static async getActivePaaSApplications() {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    const result = await query(`
+      SELECT
+        pa.id,
+        pa.organization_id,
+        pa.name,
+        pa.status,
+        pa.replicas,
+        pa.last_billed_at,
+        pa.created_at,
+        pp.cpu,
+        pp.ram_mb,
+        pp.hourly_rate
+      FROM paas_applications pa
+      JOIN paas_plans pp ON pp.id = pa.plan_id
+      WHERE pa.status IN ('running', 'building', 'stopped')
+        AND (pa.last_billed_at IS NULL OR pa.last_billed_at <= $1)
+      ORDER BY pa.created_at ASC
+    `, [oneHourAgo]);
+
+    return result.rows.map(row => ({
+      id: row.id,
+      organizationId: row.organization_id,
+      name: row.name,
+      status: row.status,
+      replicas: parseInt(row.replicas),
+      cpu: parseFloat(row.cpu),
+      ramMb: parseInt(row.ram_mb),
+      hourlyRate: parseFloat(row.hourly_rate) * parseInt(row.replicas),
+      lastBilledAt: row.last_billed_at ? new Date(row.last_billed_at) : null,
+      createdAt: new Date(row.created_at)
+    }));
+  }
+
+  /**
+   * Bill a specific PaaS application for any fully elapsed hours
+   */
+  private static async billPaaSApplication(app: any): Promise<{ success: boolean; amountCharged: number; hoursCharged: number }> {
+    try {
+      return await transaction(async (client) => {
+        const now = new Date();
+        const billingPeriodStart = app.lastBilledAt ?? app.createdAt;
+        const elapsedMs = Math.max(0, now.getTime() - billingPeriodStart.getTime());
+        const rawHoursElapsed = elapsedMs / MS_PER_HOUR;
+        const hoursToCharge = Math.floor(rawHoursElapsed);
+
+        if (hoursToCharge < 1) {
+          return { success: true, amountCharged: 0, hoursCharged: 0 };
+        }
+
+        const billingPeriodEnd = new Date(billingPeriodStart.getTime() + hoursToCharge * MS_PER_HOUR);
+        const totalAmount = Number((app.hourlyRate * hoursToCharge).toFixed(4));
+
+        // Check wallet balance
+        const walletResult = await client.query(
+          'SELECT balance FROM wallets WHERE organization_id = $1',
+          [app.organizationId]
+        );
+
+        if (walletResult.rows.length === 0) {
+          console.error(`No wallet found for organization ${app.organizationId}`);
+          await this.recordFailedPaaSBilling(client, app, billingPeriodStart, billingPeriodEnd, totalAmount, hoursToCharge, 'no_wallet');
+          return { success: false, amountCharged: 0, hoursCharged: hoursToCharge };
+        }
+
+        const currentBalance = parseFloat(walletResult.rows[0].balance);
+        if (currentBalance < totalAmount) {
+          console.warn(
+            `Insufficient balance for PaaS app ${app.name}: required $${totalAmount.toFixed(4)}, available $${currentBalance.toFixed(2)}`
+          );
+          await this.recordFailedPaaSBilling(client, app, billingPeriodStart, billingPeriodEnd, totalAmount, hoursToCharge, 'insufficient_balance');
+          return { success: false, amountCharged: 0, hoursCharged: hoursToCharge };
+        }
+
+        // Deduct funds
+        const deductionSuccess = await PayPalService.deductFundsFromWallet(
+          app.organizationId,
+          totalAmount,
+          `PaaS Hourly Billing - ${app.name} (${hoursToCharge}h × ${app.replicas} replicas)`
+        );
+
+        if (!deductionSuccess) {
+          console.error(`Failed to deduct funds for PaaS app ${app.name}`);
+          await this.recordFailedPaaSBilling(client, app, billingPeriodStart, billingPeriodEnd, totalAmount, hoursToCharge, 'deduction_failed');
+          return { success: false, amountCharged: 0, hoursCharged: hoursToCharge };
+        }
+
+        // Record successful billing
+        await client.query(`
+          INSERT INTO paas_resource_usage (
+            application_id,
+            organization_id,
+            period_start,
+            period_end,
+            cpu_hours,
+            ram_mb_hours,
+            total_cost,
+            billed_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        `, [
+          app.id,
+          app.organizationId,
+          billingPeriodStart,
+          billingPeriodEnd,
+          app.cpu * hoursToCharge * app.replicas,
+          app.ramMb * hoursToCharge * app.replicas,
+          totalAmount
+        ]);
+
+        // Update last_billed_at
+        await client.query(
+          'UPDATE paas_applications SET last_billed_at = $1 WHERE id = $2',
+          [billingPeriodEnd, app.id]
+        );
+
+        console.log(`✅ Recorded billing for PaaS app ${app.name}: $${totalAmount.toFixed(4)} for ${hoursToCharge}h`);
+        return { success: true, amountCharged: totalAmount, hoursCharged: hoursToCharge };
+      });
+    } catch (error) {
+      console.error(`Error billing PaaS application ${app.name}:`, error);
+      return { success: false, amountCharged: 0, hoursCharged: 0 };
+    }
+  }
+
+  /**
+   * Record a failed PaaS billing attempt
+   */
+  private static async recordFailedPaaSBilling(
+    client: any,
+    app: any,
+    periodStart: Date,
+    periodEnd: Date,
+    totalAmount: number,
+    hoursCharged: number,
+    reason: string
+  ) {
+    await client.query(`
+      INSERT INTO paas_resource_usage (
+        application_id,
+        organization_id,
+        period_start,
+        period_end,
+        cpu_hours,
+        ram_mb_hours,
+        total_cost,
+        billed_at,
+        metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8)
+    `, [
+      app.id,
+      app.organizationId,
+      periodStart,
+      periodEnd,
+      app.cpu * hoursCharged * app.replicas,
+      app.ramMb * hoursCharged * app.replicas,
+      totalAmount,
+      JSON.stringify({
+        billing_failed: true,
+        reason,
+        hours_charged: hoursCharged,
+        replicas: app.replicas
+      })
+    ]);
+  }
+
+  /**
+   * Get billing summary including both VPS and PaaS
+   */
+  static async getCombinedBillingSummary(organizationId: string) {
+    try {
+      // Get VPS summary (existing)
+      const vpsResult = await query(`
+        SELECT COALESCE(SUM(total_amount), 0) as total
+        FROM vps_billing_cycles
+        WHERE organization_id = $1
+          AND status = 'billed'
+          AND billing_period_start >= date_trunc('month', CURRENT_DATE)
+      `, [organizationId]);
+
+      // Get PaaS summary
+      const paasResult = await query(`
+        SELECT COALESCE(SUM(total_cost), 0) as total
+        FROM paas_resource_usage
+        WHERE organization_id = $1
+          AND billed_at IS NOT NULL
+          AND period_start >= date_trunc('month', CURRENT_DATE)
+      `, [organizationId]);
+
+      // Get active PaaS app count
+      const paasCountResult = await query(`
+        SELECT COUNT(*) as count
+        FROM paas_applications
+        WHERE organization_id = $1 AND status IN ('running', 'building')
+      `, [organizationId]);
+
+      // Get existing VPS summary
+      const vpsSummary = await this.getBillingSummary(organizationId);
+
+      return {
+        ...vpsSummary,
+        totalSpentThisMonthPaaS: parseFloat(paasResult.rows[0].total),
+        activePaaSCount: parseInt(paasCountResult.rows[0].count),
+        combinedMonthlySpend: vpsSummary.totalSpentThisMonth + parseFloat(paasResult.rows[0].total)
+      };
+    } catch (error) {
+      console.error('Error getting combined billing summary:', error);
+      return {
+        totalSpentThisMonth: 0,
+        totalSpentAllTime: 0,
+        activeVPSCount: 0,
+        monthlyEstimate: 0,
+        totalSpentThisMonthPaaS: 0,
+        activePaaSCount: 0,
+        combinedMonthlySpend: 0
+      };
+    }
+  }
 }

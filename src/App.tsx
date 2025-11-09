@@ -55,6 +55,9 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Pricing from "./pages/Pricing";
 import SSHKeys from "./pages/SSHKeys";
+import PaaSApps from "./pages/PaaS/PaaSApps";
+import PaaSAppCreate from "./pages/PaaS/PaaSAppCreate";
+import PaaSAppDetail from "./pages/PaaS/PaaSAppDetail";
 
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 
@@ -338,6 +341,30 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <ActivityPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/paas"
+          element={
+            <ProtectedRoute>
+              <PaaSApps />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/paas/new"
+          element={
+            <ProtectedRoute>
+              <PaaSAppCreate />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/paas/:id"
+          element={
+            <ProtectedRoute>
+              <PaaSAppDetail />
             </ProtectedRoute>
           }
         />
