@@ -148,7 +148,31 @@ export class SkyPanelClient {
       }
 
       const response = await this.axios.get('/api/paas/worker/builds/queued');
-      return response.data.builds || [];
+      const payload = response.data ?? {};
+      const nestedData = payload?.data;
+
+      if (Array.isArray(nestedData?.builds)) {
+        return nestedData.builds;
+      }
+
+      if (Array.isArray(nestedData)) {
+        return nestedData;
+      }
+
+      if (Array.isArray(payload?.builds)) {
+        return payload.builds;
+      }
+
+      if (Array.isArray(payload)) {
+        return payload;
+      }
+
+      logger.error('Unexpected queued builds response structure', {
+        payloadType: typeof payload,
+        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload) : undefined
+      });
+
+      throw new Error('Queued builds response missing builds array');
 
     } catch (error) {
       logger.error('Failed to get queued builds:', error);

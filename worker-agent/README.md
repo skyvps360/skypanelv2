@@ -156,6 +156,19 @@ docker run -d \
 7. **Build Execution** - Builds and deploys applications
 8. **Cleanup** - Periodic cleanup of resources (every 30 minutes)
 
+## Manual Verification
+
+To verify the worker correctly parses queued builds payloads:
+
+1. Start the worker agent in development mode with logging enabled (`LOG_LEVEL=debug`).
+2. Use an HTTP client such as `curl` or `HTTPie` to mock the queued builds endpoint:
+   ```bash
+   curl -H "Authorization: Bearer <token>" \
+     "${SKYPANEL_URL}/api/paas/worker/builds/queued"
+   ```
+3. Confirm the worker logs a debug message showing the request followed by either build handling logic or the defensive error message if the payload is malformed.
+4. Repeat the request while temporarily serving legacy responses (where `builds` sits at the top level) to ensure backward compatibility.
+
 ## Build Process
 
 1. **Accept Build** - Worker accepts a build job from SkyPanel
