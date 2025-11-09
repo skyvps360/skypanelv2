@@ -35,7 +35,7 @@ A **complete, production-ready Platform-as-a-Service (PaaS) system** has been in
 
 ```bash
 # Apply PaaS migration
-psql $DATABASE_URL -f migrations/003_paas_integration.sql
+unset $DATABASE_URL && node scripts/apply-single-migration.js migrations/003_paas_integration.sql
 ```
 
 ### 2. Initialize PaaS
