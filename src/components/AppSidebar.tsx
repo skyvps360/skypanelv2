@@ -46,6 +46,7 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
   const currentHash = location.hash?.slice(1) ?? "";
   const isDashboardActive = pathname === "/dashboard";
   const isVpsActive = pathname.startsWith("/vps");
+  const isPaasActive = pathname.startsWith("/paas");
   const isActivityActive = pathname.startsWith("/activity");
   const isBillingActive = pathname.startsWith("/billing");
   const isSshKeysActive = pathname.startsWith("/ssh-keys");
@@ -155,12 +156,13 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
               url: "/vps",
               isActive: isVpsActive,
             },
-            {
-              title: "PaaS",
-              url: "/paas",
-              isActive: pathname.startsWith("/paas"),
-            },
           ],
+        },
+        {
+          title: "PaaS",
+          url: "/paas",
+          icon: Cloud,
+          isActive: isPaasActive,
         },
         {
           title: "SSH Keys",
