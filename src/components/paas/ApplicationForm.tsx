@@ -78,6 +78,73 @@ interface FormData {
   auto_deploy: boolean;
 }
 
+const normalizeEnvironmentVariables = (value: unknown): EnvironmentVariable[] => {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (entry && typeof entry === 'object') {
+          const { key, value: val } = entry as Partial<EnvironmentVariable> & Record<string, unknown>;
+          return {
+            key: typeof key === 'string' ? key : '',
+            value: typeof val === 'string' ? val : val != null ? String(val) : '',
+          };
+        }
+        return { key: '', value: '' };
+      })
+      .filter((envVar) => envVar.key.length > 0 && envVar.value.length > 0);
+  }
+
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, val]) => ({
+        key,
+        value: typeof val === 'string' ? val : val != null ? String(val) : '',
+      }))
+      .filter((envVar) => envVar.key.length > 0);
+  }
+
+  return [];
+};
+
+const denormalizeEnvironmentVariables = (
+  variables: EnvironmentVariable[]
+): Record<string, string> => {
+  const result: Record<string, string> = {};
+
+  if (!Array.isArray(variables)) {
+    return result;
+  }
+
+  variables.forEach(({ key, value }) => {
+    if (!key) {
+      return;
+    }
+    result[key] = value ?? '';
+  });
+
+  return result;
+};
+
+const normalizeFormResponse = (raw: any): FormData => ({
+  name: pickString(raw?.name) || '',
+  description: pickString(raw?.description) || '',
+  repository_url:
+    pickString(raw?.repository_url, raw?.repositoryUrl, raw?.githubRepoUrl, raw?.github_repo_url) || '',
+  branch: pickString(raw?.branch, raw?.githubBranch, raw?.github_branch) || 'main',
+  build_command: pickString(raw?.build_command, raw?.buildCommand) || 'npm install && npm run build',
+  start_command: pickString(raw?.start_command, raw?.startCommand) || 'npm start',
+  node_version: pickString(raw?.node_version, raw?.nodeVersion) || '18.x',
+  planId: pickString(raw?.planId, raw?.plan_id, raw?.planID, raw?.plan?.id) || '',
+  environment_variables: normalizeEnvironmentVariables(
+    raw?.environment_variables ?? raw?.environmentVariables ?? raw?.environment_vars
+  ),
+  auto_deploy: Boolean(raw?.auto_deploy ?? raw?.autoDeploy ?? raw?.autoDeployments),
+});
+
 const getNumericValue = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -255,18 +322,7 @@ export const ApplicationForm: React.FC = () => {
       const data = await response.json();
 
       const app = data.data;
-      setFormData({
-        name: app.name,
-        description: app.description,
-        repository_url: app.repository_url,
-        branch: app.branch,
-        build_command: app.build_command,
-        start_command: app.start_command,
-        node_version: app.node_version,
-        planId: app.planId,
-        environment_variables: app.environment_variables || [],
-        auto_deploy: app.auto_deploy || false,
-      });
+      setFormData(normalizeFormResponse(app));
     } catch (error) {
       console.error('Error fetching app:', error);
       toast.error('Failed to fetch application details');
@@ -346,13 +402,26 @@ export const ApplicationForm: React.FC = () => {
       const url = isEditing ? `/api/paas/apps/${appId}` : '/api/paas/apps';
       const method = isEditing ? 'PUT' : 'POST';
 
+      const payload = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        githubRepoUrl: formData.repository_url.trim(),
+        githubBranch: formData.branch.trim(),
+        buildCommand: formData.build_command.trim(),
+        startCommand: formData.start_command.trim(),
+        nodeVersion: formData.node_version.trim(),
+        planId: formData.planId,
+        autoDeploy: formData.auto_deploy,
+        environmentVariables: denormalizeEnvironmentVariables(formData.environment_variables),
+      };
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -410,8 +479,8 @@ export const ApplicationForm: React.FC = () => {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          repository_url: formData.repository_url,
-          branch: formData.branch,
+          githubRepoUrl: formData.repository_url.trim(),
+          githubBranch: formData.branch.trim(),
         }),
       });
 

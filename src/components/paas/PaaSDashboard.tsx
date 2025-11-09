@@ -80,17 +80,58 @@ interface PaaSDashboardStats {
   last_build_status?: 'success' | 'failed';
 }
 
+const normalizeApp = (raw: any): PaaSApp => ({
+  id: String(raw?.id ?? ''),
+  name: typeof raw?.name === 'string' ? raw.name : 'Untitled Application',
+  description: typeof raw?.description === 'string' ? raw.description : '',
+  status: (raw?.status as PaaSApp['status']) ?? 'building',
+  repository_url:
+    (raw?.repository_url as string) ??
+    (raw?.repositoryUrl as string) ??
+    (raw?.githubRepoUrl as string) ??
+    (raw?.github_repo_url as string) ??
+    '',
+  branch:
+    (raw?.branch as string) ??
+    (raw?.githubBranch as string) ??
+    (raw?.github_branch as string) ??
+    'main',
+  last_commit:
+    (raw?.last_commit as string) ??
+    (raw?.lastCommit as string) ??
+    (raw?.githubCommitSha as string) ??
+    (raw?.lastCommitSha as string),
+  last_deployed_at:
+    (raw?.last_deployed_at as string) ??
+    (raw?.lastDeployedAt as string) ??
+    (raw?.lastDeployed as string),
+  plan_name:
+    (raw?.plan_name as string) ??
+    (raw?.planName as string) ??
+    (raw?.plan?.name as string) ??
+    'Unknown Plan',
+  url: (raw?.url as string) ?? (raw?.app_url as string) ?? (raw?.appUrl as string),
+  created_at: (raw?.created_at as string) ?? (raw?.createdAt as string) ?? '',
+  updated_at: (raw?.updated_at as string) ?? (raw?.updatedAt as string) ?? '',
+  build_status: (raw?.build_status as PaaSApp['build_status']) ?? (raw?.buildStatus as PaaSApp['build_status']),
+  deployment_count: Number(raw?.deployment_count ?? raw?.deploymentCount ?? 0),
+  addon_count: Number(raw?.addon_count ?? raw?.addonCount ?? 0),
+});
+
 const normalizeStats = (raw: any): PaaSDashboardStats => ({
-  total_apps: Number(raw?.total_apps) || 0,
-  deployed_apps: Number(raw?.deployed_apps) || 0,
-  building_apps: Number(raw?.building_apps) || 0,
-  error_apps: Number(raw?.error_apps) || 0,
-  total_deployments: Number(raw?.total_deployments) || 0,
-  total_addons: Number(raw?.total_addons) || 0,
-  monthly_spend: Number(raw?.monthly_spend) || 0,
-  last_build_status: raw?.last_build_status === 'success' || raw?.last_build_status === 'failed'
-    ? raw.last_build_status
-    : undefined,
+  total_apps: Number(raw?.total_apps ?? raw?.totalApps) || 0,
+  deployed_apps: Number(raw?.deployed_apps ?? raw?.deployedApps) || 0,
+  building_apps: Number(raw?.building_apps ?? raw?.buildingApps) || 0,
+  error_apps: Number(raw?.error_apps ?? raw?.errorApps) || 0,
+  total_deployments: Number(raw?.total_deployments ?? raw?.totalDeployments) || 0,
+  total_addons: Number(raw?.total_addons ?? raw?.totalAddons) || 0,
+  monthly_spend: Number(raw?.monthly_spend ?? raw?.monthlySpend) || 0,
+  last_build_status:
+    raw?.last_build_status === 'success' || raw?.last_build_status === 'failed'
+      ? raw.last_build_status
+      : raw?.lastBuildStatus === 'success' || raw?.lastBuildStatus === 'failed'
+        ? raw.lastBuildStatus
+        : undefined,
 });
 
 export const PaaSDashboard: React.FC = () => {
@@ -115,7 +156,8 @@ export const PaaSDashboard: React.FC = () => {
         : Array.isArray(data.data?.apps)
           ? data.data.apps
           : [];
-      setApps(fetchedApps);
+      const normalizedApps = fetchedApps.map(normalizeApp);
+      setApps(normalizedApps);
     } catch (error) {
       console.error('Error fetching apps:', error);
       toast.error('Failed to fetch applications');
