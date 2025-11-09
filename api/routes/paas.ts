@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import { PaaSService } from '../services/paasService.js';
+import { PaaSService, type PaasApp } from '../services/paasService.js';
 import { BuildService } from '../services/buildService.js';
 import { AddOnService } from '../services/addOnService.js';
 import { authenticateToken, requireOrganization } from '../middleware/auth.js';
@@ -47,6 +47,32 @@ const buildGitHubHeaders = () => {
   }
   return headers;
 };
+
+const buildAppStatusResponse = (app: PaasApp) => ({
+  id: app.id,
+  name: app.name,
+  description: app.description ?? '',
+  status: app.status,
+  repository_url: app.githubRepoUrl ?? '',
+  githubRepoUrl: app.githubRepoUrl ?? '',
+  github_repo_url: app.githubRepoUrl ?? '',
+  branch: app.githubBranch ?? 'main',
+  githubBranch: app.githubBranch ?? 'main',
+  github_branch: app.githubBranch ?? 'main',
+  last_deployed_at: app.lastDeployedAt ? app.lastDeployedAt.toISOString() : null,
+  lastDeployedAt: app.lastDeployedAt ? app.lastDeployedAt.toISOString() : null,
+  created_at: app.createdAt.toISOString(),
+  createdAt: app.createdAt.toISOString(),
+  updated_at: app.updatedAt.toISOString(),
+  updatedAt: app.updatedAt.toISOString(),
+  plan_id: app.planId,
+  planId: app.planId,
+  addon_count: app.metadata?.addonCount ?? app.metadata?.addon_count ?? 0,
+  deployment_count: app.metadata?.deploymentCount ?? app.metadata?.deployment_count ?? 0,
+  auto_deploy: app.autoDeployments,
+  autoDeploy: app.autoDeployments,
+  autoDeployments: app.autoDeployments
+});
 
 // Middleware to authenticate and validate organization access
 router.use(authenticateToken);
@@ -341,6 +367,128 @@ router.delete('/apps/:appId', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to delete application'
+    });
+  }
+});
+
+/**
+ * POST /api/paas/apps/:appId/stop
+ * Stop a running application
+ */
+router.post('/apps/:appId/stop', async (req, res) => {
+  try {
+    const { appId } = req.params;
+    const organizationId = req.user.organizationId;
+    const userId = req.user.id;
+
+    const app = await PaaSService.stopApp(appId, organizationId, userId);
+
+    if (!app) {
+      return res.status(404).json({
+        success: false,
+        error: 'Application not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: app.status,
+        app: buildAppStatusResponse(app),
+        message: 'Application stopped successfully'
+      }
+    });
+  } catch (error) {
+    console.error('Error stopping PaaS app:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to stop application'
+    });
+  }
+});
+
+/**
+ * POST /api/paas/apps/:appId/start
+ * Start a stopped application
+ */
+router.post('/apps/:appId/start', async (req, res) => {
+  try {
+    const { appId } = req.params;
+    const organizationId = req.user.organizationId;
+    const userId = req.user.id;
+
+    const app = await PaaSService.startApp(appId, organizationId, userId);
+
+    if (!app) {
+      return res.status(404).json({
+        success: false,
+        error: 'Application not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: app.status,
+        app: buildAppStatusResponse(app),
+        message: 'Application started successfully'
+      }
+    });
+  } catch (error) {
+    console.error('Error starting PaaS app:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to start application'
+    });
+  }
+});
+
+/**
+ * POST /api/paas/apps/:appId/redeploy
+ * Trigger redeployment for an application
+ */
+router.post('/apps/:appId/redeploy', async (req, res) => {
+  try {
+    const { appId } = req.params;
+    const organizationId = req.user.organizationId;
+    const userId = req.user.id;
+
+    const app = await PaaSService.getAppById(appId, organizationId);
+
+    if (!app) {
+      return res.status(404).json({
+        success: false,
+        error: 'Application not found'
+      });
+    }
+
+    const result = await BuildService.triggerRedeploy({
+      appId,
+      organizationId,
+      triggeredBy: userId,
+      appName: app.name
+    });
+
+    const refreshedApp = await PaaSService.getAppById(appId, organizationId);
+
+    res.json({
+      success: true,
+      data: {
+        deploymentId: result.deploymentId,
+        status: refreshedApp?.status ?? 'building',
+        app: refreshedApp ? buildAppStatusResponse(refreshedApp) : buildAppStatusResponse({
+          ...app,
+          status: 'building',
+          updatedAt: new Date()
+        } as PaasApp),
+        message: 'Redeployment started successfully'
+      }
+    });
+  } catch (error) {
+    console.error('Error triggering redeployment:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to trigger redeployment'
     });
   }
 });

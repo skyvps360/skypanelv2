@@ -19,6 +19,7 @@ export interface BuildRequest {
   environmentVariables?: Record<string, string>;
   triggeredBy?: string;
   isAutoDeployment?: boolean;
+  isRedeploy?: boolean;
 }
 
 export interface BuildLog {
@@ -96,6 +97,7 @@ export class BuildService {
           JSON.stringify({
             triggered_by: data.triggeredBy,
             is_auto_deployment: data.isAutoDeployment || false,
+            is_redeploy: data.isRedeploy || false,
             build_config: {
               dockerfilePath: data.dockerfilePath || app.dockerfile_path,
               buildCommand: data.buildCommand || app.build_command,
@@ -153,6 +155,37 @@ export class BuildService {
       console.error('Error triggering build:', error);
       throw new Error(`Failed to trigger build: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  static async triggerRedeploy(data: {
+    appId: string;
+    organizationId: string;
+    triggeredBy?: string;
+    appName?: string;
+  }): Promise<{ deploymentId: string; success: boolean }> {
+    const result = await this.triggerBuild({
+      appId: data.appId,
+      organizationId: data.organizationId,
+      triggeredBy: data.triggeredBy,
+      isAutoDeployment: false,
+      isRedeploy: true
+    });
+
+    await logActivity({
+      userId: data.triggeredBy || null,
+      organizationId: data.organizationId,
+      eventType: 'paas.app.redeploy',
+      entityType: 'paas_deployment',
+      entityId: result.deploymentId,
+      message: `Redeployment triggered for application: ${data.appName || data.appId}`,
+      metadata: {
+        appId: data.appId,
+        deploymentId: result.deploymentId,
+        isRedeploy: true
+      }
+    });
+
+    return result;
   }
 
   /**

@@ -154,6 +154,36 @@ export class PaaSService {
     };
   }
 
+  private static mapAppRow(row: any): PaasApp {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      planId: row.plan_id,
+      name: row.name,
+      slug: row.slug,
+      description: row.description,
+      githubRepoUrl: row.github_repo_url,
+      githubBranch: row.github_branch,
+      githubCommitSha: row.github_commit_sha,
+      status: row.status,
+      dockerfilePath: row.dockerfile_path,
+      buildCommand: row.build_command,
+      startCommand: row.start_command,
+      environmentVariables: row.environment_variables || {},
+      autoDeployments: row.auto_deployments,
+      lastDeployedAt: row.last_deployed_at ? new Date(row.last_deployed_at) : undefined,
+      lastBuiltAt: row.last_built_at ? new Date(row.last_built_at) : undefined,
+      assignedWorkerId: row.assigned_worker_id,
+      resourceUsage: row.resource_usage || { cpu: 0, memory: 0, storage: 0 },
+      healthCheckUrl: row.health_check_url,
+      healthCheckInterval: row.health_check_interval,
+      customDomains: row.custom_domains || [],
+      metadata: row.metadata || {},
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    };
+  }
+
   /**
    * Get all available PaaS plans
    */
@@ -681,33 +711,7 @@ export class PaaSService {
       }
 
       const row = result.rows[0];
-      return {
-        id: row.id,
-        organizationId: row.organization_id,
-        planId: row.plan_id,
-        name: row.name,
-        slug: row.slug,
-        description: row.description,
-        githubRepoUrl: row.github_repo_url,
-        githubBranch: row.github_branch,
-        githubCommitSha: row.github_commit_sha,
-        status: row.status,
-        dockerfilePath: row.dockerfile_path,
-        buildCommand: row.build_command,
-        startCommand: row.start_command,
-        environmentVariables: row.environment_variables || {},
-        autoDeployments: row.auto_deployments,
-        lastDeployedAt: row.last_deployed_at ? new Date(row.last_deployed_at) : undefined,
-        lastBuiltAt: row.last_built_at ? new Date(row.last_built_at) : undefined,
-        assignedWorkerId: row.assigned_worker_id,
-        resourceUsage: row.resource_usage || { cpu: 0, memory: 0, storage: 0 },
-        healthCheckUrl: row.health_check_url,
-        healthCheckInterval: row.health_check_interval,
-        customDomains: row.custom_domains || [],
-        metadata: row.metadata || {},
-        createdAt: new Date(row.created_at),
-        updatedAt: new Date(row.updated_at)
-      };
+      return this.mapAppRow(row);
     } catch (error) {
       console.error('Error getting app by ID:', error);
       throw new Error('Failed to fetch application');
@@ -897,6 +901,104 @@ export class PaaSService {
     } catch (error) {
       console.error('Error deleting PaaS app:', error);
       throw new Error(`Failed to delete PaaS application: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  static async stopApp(appId: string, organizationId: string, stoppedBy: string): Promise<PaasApp | null> {
+    try {
+      return await transaction(async (client) => {
+        const appResult = await client.query(
+          'SELECT * FROM paas_apps WHERE id = $1 AND organization_id = $2',
+          [appId, organizationId]
+        );
+
+        if (appResult.rows.length === 0) {
+          return null;
+        }
+
+        const currentApp = appResult.rows[0];
+
+        if (currentApp.status === 'stopped') {
+          return this.mapAppRow(currentApp);
+        }
+
+        const updateResult = await client.query(
+          `UPDATE paas_apps
+           SET status = 'stopped', updated_at = NOW()
+           WHERE id = $1 AND organization_id = $2
+           RETURNING *`,
+          [appId, organizationId]
+        );
+
+        const updatedApp = updateResult.rows[0];
+
+        await logActivity({
+          userId: stoppedBy,
+          organizationId,
+          eventType: 'paas.app.stop',
+          entityType: 'paas_app',
+          entityId: appId,
+          message: `Stopped PaaS application: ${updatedApp.name}`,
+          metadata: {
+            previousStatus: currentApp.status,
+            newStatus: updatedApp.status
+          }
+        });
+
+        return this.mapAppRow(updatedApp);
+      });
+    } catch (error) {
+      console.error('Error stopping PaaS app:', error);
+      throw new Error('Failed to stop application');
+    }
+  }
+
+  static async startApp(appId: string, organizationId: string, startedBy: string): Promise<PaasApp | null> {
+    try {
+      return await transaction(async (client) => {
+        const appResult = await client.query(
+          'SELECT * FROM paas_apps WHERE id = $1 AND organization_id = $2',
+          [appId, organizationId]
+        );
+
+        if (appResult.rows.length === 0) {
+          return null;
+        }
+
+        const currentApp = appResult.rows[0];
+
+        if (currentApp.status === 'deployed') {
+          return this.mapAppRow(currentApp);
+        }
+
+        const updateResult = await client.query(
+          `UPDATE paas_apps
+           SET status = 'deployed', last_deployed_at = NOW(), updated_at = NOW()
+           WHERE id = $1 AND organization_id = $2
+           RETURNING *`,
+          [appId, organizationId]
+        );
+
+        const updatedApp = updateResult.rows[0];
+
+        await logActivity({
+          userId: startedBy,
+          organizationId,
+          eventType: 'paas.app.start',
+          entityType: 'paas_app',
+          entityId: appId,
+          message: `Started PaaS application: ${updatedApp.name}`,
+          metadata: {
+            previousStatus: currentApp.status,
+            newStatus: updatedApp.status
+          }
+        });
+
+        return this.mapAppRow(updatedApp);
+      });
+    } catch (error) {
+      console.error('Error starting PaaS app:', error);
+      throw new Error('Failed to start application');
     }
   }
 

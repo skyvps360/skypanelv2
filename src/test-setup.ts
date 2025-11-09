@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+vi.stubEnv('NODE_ENV', 'test');
+
 // Mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
   observe() {}
