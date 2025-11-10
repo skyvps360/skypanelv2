@@ -46,7 +46,7 @@ export class GitService {
       GIT_TERMINAL_PROMPT: '0',
     };
     const cleanup: (() => Promise<void>)[] = [];
-    let preparedUrl = gitUrl;
+    const preparedUrl = gitUrl;
 
     if (this.isSshUrl(gitUrl)) {
       await this.applySshConfig(env, config, cleanup);
