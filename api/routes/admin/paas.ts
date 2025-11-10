@@ -406,7 +406,7 @@ router.delete('/apps/:id', param('id').isUUID(), async (req: Request, res: Respo
 
     // Stop all containers
     try {
-      await DeployerService.stopApplication(appId);
+      await DeployerService.stop(appId);
     } catch (error) {
       console.error('Failed to stop app during delete:', error);
       // Continue with deletion even if stop fails
@@ -547,7 +547,7 @@ router.post('/apps/bulk-action',
       for (const appId of app_ids) {
         try {
           if (action === 'suspend') {
-            await DeployerService.stopApplication(appId);
+            await DeployerService.stop(appId);
             await pool.query(
               'UPDATE paas_applications SET status = $1 WHERE id = $2',
               ['suspended', appId]
@@ -576,7 +576,7 @@ router.post('/apps/bulk-action',
               }
             }
           } else if (action === 'delete') {
-            await DeployerService.stopApplication(appId);
+            await DeployerService.stop(appId);
             await pool.query('DELETE FROM paas_deployments WHERE application_id = $1', [appId]);
             await pool.query('DELETE FROM paas_env_vars WHERE application_id = $1', [appId]);
             await pool.query('DELETE FROM paas_resource_usage WHERE application_id = $1', [appId]);
