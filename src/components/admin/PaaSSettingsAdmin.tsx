@@ -13,8 +13,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiClient } from '@/lib/api';
 
+const SENSITIVE_PLACEHOLDER = '***REDACTED***';
+const isSensitiveKey = (key: string): boolean => {
+  const lowered = key.toLowerCase();
+  return lowered.includes('secret') || lowered.includes('token') || lowered.includes('password') || lowered.includes('key');
+};
+
 export const PaaSSettingsAdmin: React.FC = () => {
   const [settings, setSettings] = useState<Record<string, any>>({});
+  const [originalSettings, setOriginalSettings] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -25,11 +32,13 @@ export const PaaSSettingsAdmin: React.FC = () => {
   const loadSettings = async () => {
     try {
       const data = await apiClient.get('/admin/paas/settings');
-      const settingsMap: Record<string, any> = {};
+      const nextSettings: Record<string, any> = {};
       (data.settings || []).forEach((setting: any) => {
-        settingsMap[setting.key] = setting.value_encrypted;
+        nextSettings[setting.key] = parseSettingValue(setting);
       });
-      setSettings(settingsMap);
+
+      setSettings(nextSettings);
+      setOriginalSettings({ ...nextSettings });
     } catch (error) {
       toast.error('Failed to load settings');
     } finally {
@@ -37,11 +46,54 @@ export const PaaSSettingsAdmin: React.FC = () => {
     }
   };
 
+  const parseSettingValue = (setting: any) => {
+    const raw = setting.value_encrypted ?? '';
+
+    if (typeof raw === 'string' && raw === SENSITIVE_PLACEHOLDER && setting.is_sensitive) {
+      return SENSITIVE_PLACEHOLDER;
+    }
+
+    switch (setting.value_type) {
+      case 'number':
+        return raw === '' ? '' : Number(raw);
+      case 'boolean':
+        if (typeof raw === 'boolean') {
+          return raw;
+        }
+        if (typeof raw === 'string') {
+          return raw.toLowerCase() === 'true';
+        }
+        return Boolean(raw);
+      case 'json':
+        if (!raw) return {};
+        try {
+          return typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch {
+          return raw;
+        }
+      default:
+        return raw;
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      await apiClient.put('/admin/paas/settings', { settings });
+      const changes: Record<string, any> = {};
+      for (const [key, value] of Object.entries(settings)) {
+        if (originalSettings[key] !== value) {
+          changes[key] = value;
+        }
+      }
+
+      if (Object.keys(changes).length === 0) {
+        toast.info('No changes to save');
+        return;
+      }
+
+      await apiClient.put('/admin/paas/settings', { settings: changes });
       toast.success('Settings saved successfully');
+      setOriginalSettings({ ...settings });
     } catch (error: any) {
       toast.error(error.message || 'Failed to save settings');
     } finally {
@@ -51,6 +103,14 @@ export const PaaSSettingsAdmin: React.FC = () => {
 
   const updateSetting = (key: string, value: any) => {
     setSettings({ ...settings, [key]: value });
+  };
+
+  const getDisplayValue = (key: string) => {
+    const value = settings[key];
+    if (typeof value === 'string' && value === SENSITIVE_PLACEHOLDER && isSensitiveKey(key)) {
+      return '';
+    }
+    return value ?? '';
   };
 
   if (loading) {
@@ -73,7 +133,7 @@ export const PaaSSettingsAdmin: React.FC = () => {
           <div>
             <Label>Default Domain</Label>
             <Input
-              value={settings.default_domain || ''}
+              value={getDisplayValue('default_domain')}
               onChange={(e) => updateSetting('default_domain', e.target.value)}
               placeholder="apps.yourdomain.com"
             />
@@ -86,8 +146,13 @@ export const PaaSSettingsAdmin: React.FC = () => {
             <Label>Max Apps Per Organization</Label>
             <Input
               type="number"
-              value={settings.max_apps_per_org || 0}
-              onChange={(e) => updateSetting('max_apps_per_org', parseInt(e.target.value))}
+              value={settings.max_apps_per_org === '' || settings.max_apps_per_org === undefined ? '' : settings.max_apps_per_org}
+              onChange={(e) =>
+                updateSetting(
+                  'max_apps_per_org',
+                  e.target.value === '' ? '' : parseInt(e.target.value, 10)
+                )
+              }
               placeholder="0 = unlimited"
             />
           </div>
@@ -96,8 +161,17 @@ export const PaaSSettingsAdmin: React.FC = () => {
             <Label>Max Deployments Per Hour</Label>
             <Input
               type="number"
-              value={settings.max_deployments_per_hour || 5}
-              onChange={(e) => updateSetting('max_deployments_per_hour', parseInt(e.target.value))}
+              value={
+                settings.max_deployments_per_hour === '' || settings.max_deployments_per_hour === undefined
+                  ? ''
+                  : settings.max_deployments_per_hour
+              }
+              onChange={(e) =>
+                updateSetting(
+                  'max_deployments_per_hour',
+                  e.target.value === '' ? '' : parseInt(e.target.value, 10)
+                )
+              }
             />
           </div>
         </CardContent>
@@ -130,7 +204,7 @@ export const PaaSSettingsAdmin: React.FC = () => {
               <div>
                 <Label>S3 Bucket</Label>
                 <Input
-                  value={settings.s3_bucket || ''}
+                  value={getDisplayValue('s3_bucket')}
                   onChange={(e) => updateSetting('s3_bucket', e.target.value)}
                   placeholder="my-paas-builds"
                 />
@@ -138,7 +212,7 @@ export const PaaSSettingsAdmin: React.FC = () => {
               <div>
                 <Label>S3 Region</Label>
                 <Input
-                  value={settings.s3_region || ''}
+                  value={getDisplayValue('s3_region')}
                   onChange={(e) => updateSetting('s3_region', e.target.value)}
                   placeholder="us-east-1"
                 />
@@ -146,7 +220,7 @@ export const PaaSSettingsAdmin: React.FC = () => {
               <div>
                 <Label>S3 Access Key</Label>
                 <Input
-                  value={settings.s3_access_key || ''}
+                  value={getDisplayValue('s3_access_key')}
                   onChange={(e) => updateSetting('s3_access_key', e.target.value)}
                   placeholder="AKIA..."
                 />
@@ -155,14 +229,14 @@ export const PaaSSettingsAdmin: React.FC = () => {
                 <Label>S3 Secret Key</Label>
                 <Input
                   type="password"
-                  value={settings.s3_secret_key || ''}
+                  value={getDisplayValue('s3_secret_key')}
                   onChange={(e) => updateSetting('s3_secret_key', e.target.value)}
                 />
               </div>
               <div>
                 <Label>S3 Endpoint (optional, for MinIO/B2)</Label>
                 <Input
-                  value={settings.s3_endpoint || ''}
+                  value={getDisplayValue('s3_endpoint')}
                   onChange={(e) => updateSetting('s3_endpoint', e.target.value)}
                   placeholder="https://s3.us-east-1.amazonaws.com"
                 />
@@ -174,7 +248,7 @@ export const PaaSSettingsAdmin: React.FC = () => {
             <div>
               <Label>Local Storage Path</Label>
               <Input
-                value={settings.local_storage_path || '/var/paas/storage'}
+                value={getDisplayValue('local_storage_path') || '/var/paas/storage'}
                 onChange={(e) => updateSetting('local_storage_path', e.target.value)}
               />
             </div>
@@ -191,7 +265,7 @@ export const PaaSSettingsAdmin: React.FC = () => {
           <div>
             <Label>Loki Endpoint</Label>
             <Input
-              value={settings.loki_endpoint || 'http://localhost:3100'}
+              value={getDisplayValue('loki_endpoint') || 'http://localhost:3100'}
               onChange={(e) => updateSetting('loki_endpoint', e.target.value)}
             />
           </div>
@@ -199,8 +273,17 @@ export const PaaSSettingsAdmin: React.FC = () => {
             <Label>Log Retention (days)</Label>
             <Input
               type="number"
-              value={settings.loki_retention_days || 7}
-              onChange={(e) => updateSetting('loki_retention_days', parseInt(e.target.value))}
+              value={
+                settings.loki_retention_days === '' || settings.loki_retention_days === undefined
+                  ? ''
+                  : settings.loki_retention_days
+              }
+              onChange={(e) =>
+                updateSetting(
+                  'loki_retention_days',
+                  e.target.value === '' ? '' : parseInt(e.target.value, 10)
+                )
+              }
             />
           </div>
         </CardContent>
@@ -215,14 +298,14 @@ export const PaaSSettingsAdmin: React.FC = () => {
           <div>
             <Label>Default Buildpack Stack</Label>
             <Input
-              value={settings.buildpack_default_stack || 'heroku-22'}
+              value={getDisplayValue('buildpack_default_stack') || 'heroku-22'}
               onChange={(e) => updateSetting('buildpack_default_stack', e.target.value)}
             />
           </div>
           <div className="flex items-center space-x-2">
             <input
               type="checkbox"
-              checked={settings.buildpack_cache_enabled === 'true' || settings.buildpack_cache_enabled === true}
+              checked={Boolean(settings.buildpack_cache_enabled)}
               onChange={(e) => updateSetting('buildpack_cache_enabled', e.target.checked)}
               className="rounded"
             />

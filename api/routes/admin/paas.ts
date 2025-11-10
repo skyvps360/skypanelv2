@@ -5,14 +5,47 @@
 
 import express, { Request, Response } from 'express';
 import { authenticateToken, requireAdmin } from '../../middleware/auth.js';
-import { pool } from '../lib/database.js';
-import { PaasSettingsService } from '../services/paas/settingsService.js';
-import { NodeManagerService } from '../services/paas/nodeManagerService.js';
-import { DeployerService } from '../services/paas/deployerService.js';
-import { logActivity } from '../services/activityLogger.js';
+import { pool } from '../../lib/database.js';
+import { PaasSettingsService } from '../../services/paas/settingsService.js';
+import { NodeManagerService } from '../../services/paas/nodeManagerService.js';
+import { DeployerService } from '../../services/paas/deployerService.js';
+import { logActivity } from '../../services/activityLogger.js';
 import { body, param, validationResult } from 'express-validator';
 
 const router = express.Router();
+const SENSITIVE_PLACEHOLDER = '***REDACTED***';
+
+interface AdminActivityPayload {
+  userId: string;
+  eventType: string;
+  entityType: string;
+  entityId?: string;
+  message?: string;
+  metadata?: Record<string, unknown>;
+}
+
+const logAdminPaasActivity = async (payload: AdminActivityPayload): Promise<void> => {
+  const { userId, eventType, entityType, entityId, message, metadata } = payload;
+
+  await logActivity({
+    userId,
+    eventType,
+    entityType,
+    entityId: entityId ?? null,
+    metadata,
+    message,
+  });
+};
+
+const isSensitiveSettingKey = (key: string): boolean => {
+  const lowered = key.toLowerCase();
+  return (
+    lowered.includes('secret') ||
+    lowered.includes('token') ||
+    lowered.includes('password') ||
+    lowered.includes('key')
+  );
+};
 
 // Apply authentication and admin middleware to all routes
 router.use(authenticateToken, requireAdmin);
@@ -30,7 +63,7 @@ router.get('/overview', async (req: Request, res: Response) => {
 
     // Total deployments today
     const deploymentsResult = await pool.query(
-      'SELECT COUNT(*) as total FROM paas_deployments WHERE created_at > NOW() - INTERVAL \'24 hours\''
+      "SELECT COUNT(*) as total FROM paas_deployments WHERE created_at > NOW() - INTERVAL '24 hours'"
     );
 
     // Total resource usage
@@ -40,7 +73,7 @@ router.get('/overview', async (req: Request, res: Response) => {
         SUM(ram_mb * replicas) as total_ram_mb,
         SUM(cost) as total_cost_today
        FROM paas_resource_usage
-       WHERE recorded_at > NOW() - INTERVAL \'24 hours\'`
+       WHERE recorded_at > NOW() - INTERVAL '24 hours'`
     );
 
     // Worker node stats
@@ -127,11 +160,13 @@ router.post('/apps/:id/suspend', param('id').isUUID(), async (req: Request, res:
       ['suspended', appId]
     );
 
-    await logActivity({
+    await logAdminPaasActivity({
       userId,
-      action: 'admin.paas.app.suspend',
-      resource: `paas:app:${appId}`,
-      details: { appName: app.name },
+      eventType: 'admin.paas.app.suspend',
+      entityType: 'paas_app',
+      entityId: appId,
+      metadata: { appName: app.name },
+      message: `Suspended ${app.name}`,
     });
 
     res.json({ message: 'Application suspended' });
@@ -201,11 +236,13 @@ router.post('/apps/:id/resume', param('id').isUUID(), async (req: Request, res: 
       }
     }
 
-    await logActivity({
+    await logAdminPaasActivity({
       userId,
-      action: 'admin.paas.app.resume',
-      resource: `paas:app:${appId}`,
-      details: { appName: app.name },
+      eventType: 'admin.paas.app.resume',
+      entityType: 'paas_app',
+      entityId: appId,
+      metadata: { appName: app.name },
+      message: `Resumed ${app.name}`,
     });
 
     res.json({ message: 'Application resumed' });
@@ -262,11 +299,12 @@ router.post(
         autoProvision: auto_provision,
       });
 
-      await logActivity({
+      await logAdminPaasActivity({
         userId,
-        action: 'admin.paas.worker.add',
-        resource: `paas:worker:${nodeId}`,
-        details: { name, ip_address },
+        eventType: 'admin.paas.worker.add',
+        entityType: 'paas_worker',
+        entityId: nodeId,
+        metadata: { name, ip_address },
       });
 
       res.status(201).json({ message: 'Worker node added', nodeId });
@@ -293,11 +331,11 @@ router.delete('/workers/:id', param('id').isUUID(), async (req: Request, res: Re
 
     await NodeManagerService.removeNode(nodeId);
 
-    await logActivity({
+    await logAdminPaasActivity({
       userId,
-      action: 'admin.paas.worker.remove',
-      resource: `paas:worker:${nodeId}`,
-      details: {},
+      eventType: 'admin.paas.worker.remove',
+      entityType: 'paas_worker',
+      entityId: nodeId,
     });
 
     res.json({ message: 'Worker node removed' });
@@ -317,11 +355,10 @@ router.post('/swarm/init', async (req: Request, res: Response) => {
 
     const swarmConfig = await NodeManagerService.initializeSwarm();
 
-    await logActivity({
+    await logAdminPaasActivity({
       userId,
-      action: 'admin.paas.swarm.init',
-      resource: 'paas:swarm',
-      details: {},
+      eventType: 'admin.paas.swarm.init',
+      entityType: 'paas_swarm',
     });
 
     res.json({
@@ -363,24 +400,34 @@ router.put(
       }
 
       const userId = (req as any).userId;
-      const { settings } = req.body;
+      const incomingSettings = req.body.settings || {};
 
-      // Update settings
-      for (const [key, value] of Object.entries(settings)) {
-        // Determine if sensitive based on key name
-        const isSensitive = key.includes('key') || key.includes('secret') || key.includes('password') || key.includes('token');
+      const updates: Record<string, any> = {};
+      for (const [key, value] of Object.entries(incomingSettings)) {
+        if (value === undefined) continue;
+        if (typeof value === 'string' && value === SENSITIVE_PLACEHOLDER) {
+          continue;
+        }
+        updates[key] = value;
+      }
 
+      const keysToUpdate = Object.keys(updates);
+      if (keysToUpdate.length === 0) {
+        return res.json({ message: 'No changes detected' });
+      }
+
+      for (const [key, value] of Object.entries(updates)) {
         await PaasSettingsService.set(key, value as any, {
-          is_sensitive: isSensitive,
+          is_sensitive: isSensitiveSettingKey(key),
         });
       }
 
-      await logActivity({
+      await logAdminPaasActivity({
         userId,
-        action: 'admin.paas.settings.update',
-        resource: 'paas:settings',
-        details: {
-          keys_updated: Object.keys(settings),
+        eventType: 'admin.paas.settings.update',
+        entityType: 'paas_settings',
+        metadata: {
+          keys_updated: keysToUpdate,
         },
       });
 
@@ -441,11 +488,12 @@ router.post(
         [name, slug, cpu_cores, ram_mb, disk_gb, max_replicas, price_per_hour, features || {}]
       );
 
-      await logActivity({
+      await logAdminPaasActivity({
         userId,
-        action: 'admin.paas.plan.create',
-        resource: `paas:plan:${result.rows[0].id}`,
-        details: { name, slug },
+        eventType: 'admin.paas.plan.create',
+        entityType: 'paas_plan',
+        entityId: result.rows[0].id,
+        metadata: { name, slug },
       });
 
       res.status(201).json({ plan: result.rows[0] });
@@ -505,11 +553,12 @@ router.patch(
         return res.status(404).json({ error: 'Plan not found' });
       }
 
-      await logActivity({
+      await logAdminPaasActivity({
         userId,
-        action: 'admin.paas.plan.update',
-        resource: `paas:plan:${planId}`,
-        details: updates,
+        eventType: 'admin.paas.plan.update',
+        entityType: 'paas_plan',
+        entityId: planId,
+        metadata: updates,
       });
 
       res.json({ plan: result.rows[0] });
@@ -546,11 +595,11 @@ router.delete('/plans/:id', param('id').isUUID(), async (req: Request, res: Resp
 
     await pool.query('DELETE FROM paas_plans WHERE id = $1', [planId]);
 
-    await logActivity({
+    await logAdminPaasActivity({
       userId,
-      action: 'admin.paas.plan.delete',
-      resource: `paas:plan:${planId}`,
-      details: {},
+      eventType: 'admin.paas.plan.delete',
+      entityType: 'paas_plan',
+      entityId: planId,
     });
 
     res.json({ message: 'Plan deleted' });

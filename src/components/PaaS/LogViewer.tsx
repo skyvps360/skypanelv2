@@ -3,7 +3,7 @@
  * Real-time log streaming viewer
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Search, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,11 +21,8 @@ export const LogViewer: React.FC<LogViewerProps> = ({ appId }) => {
   const [loading, setLoading] = useState(true);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    loadLogs();
-  }, [appId]);
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await apiClient.get(`/paas/apps/${appId}/logs?limit=1000`);
       setLogs((data.logs || []).map((log: any) => `[${log.timestamp}] ${log.message}`));
@@ -34,7 +31,11 @@ export const LogViewer: React.FC<LogViewerProps> = ({ appId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [appId]);
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
 
   const filteredLogs = search
     ? logs.filter((log) => log.toLowerCase().includes(search.toLowerCase()))

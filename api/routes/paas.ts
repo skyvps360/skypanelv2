@@ -16,6 +16,34 @@ import { body, param, query as validateQuery, validationResult } from 'express-v
 
 const router = express.Router();
 
+interface AppActivityPayload {
+  userId: string;
+  organizationId: string;
+  appId: string;
+  eventType: string;
+  message?: string;
+  metadata?: Record<string, unknown>;
+}
+
+const logPaasActivity = async ({
+  userId,
+  organizationId,
+  appId,
+  eventType,
+  message,
+  metadata = {},
+}: AppActivityPayload): Promise<void> => {
+  await logActivity({
+    userId,
+    organizationId,
+    eventType,
+    entityType: 'paas_app',
+    entityId: appId,
+    message,
+    metadata,
+  });
+};
+
 // Apply authentication middleware to all routes
 router.use(authenticateToken, requireOrganization);
 
@@ -142,12 +170,12 @@ router.post(
 
       const app = result.rows[0];
 
-      await logActivity({
+      await logPaasActivity({
         userId,
         organizationId: orgId,
-        action: 'paas.app.create',
-        resource: `paas:app:${app.id}`,
-        details: {
+        appId: app.id,
+        eventType: 'paas.app.create',
+        metadata: {
           app_name: name,
           app_slug: slug,
         },
@@ -215,12 +243,12 @@ router.patch(
         return res.status(404).json({ error: 'Application not found' });
       }
 
-      await logActivity({
+      await logPaasActivity({
         userId,
         organizationId: orgId,
-        action: 'paas.app.update',
-        resource: `paas:app:${appId}`,
-        details: updates,
+        appId: appId,
+        eventType: 'paas.app.update',
+        metadata: updates,
       });
 
       res.json({ app: result.rows[0] });
@@ -259,14 +287,15 @@ router.delete('/apps/:id', param('id').isUUID(), async (req: Request, res: Respo
       return res.status(404).json({ error: 'Application not found' });
     }
 
-    await logActivity({
+    await logPaasActivity({
       userId,
       organizationId: orgId,
-      action: 'paas.app.delete',
-      resource: `paas:app:${appId}`,
-      details: {
+      appId,
+      eventType: 'paas.app.delete',
+      metadata: {
         app_name: result.rows[0].name,
       },
+      message: `Application ${result.rows[0].name} deleted`,
     });
 
     res.json({ message: 'Application deleted successfully' });
@@ -333,14 +362,15 @@ router.post(
           console.error('Build/deploy failed:', error);
         });
 
-      await logActivity({
+      await logPaasActivity({
         userId,
         organizationId: orgId,
-        action: 'paas.app.deploy',
-        resource: `paas:app:${appId}`,
-        details: {
+        appId,
+        eventType: 'paas.app.deploy',
+        metadata: {
           git_commit,
         },
+        message: 'Deployment started',
       });
 
       res.json({ message: 'Deployment started', appId });
@@ -426,12 +456,13 @@ router.post(
         return res.status(500).json({ error: result.error });
       }
 
-      await logActivity({
+      await logPaasActivity({
         userId,
         organizationId: orgId,
-        action: 'paas.app.rollback',
-        resource: `paas:app:${appId}`,
-        details: { version },
+        appId,
+        eventType: 'paas.app.rollback',
+        metadata: { version },
+        message: `Rollback to version ${version} initiated`,
       });
 
       res.json({ message: 'Rollback initiated', version });
@@ -611,12 +642,12 @@ router.put(
         );
       }
 
-      await logActivity({
+      await logPaasActivity({
         userId,
         organizationId: orgId,
-        action: 'paas.app.env.update',
-        resource: `paas:app:${appId}`,
-        details: {
+        appId,
+        eventType: 'paas.app.env.update',
+        metadata: {
           keys_updated: Object.keys(vars),
         },
       });
@@ -667,12 +698,12 @@ router.delete(
         return res.status(404).json({ error: 'Environment variable not found or is system variable' });
       }
 
-      await logActivity({
+      await logPaasActivity({
         userId,
         organizationId: orgId,
-        action: 'paas.app.env.delete',
-        resource: `paas:app:${appId}`,
-        details: { key },
+        appId,
+        eventType: 'paas.app.env.delete',
+        metadata: { key },
       });
 
       res.json({ message: 'Environment variable deleted' });
@@ -721,12 +752,13 @@ router.post(
         return res.status(400).json({ error: result.error });
       }
 
-      await logActivity({
+      await logPaasActivity({
         userId,
         organizationId: orgId,
-        action: 'paas.app.scale',
-        resource: `paas:app:${appId}`,
-        details: { replicas },
+        appId,
+        eventType: 'paas.app.scale',
+        metadata: { replicas },
+        message: `Scaling to ${replicas} replicas`,
       });
 
       res.json({ message: 'Application scaled', replicas: result.currentReplicas });
@@ -764,12 +796,12 @@ router.post('/apps/:id/stop', param('id').isUUID(), async (req: Request, res: Re
 
     await DeployerService.stop(appId);
 
-    await logActivity({
+    await logPaasActivity({
       userId,
       organizationId: orgId,
-      action: 'paas.app.stop',
-      resource: `paas:app:${appId}`,
-      details: {},
+      appId,
+      eventType: 'paas.app.stop',
+      message: 'Application stopped',
     });
 
     res.json({ message: 'Application stopped' });

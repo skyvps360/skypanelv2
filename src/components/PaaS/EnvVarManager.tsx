@@ -2,7 +2,7 @@
  * Environment Variable Manager Component
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Plus, Trash2, Key } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,11 +28,8 @@ export const EnvVarManager: React.FC<EnvVarManagerProps> = ({ appId }) => {
   const [newValue, setNewValue] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadEnvVars();
-  }, [appId]);
-
-  const loadEnvVars = async () => {
+  const loadEnvVars = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await apiClient.get(`/paas/apps/${appId}/env`);
       setEnvVars(data.env_vars || []);
@@ -41,7 +38,11 @@ export const EnvVarManager: React.FC<EnvVarManagerProps> = ({ appId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [appId]);
+
+  useEffect(() => {
+    loadEnvVars();
+  }, [loadEnvVars]);
 
   const handleAdd = async () => {
     if (!newKey || !newValue) {

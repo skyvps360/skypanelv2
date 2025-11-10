@@ -9,8 +9,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { createWriteStream } from 'fs';
-import { pipeline } from 'stream/promises';
+import { createReadStream } from 'fs';
 import * as tar from 'tar';
 import * as crypto from 'crypto';
 
@@ -35,17 +34,36 @@ export interface BuildResult {
 }
 
 export class BuilderService {
-  private static buildDir = '/var/paas/builds';
-  private static slugDir = '/var/paas/slugs';
-  private static cacheDir = '/var/paas/cache';
+  private static directories: Record<'build' | 'slug' | 'cache', string> = {
+    build: '/var/paas/builds',
+    slug: '/var/paas/slugs',
+    cache: '/var/paas/cache',
+  };
 
   /**
    * Initialize builder directories
    */
   static async initialize(): Promise<void> {
-    await fs.mkdir(this.buildDir, { recursive: true });
-    await fs.mkdir(this.slugDir, { recursive: true });
-    await fs.mkdir(this.cacheDir, { recursive: true });
+    const storageConfig = await PaasSettingsService.getStorageConfig();
+
+    if (storageConfig.type === 'local') {
+      const basePath = storageConfig.local?.path || '/var/paas/storage';
+      this.directories = {
+        build: path.join(basePath, 'builds'),
+        slug: path.join(basePath, 'slugs'),
+        cache: path.join(basePath, 'cache'),
+      };
+    } else {
+      this.directories = {
+        build: '/var/paas/builds',
+        slug: '/var/paas/slugs',
+        cache: '/var/paas/cache',
+      };
+    }
+
+    await Promise.all(
+      Object.values(this.directories).map((dir) => fs.mkdir(dir, { recursive: true }))
+    );
   }
 
   /**
@@ -143,8 +161,8 @@ export class BuilderService {
     options: BuildOptions
   ): Promise<{ slugUrl: string; slugSize: number; buildpack: string }> {
     const buildId = crypto.randomUUID();
-    const workDir = path.join(this.buildDir, buildId);
-    const slugPath = path.join(this.slugDir, `${deploymentId}.tar.gz`);
+    const workDir = path.join(this.directories.build, buildId);
+    const slugPath = path.join(this.directories.slug, `${deploymentId}.tar.gz`);
 
     try {
       // 1. Clone repository
@@ -238,7 +256,7 @@ export class BuilderService {
    */
   private static async runBuildpack(projectDir: string, buildpack: string, deploymentId: string): Promise<void> {
     // Use herokuish Docker image to run buildpack
-    const cacheDir = path.join(this.cacheDir, deploymentId);
+    const cacheDir = path.join(this.directories.cache, deploymentId);
     await fs.mkdir(cacheDir, { recursive: true });
 
     const command = `
@@ -301,33 +319,28 @@ export class BuilderService {
   private static async uploadSlug(slugPath: string, deploymentId: string): Promise<string> {
     const storageConfig = await PaasSettingsService.getStorageConfig();
 
-    if (storageConfig.type === 's3') {
+    if (storageConfig.type === 's3' && storageConfig.s3) {
       const { S3Client } = await import('@aws-sdk/client-s3');
       const { Upload } = await import('@aws-sdk/lib-storage');
-      const fs = await import('fs');
-      const path = await import('path');
 
-      // Configure S3 client
       const s3Client = new S3Client({
-        region: storageConfig.s3_region || 'us-east-1',
+        region: storageConfig.s3.region || 'us-east-1',
         credentials: {
-          accessKeyId: storageConfig.s3_access_key || '',
-          secretAccessKey: storageConfig.s3_secret_key || '',
+          accessKeyId: storageConfig.s3.accessKey || '',
+          secretAccessKey: storageConfig.s3.secretKey || '',
         },
-        ...(storageConfig.s3_endpoint ? { endpoint: storageConfig.s3_endpoint } : {}),
+        ...(storageConfig.s3.endpoint ? { endpoint: storageConfig.s3.endpoint, forcePathStyle: true } : {}),
       });
 
-      // Read the slug file
-      const fileStream = fs.createReadStream(slugPath);
+      const fileStream = createReadStream(slugPath);
       const fileName = path.basename(slugPath);
       const s3Key = `paas-slugs/${deploymentId}/${fileName}`;
 
       try {
-        // Upload to S3
         const upload = new Upload({
           client: s3Client,
           params: {
-            Bucket: storageConfig.s3_bucket || '',
+            Bucket: storageConfig.s3.bucket || '',
             Key: s3Key,
             Body: fileStream,
             ContentType: 'application/gzip',
@@ -336,16 +349,16 @@ export class BuilderService {
 
         await upload.done();
 
-        // Return S3 URL
-        const s3Url = storageConfig.s3_endpoint
-          ? `${storageConfig.s3_endpoint}/${storageConfig.s3_bucket}/${s3Key}`
-          : `https://${storageConfig.s3_bucket}.s3.${storageConfig.s3_region}.amazonaws.com/${s3Key}`;
+        const normalizedEndpoint = storageConfig.s3.endpoint?.replace(/\/$/, '');
+        const s3Url = normalizedEndpoint
+          ? `${normalizedEndpoint}/${storageConfig.s3.bucket}/${s3Key}`
+          : `https://${storageConfig.s3.bucket}.s3.${storageConfig.s3.region || 'us-east-1'}.amazonaws.com/${s3Key}`;
 
         console.log(`✅ Slug uploaded to S3: ${s3Url}`);
+        await fs.rm(slugPath, { force: true }).catch(() => {});
         return s3Url;
       } catch (error) {
         console.error('Failed to upload slug to S3:', error);
-        // Fallback to local path
         return slugPath;
       }
     }

@@ -3,12 +3,11 @@
  * Shows deployment history with rollback capability
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Clock, CheckCircle, XCircle, RotateCcw, Eye } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -39,11 +38,8 @@ export const DeploymentsList: React.FC<DeploymentsListProps> = ({ appId }) => {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadDeployments();
-  }, [appId]);
-
-  const loadDeployments = async () => {
+  const loadDeployments = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await apiClient.get(`/paas/apps/${appId}/deployments`);
       setDeployments(data.deployments || []);
@@ -52,7 +48,11 @@ export const DeploymentsList: React.FC<DeploymentsListProps> = ({ appId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [appId]);
+
+  useEffect(() => {
+    loadDeployments();
+  }, [loadDeployments]);
 
   const handleRollback = async (version: number) => {
     if (!confirm(`Rollback to version ${version}?`)) return;

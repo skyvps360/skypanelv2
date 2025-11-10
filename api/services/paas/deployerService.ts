@@ -10,6 +10,10 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import axios from 'axios';
+import { createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
+import * as tar from 'tar';
 
 const execAsync = promisify(exec);
 
@@ -135,13 +139,45 @@ export class DeployerService {
    * Extract slug to runtime directory
    */
   private static async extractSlug(slugUrl: string, deploymentId: string): Promise<string> {
+    if (!slugUrl) {
+      throw new Error('Deployment artifact missing slug URL');
+    }
+
+    const { localPath, cleanup } = await this.ensureLocalSlug(slugUrl);
     const runtimeDir = `/var/paas/runtime/${deploymentId}`;
     await fs.mkdir(runtimeDir, { recursive: true });
 
-    // Extract tar.gz
-    await execAsync(`tar -xzf ${slugUrl} -C ${runtimeDir}`);
+    await tar.x({
+      file: localPath,
+      cwd: runtimeDir,
+      gzip: true,
+    });
+
+    if (cleanup) {
+      await fs.rm(localPath, { force: true }).catch(() => {});
+    }
 
     return runtimeDir;
+  }
+
+  private static async ensureLocalSlug(slugUrl: string): Promise<{ localPath: string; cleanup: boolean }> {
+    const isRemote = slugUrl.startsWith('http://') || slugUrl.startsWith('https://');
+
+    if (!isRemote) {
+      return { localPath: slugUrl, cleanup: false };
+    }
+
+    const tempDir = '/tmp/paas-slugs';
+    await fs.mkdir(tempDir, { recursive: true });
+
+    const url = new URL(slugUrl);
+    const fileName = path.basename(url.pathname) || `${Date.now()}.tar.gz`;
+    const localPath = path.join(tempDir, `${Date.now()}-${fileName}`);
+
+    const response = await axios.get(slugUrl, { responseType: 'stream' });
+    await pipeline(response.data, createWriteStream(localPath));
+
+    return { localPath, cleanup: true };
   }
 
   /**
