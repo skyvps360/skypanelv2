@@ -127,6 +127,100 @@ export class NodeManagerService {
   }
 
   /**
+   * Automatically register the local Docker node when API + worker run on the same host.
+   * Allows single-node installs (`npm run dev:all`) to show a worker without manual provisioning.
+   */
+  static async ensureLocalNodeRegistered(): Promise<void> {
+    try {
+      const swarm = await this.getLocalSwarmInfo();
+      const state = (swarm?.LocalNodeState || '').toLowerCase();
+
+      if (state !== 'active' || !swarm?.NodeID) {
+        return; // Swarm not initialized locally; nothing to auto-register
+      }
+
+      const nodeInfo = await this.inspectSwarmNode(swarm.NodeID);
+      const ipAddress = this.normalizeAddress(nodeInfo?.Status?.Addr || swarm?.NodeAddr);
+
+      if (!ipAddress) {
+        throw new Error('Unable to determine local node IP address');
+      }
+
+      const name = nodeInfo?.Description?.Hostname || `node-${swarm.NodeID.substring(0, 6)}`;
+      const role =
+        (nodeInfo?.Spec?.Role || '').toLowerCase() === 'manager' ? 'manager' : 'worker';
+
+      const nanoCpus = Number(nodeInfo?.Description?.Resources?.NanoCPUs || 0);
+      const memoryBytes = Number(nodeInfo?.Description?.Resources?.MemoryBytes || 0);
+      const capacityCpu =
+        nanoCpus > 0 ? Number((nanoCpus / NANOS_IN_CPU).toFixed(2)) : null;
+      const capacityRamMb = memoryBytes > 0 ? Math.round(memoryBytes / BYTES_IN_MB) : null;
+
+      const metadataPatch = {
+        hostname: nodeInfo?.Description?.Hostname || null,
+        availability: nodeInfo?.Spec?.Availability || nodeInfo?.Status?.Availability || null,
+        address: ipAddress,
+        auto_registered: true,
+        auto_registered_at: new Date().toISOString(),
+      };
+
+      const existing = await pool.query<PaasWorkerNode>(
+        'SELECT * FROM paas_worker_nodes WHERE swarm_node_id = $1 OR ip_address = $2::inet LIMIT 1',
+        [swarm.NodeID, ipAddress]
+      );
+
+      if (existing.rows.length > 0) {
+        const nodeId = existing.rows[0].id;
+        await pool.query(
+          `UPDATE paas_worker_nodes SET
+            name = $1,
+            ip_address = $2::inet,
+            swarm_node_id = $3,
+            swarm_role = $4,
+            status = 'active',
+            capacity_cpu = $5,
+            capacity_ram_mb = $6,
+            metadata = COALESCE(metadata, '{}'::jsonb) || $7::jsonb,
+            last_heartbeat_at = NOW()
+          WHERE id = $8`,
+          [
+            name,
+            ipAddress,
+            swarm.NodeID,
+            role,
+            capacityCpu,
+            capacityRamMb,
+            JSON.stringify(metadataPatch),
+            nodeId,
+          ]
+        );
+        console.log(`[NodeManager] Local Swarm node "${name}" synced (role: ${role}).`);
+      } else {
+        await pool.query(
+          `INSERT INTO paas_worker_nodes (
+            name, ip_address, swarm_node_id, swarm_role, status, capacity_cpu, capacity_ram_mb, metadata, last_heartbeat_at
+          ) VALUES ($1, $2::inet, $3, $4, 'active', $5, $6, $7::jsonb, NOW())`,
+          [
+            name,
+            ipAddress,
+            swarm.NodeID,
+            role,
+            capacityCpu,
+            capacityRamMb,
+            JSON.stringify(metadataPatch),
+          ]
+        );
+        console.log(`[NodeManager] Local Swarm node "${name}" registered automatically (${role}).`);
+      }
+    } catch (error: any) {
+      console.warn(
+        '[NodeManager] Skipping local worker auto-registration:',
+        error?.message || error
+      );
+    }
+  }
+
+  /**
    * Add a new worker node
    */
   static async addWorkerNode(options: NodeProvisionOptions): Promise<string> {
@@ -356,6 +450,30 @@ export class NodeManagerService {
     }
 
     return null;
+  }
+
+  private static async getLocalSwarmInfo(): Promise<any> {
+    const { stdout } = await execAsync('docker info --format "{{json .Swarm}}"');
+    return stdout ? JSON.parse(stdout) : null;
+  }
+
+  private static async inspectSwarmNode(nodeId: string): Promise<any> {
+    const target = nodeId || 'self';
+    const { stdout } = await execAsync(`docker node inspect ${target} --format "{{json .}}"`);
+    return stdout ? JSON.parse(stdout) : {};
+  }
+
+  private static normalizeAddress(value?: string): string | null {
+    if (!value) {
+      return null;
+    }
+    const trimmed = value.trim();
+    try {
+      const url = new URL(trimmed.startsWith('tcp://') ? trimmed : `tcp://${trimmed}`);
+      return url.hostname;
+    } catch {
+      return trimmed;
+    }
   }
 
   private static async collectNodeMetrics(

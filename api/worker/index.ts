@@ -20,6 +20,13 @@ import { buildQueue, deployQueue, billingQueue, redisUrl } from './queues.js';
 console.log('PaaS worker starting...');
 console.log(`Redis URL: ${redisUrl}`);
 
+NodeManagerService.ensureLocalNodeRegistered().catch((error) => {
+  console.warn(
+    '[Worker] Local node auto-registration skipped:',
+    error?.message || error
+  );
+});
+
 /**
  * Build Queue Processor
  */
