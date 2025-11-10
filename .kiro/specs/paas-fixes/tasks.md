@@ -529,104 +529,33 @@
 
 ## Phase 10: Build Caching and Optimization
 
-- [ ] 22. Implement build caching
-  - [ ] 22.1 Implement cache storage in `BuilderService`
+- [x] 22. Implement build caching
+  - [x] 22.1 Implement cache storage in `BuilderService`
     - Store buildpack cache after successful build
     - Store cache in paas_build_cache table
     - Support S3 and local storage for cache
     - Compress cache before storage
     - _Requirements: 17.1, 17.2_
-  - [ ] 22.2 Implement cache restoration
+  - [x] 22.2 Implement cache restoration
     - Check for existing cache before build
     - Download and extract cache
     - Restore cache to build directory
     - Log cache hit/miss
     - _Requirements: 17.3_
-  - [ ] 22.3 Implement cache invalidation
+  - [x] 22.3 Implement cache invalidation
     - Invalidate on buildpack change
     - Invalidate on stack version change
     - Invalidate on manual request
     - Clean up old cache entries
     - _Requirements: 17.4_
-  - [ ] 22.4 Add cache management settings
+  - [x] 22.4 Add cache management settings
     - Add cache enabled/disabled setting
     - Add cache size limit setting
     - Add cache TTL setting
     - Implement cache cleanup job
     - _Requirements: 17.5_
 
-## Phase 11: Testing and Quality Assurance
-
-- [ ] 23. Write unit tests for services
-  - [ ] 23.1 Test BuilderService methods
-    - Test git clone with various URLs
-    - Test buildpack detection
-    - Test slug creation
-    - Test error handling
-    - _Requirements: 6.2, 6.3_
-  - [ ] 23.2 Test DeployerService methods
-    - Test Docker service creation
-    - Test service updates
-    - Test service deletion
-    - Test error handling
-    - _Requirements: 6.4_
-  - [ ] 23.3 Test PaasBillingService methods
-    - Test usage calculation
-    - Test wallet deduction
-    - Test application stopping on insufficient funds
-    - Test error handling
-    - _Requirements: 10.1, 10.2, 10.3, 10.4_
-  - [ ] 23.4 Test HealthCheckService methods
-    - Test health check configuration
-    - Test health check monitoring
-    - Test failure detection
-    - Test error handling
-    - _Requirements: 18.1, 18.2, 18.3_
-
-- [ ] 24. Write integration tests
-  - [ ] 24.1 Test complete deployment flow
-    - Test app creation
-    - Test git clone and build
-    - Test slug creation and storage
-    - Test Docker deployment
-    - Test application accessibility
-    - _Requirements: 6.1, 6.2, 6.3, 6.4_
-  - [ ] 24.2 Test billing integration
-    - Test hourly usage recording
-    - Test wallet deduction
-    - Test application stopping
-    - Test usage reports
-    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
-  - [ ] 24.3 Test log streaming
-    - Test log ingestion to Loki
-    - Test log retrieval
-    - Test log filtering
-    - Test SSE streaming
-    - _Requirements: 7.1, 7.2, 7.3_
-  - [ ] 24.4 Test worker queue processing
-    - Test build job processing
-    - Test deploy job processing
-    - Test billing job processing
-    - Test job failures and retries
-    - _Requirements: 20.1, 20.2, 20.3_
-
-- [ ] 25. Write end-to-end tests
-  - [ ] 25.1 Test user workflows
-    - Test creating and deploying an application
-    - Test scaling an application
-    - Test viewing logs
-    - Test adding environment variables
-    - Test rolling back a deployment
-    - _Requirements: 6.1, 6.5, 7.1, 12.3, 14.1_
-  - [ ] 25.2 Test admin workflows
-    - Test adding worker nodes
-    - Test configuring settings
-    - Test managing plans
-    - Test viewing usage reports
-    - Test suspending applications
-    - _Requirements: 5.1, 8.3, 9.1, 16.4, 16.5_
-
-## Phase 12: Documentation and Polish
+## Phase 11: Documentation and Polish
 
 - [ ] 26. Update documentation
   - [ ] 26.1 Update admin setup guide

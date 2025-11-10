@@ -209,6 +209,30 @@ const SETTING_DEFINITIONS: Record<string, SettingDefinition> = {
     description: 'Enable buildpack layer caching',
     defaultValue: false,
   },
+  buildpack_cache_max_size_mb: {
+    key: 'buildpack_cache_max_size_mb',
+    type: 'number',
+    category: 'buildpack',
+    description: 'Maximum compressed cache size in MB',
+    defaultValue: 512,
+    validate: (value: number) => {
+      if (value !== undefined && value !== null && value < 0) {
+        throw new Error('buildpack_cache_max_size_mb must be zero or greater');
+      }
+    },
+  },
+  buildpack_cache_ttl_hours: {
+    key: 'buildpack_cache_ttl_hours',
+    type: 'number',
+    category: 'buildpack',
+    description: 'Number of hours before build cache expires',
+    defaultValue: 72,
+    validate: (value: number) => {
+      if (value !== undefined && value !== null && value < 0) {
+        throw new Error('buildpack_cache_ttl_hours must be zero or greater');
+      }
+    },
+  },
   max_apps_per_org: {
     key: 'max_apps_per_org',
     type: 'number',
@@ -519,6 +543,25 @@ export class PaasSettingsService {
       local: {
         path: ((await this.get('local_storage_path')) as string) || '/var/paas/storage',
       },
+    };
+  }
+
+  /**
+   * Get build cache configuration
+   */
+  static async getBuildpackCacheConfig(): Promise<{
+    enabled: boolean;
+    maxSizeMb: number;
+    ttlHours: number;
+  }> {
+    const enabled = Boolean(await this.get('buildpack_cache_enabled'));
+    const maxSizeMbRaw = await this.get('buildpack_cache_max_size_mb');
+    const ttlHoursRaw = await this.get('buildpack_cache_ttl_hours');
+
+    return {
+      enabled,
+      maxSizeMb: typeof maxSizeMbRaw === 'number' ? maxSizeMbRaw : Number(maxSizeMbRaw) || 0,
+      ttlHours: typeof ttlHoursRaw === 'number' ? ttlHoursRaw : Number(ttlHoursRaw) || 0,
     };
   }
 

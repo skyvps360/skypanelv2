@@ -193,6 +193,16 @@ export interface PaasDeployment {
   updated_at: string;
 }
 
+export interface PaasBuildCache {
+  id: string;
+  application_id: string;
+  cache_key: string;
+  cache_url: string;
+  size_bytes?: number;
+  last_used_at?: string;
+  created_at: string;
+}
+
 export interface PaasWorkerNode {
   id: string;
   name: string;

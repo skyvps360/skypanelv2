@@ -20,6 +20,7 @@ import { buildQueue, deployQueue } from '../worker/queues.js';
 import { SSLService } from '../services/paas/sslService.js';
 import { SlugService } from '../services/paas/slugService.js';
 import { PaasPlanService } from '../services/paas/planService.js';
+import { BuildCacheService } from '../services/paas/buildCacheService.js';
 
 const router = express.Router();
 
@@ -1335,6 +1336,58 @@ router.post(
     }
   }
 );
+
+/**
+ * POST /api/paas/apps/:id/cache/clear
+ * Manually invalidate build cache for an application
+ */
+router.post('/apps/:id/cache/clear', param('id').isUUID(), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const orgId = (req as any).organizationId;
+    const userId = (req as any).userId;
+    const appId = req.params.id;
+
+    const appCheck = await pool.query(
+      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
+      [appId, orgId]
+    );
+
+    if (appCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    await ensureAppOrgActive(appId, orgId);
+
+    const removed = await BuildCacheService.invalidateCache(appId);
+
+    await logPaasActivity({
+      userId,
+      organizationId: orgId,
+      appId,
+      eventType: 'paas.app.cache.cleared',
+      metadata: { removed },
+      message:
+        removed > 0
+          ? `Cleared ${removed} build cache entr${removed === 1 ? 'y' : 'ies'}`
+          : 'No build cache entries to clear',
+    });
+
+    res.json({ success: true, removed });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to clear build cache',
+      clientMessage: 'Failed to clear build cache',
+    });
+  }
+});
 
 /**
  * GET /api/paas/plans

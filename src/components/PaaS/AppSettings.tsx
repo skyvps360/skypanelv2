@@ -22,6 +22,7 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ app, onUpdate }) => {
   const [gitBranch, setGitBranch] = useState(app.git_branch);
   const [buildpack, setBuildpack] = useState(app.buildpack || '');
   const [saving, setSaving] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
@@ -38,6 +39,20 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ app, onUpdate }) => {
       toast.error(error.message || 'Failed to save settings');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleClearCache = async () => {
+    setClearingCache(true);
+    try {
+      const { removed = 0 } = await apiClient.post(`/paas/apps/${app.id}/cache/clear`);
+      toast.success(
+        removed > 0 ? `Cleared ${removed} cache entr${removed === 1 ? 'y' : 'ies'}` : 'Build cache already empty'
+      );
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to clear build cache');
+    } finally {
+      setClearingCache(false);
     }
   };
 
@@ -74,6 +89,23 @@ export const AppSettings: React.FC<AppSettingsProps> = ({ app, onUpdate }) => {
             onChange={(e) => setBuildpack(e.target.value)}
             placeholder="Auto-detect"
           />
+        </div>
+
+        <div className="space-y-2">
+          <div>
+            <Label>Build Cache</Label>
+            <p className="text-sm text-muted-foreground">
+              Clear cached dependencies if you suspect corrupted build artifacts.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClearCache}
+            disabled={clearingCache}
+          >
+            {clearingCache ? 'Clearing cache...' : 'Clear Build Cache'}
+          </Button>
         </div>
 
         <Button onClick={handleSave} disabled={saving}>

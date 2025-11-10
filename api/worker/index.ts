@@ -14,6 +14,7 @@ import { NodeManagerService } from '../services/paas/nodeManagerService.js';
 import { PaasBillingService } from '../services/paas/billingService.js';
 import { HealthCheckService } from '../services/paas/healthCheckService.js';
 import { LoggerService } from '../services/paas/loggerService.js';
+import { BuildCacheService } from '../services/paas/buildCacheService.js';
 import { buildQueue, deployQueue, billingQueue, redisUrl } from './queues.js';
 
 console.log('PaaS worker starting...');
@@ -171,6 +172,27 @@ const enforceLogRetention = async () => {
 
 enforceLogRetention().catch((error) => console.error('Initial log retention check failed:', error));
 setInterval(enforceLogRetention, 6 * 60 * 60 * 1000);
+
+/**
+ * Build cache cleanup
+ */
+const cleanupBuildCache = async () => {
+  try {
+    const { removed, reclaimedBytes } = await BuildCacheService.cleanupExpiredCaches();
+    if (removed > 0) {
+      console.log(
+        `[BuildCache] Removed ${removed} expired cache${removed === 1 ? '' : 's'} (~${(
+          reclaimedBytes / (1024 * 1024)
+        ).toFixed(2)} MB reclaimed)`
+      );
+    }
+  } catch (error) {
+    console.error('[BuildCache] Failed to cleanup caches:', error);
+  }
+};
+
+cleanupBuildCache().catch((error) => console.error('Initial cache cleanup failed:', error));
+setInterval(cleanupBuildCache, 6 * 60 * 60 * 1000);
 
 /**
  * Queue Event Handlers

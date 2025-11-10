@@ -386,6 +386,46 @@ export const PaaSSettingsAdmin: React.FC = () => {
             />
             <Label>Enable buildpack caching (faster builds)</Label>
           </div>
+          <div>
+            <Label>Cache TTL (hours)</Label>
+            <Input
+              type="number"
+              min="0"
+              value={
+                settings.buildpack_cache_ttl_hours === '' || settings.buildpack_cache_ttl_hours === undefined
+                  ? ''
+                  : settings.buildpack_cache_ttl_hours
+              }
+              onChange={(e) =>
+                updateSetting(
+                  'buildpack_cache_ttl_hours',
+                  e.target.value === '' ? '' : parseInt(e.target.value, 10)
+                )
+              }
+            />
+            <p className="text-xs text-muted-foreground mt-1">Set to 0 to keep caches indefinitely.</p>
+          </div>
+          <div>
+            <Label>Max Cache Size (MB)</Label>
+            <Input
+              type="number"
+              min="0"
+              value={
+                settings.buildpack_cache_max_size_mb === '' || settings.buildpack_cache_max_size_mb === undefined
+                  ? ''
+                  : settings.buildpack_cache_max_size_mb
+              }
+              onChange={(e) =>
+                updateSetting(
+                  'buildpack_cache_max_size_mb',
+                  e.target.value === '' ? '' : parseInt(e.target.value, 10)
+                )
+              }
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Larger caches improve build times but consume more storage.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

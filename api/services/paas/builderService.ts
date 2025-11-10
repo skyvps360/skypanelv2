@@ -13,6 +13,7 @@ import { createReadStream } from 'fs';
 import * as tar from 'tar';
 import * as crypto from 'crypto';
 import { GitService } from './gitService.js';
+import { BuildCacheService, BuildCacheConfig } from './buildCacheService.js';
 
 const execAsync = promisify(exec);
 
@@ -164,6 +165,7 @@ export class BuilderService {
     const buildId = crypto.randomUUID();
     const workDir = path.join(this.directories.build, buildId);
     const slugPath = path.join(this.directories.slug, `${deploymentId}.tar.gz`);
+    const cacheDir = await this.prepareCacheDirectory(deploymentId);
 
     try {
       // 1. Validate repo + branch and clone
@@ -177,10 +179,24 @@ export class BuilderService {
       await this.logBuild(deploymentId, '-----> Detecting buildpack...');
       const buildpack = options.buildpack || (await this.detectBuildpack(workDir));
       await this.logBuild(deploymentId, `-----> Using buildpack: ${buildpack}`);
+      const cacheConfig = await BuildCacheService.getConfig();
+      let cacheKey: string | undefined;
+
+      if (cacheConfig.enabled) {
+        cacheKey = await this.restoreBuildCache({
+          app,
+          buildpack,
+          cacheDir,
+          deploymentId,
+          config: cacheConfig,
+        });
+      } else {
+        await this.logBuild(deploymentId, '-----> Build cache disabled');
+      }
 
       // 3. Run buildpack compile
       await this.logBuild(deploymentId, '-----> Compiling application...');
-      await this.runBuildpack(workDir, buildpack, deploymentId);
+      await this.runBuildpack(workDir, buildpack, deploymentId, cacheDir);
 
       // 4. Create slug (compressed artifact)
       await this.logBuild(deploymentId, '-----> Creating slug...');
@@ -190,8 +206,20 @@ export class BuilderService {
       await this.logBuild(deploymentId, '-----> Uploading slug...');
       const slugUrl = await this.uploadSlug(slugPath, deploymentId);
 
+      // 6. Persist build cache if applicable
+      if (cacheKey) {
+        await this.persistBuildCache({
+          app,
+          cacheDir,
+          cacheKey,
+          config: cacheConfig,
+          deploymentId,
+        });
+      }
+
       // Cleanup
       await fs.rm(workDir, { recursive: true, force: true });
+      await fs.rm(cacheDir, { recursive: true, force: true });
 
       await this.logBuild(deploymentId, `-----> Build complete! Slug size: ${(slugSize / 1024 / 1024).toFixed(2)}MB`);
 
@@ -200,6 +228,7 @@ export class BuilderService {
       await this.logBuild(deploymentId, `!     Build failed: ${error.message}`, true);
       // Cleanup on error
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(cacheDir, { recursive: true, force: true }).catch(() => {});
       throw error;
     }
   }
@@ -272,11 +301,13 @@ export class BuilderService {
   /**
    * Run buildpack compilation using herokuish
    */
-  private static async runBuildpack(projectDir: string, buildpack: string, deploymentId: string): Promise<void> {
+  private static async runBuildpack(
+    projectDir: string,
+    buildpack: string,
+    deploymentId: string,
+    cacheDir: string
+  ): Promise<void> {
     // Use herokuish Docker image to run buildpack
-    const cacheDir = path.join(this.directories.cache, deploymentId);
-    await fs.mkdir(cacheDir, { recursive: true });
-
     const command = `
       docker run --rm \\
         -v ${projectDir}:/tmp/app \\
@@ -329,6 +360,137 @@ export class BuilderService {
 
     const stats = await fs.stat(slugPath);
     return stats.size;
+  }
+
+  /**
+   * Prepare cache directory for build
+   */
+  private static async prepareCacheDirectory(deploymentId: string): Promise<string> {
+    const cacheDir = path.join(this.directories.cache, deploymentId);
+    await fs.rm(cacheDir, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(cacheDir, { recursive: true });
+    return cacheDir;
+  }
+
+  /**
+   * Build deterministic cache key based on app/buildpack/stack
+   */
+  private static buildCacheKey(app: PaasApplication, buildpack: string): string {
+    const stack = app.stack || 'unknown';
+    const normalizedBuildpack = buildpack || 'auto';
+    return crypto.createHash('sha1').update(`${app.id}:${normalizedBuildpack}:${stack}`).digest('hex');
+  }
+
+  /**
+   * Restore build cache if available
+   */
+  private static async restoreBuildCache(options: {
+    app: PaasApplication;
+    buildpack: string;
+    cacheDir: string;
+    deploymentId: string;
+    config: BuildCacheConfig;
+  }): Promise<string> {
+    const { app, buildpack, cacheDir, deploymentId, config } = options;
+    const cacheKey = this.buildCacheKey(app, buildpack);
+
+    try {
+      await this.logBuild(
+        deploymentId,
+        `-----> Checking build cache (stack=${app.stack || 'default'}, buildpack=${buildpack})`
+      );
+      const cache = await BuildCacheService.getValidCache(app.id, cacheKey, config.ttlHours);
+      if (!cache) {
+        await this.logBuild(deploymentId, '-----> Build cache miss');
+        return cacheKey;
+      }
+
+      await this.logBuild(
+        deploymentId,
+        `-----> Build cache hit (${((cache.size_bytes || 0) / (1024 * 1024)).toFixed(2)}MB)`
+      );
+      const archive = await BuildCacheService.downloadCacheArchive(cache);
+      await tar.extract({
+        file: archive.archivePath,
+        cwd: cacheDir,
+      });
+      if (archive.cleanup) {
+        await fs.rm(archive.archivePath, { force: true }).catch(() => {});
+      }
+      await BuildCacheService.touchCache(cache.id);
+      await this.logBuild(deploymentId, '-----> Build cache restored');
+    } catch (error: any) {
+      await this.logBuild(
+        deploymentId,
+        `!     Unable to restore build cache (${error?.message || error}). Continuing without cache.`
+      );
+    }
+
+    return cacheKey;
+  }
+
+  /**
+   * Persist build cache for future builds
+   */
+  private static async persistBuildCache(options: {
+    app: PaasApplication;
+    cacheDir: string;
+    cacheKey?: string;
+    config: BuildCacheConfig;
+    deploymentId: string;
+  }): Promise<void> {
+    const { app, cacheDir, cacheKey, config, deploymentId } = options;
+
+    if (!config.enabled || !cacheKey) {
+      return;
+    }
+
+    const archivePath = path.join(this.directories.cache, `${deploymentId}-cache.tgz`);
+
+    try {
+      await this.logBuild(deploymentId, '-----> Saving build cache...');
+      await tar.create(
+        {
+          gzip: true,
+          file: archivePath,
+          cwd: cacheDir,
+        },
+        ['.']
+      );
+
+      const stats = await fs.stat(archivePath);
+      const maxBytes = config.maxSizeMb > 0 ? config.maxSizeMb * 1024 * 1024 : 0;
+
+      if (maxBytes > 0 && stats.size > maxBytes) {
+        await this.logBuild(
+          deploymentId,
+          `-----> Skipping build cache (size ${(stats.size / (1024 * 1024)).toFixed(
+            2
+          )}MB exceeds limit of ${config.maxSizeMb}MB)`
+        );
+        return;
+      }
+
+      await BuildCacheService.saveCacheArchive({
+        applicationId: app.id,
+        cacheKey,
+        archivePath,
+        sizeBytes: stats.size,
+      });
+      await BuildCacheService.pruneCachesExcept(app.id, cacheKey);
+
+      await this.logBuild(
+        deploymentId,
+        `-----> Build cache stored (${(stats.size / (1024 * 1024)).toFixed(2)}MB)`
+      );
+    } catch (error: any) {
+      await this.logBuild(
+        deploymentId,
+        `!     Failed to persist build cache (${error?.message || error}).`
+      );
+    } finally {
+      await fs.rm(archivePath, { force: true }).catch(() => {});
+    }
   }
 
   /**
