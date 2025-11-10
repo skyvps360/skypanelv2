@@ -43,6 +43,7 @@ async function initializeSwarm() {
     await PaasSettingsService.set('loki_endpoint', 'http://localhost:3100', {
       description: 'Grafana Loki endpoint URL',
       category: 'logging',
+      skipValidation: true,
     });
 
     // Set default domain (user should update this)

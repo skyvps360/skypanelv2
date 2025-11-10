@@ -159,6 +159,15 @@ export interface PaasApplication {
   subdomain?: string;
   stack: string;
   replicas: number;
+  last_billed_at?: string;
+  health_check_enabled?: boolean;
+  health_check_path?: string;
+  health_check_interval_seconds?: number;
+  health_check_timeout_seconds?: number;
+  health_check_retries?: number;
+  health_check_protocol?: string;
+  last_health_status?: string;
+  last_health_check_at?: string;
   metadata: any;
   created_at: string;
   updated_at: string;
@@ -179,6 +188,7 @@ export interface PaasDeployment {
   build_completed_at?: string;
   deployed_at?: string;
   created_by?: string;
+  rolled_back_from?: string;
   created_at: string;
   updated_at: string;
 }
@@ -223,6 +233,12 @@ export interface PaasDomain {
   ssl_cert_path?: string;
   ssl_cert_expires_at?: string;
   dns_verification_token?: string;
+  verification_status?: string;
+  verification_requested_at?: string;
+  verified_at?: string;
+  ssl_status?: string;
+  ssl_last_checked_at?: string;
+  ssl_error?: string;
   created_at: string;
   updated_at: string;
 }

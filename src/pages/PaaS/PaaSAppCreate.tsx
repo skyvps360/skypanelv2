@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Rocket, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -31,6 +31,7 @@ interface Plan {
   max_replicas: number;
   price_per_hour: number;
   price_per_month: number;
+  features?: Record<string, string | boolean>;
 }
 
 const PaaSAppCreate: React.FC = () => {
@@ -44,11 +45,23 @@ const PaaSAppCreate: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(true);
   const { token } = useAuth();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  const selectedPlan = plans.find((plan) => plan.id === planId);
 
   useEffect(() => {
     loadPlans();
   }, []);
+
+  useEffect(() => {
+    const requestedPlan = searchParams.get('plan');
+    if (!requestedPlan) return;
+    const exists = plans.find((plan) => plan.id === requestedPlan);
+    if (exists) {
+      setPlanId(requestedPlan);
+    }
+  }, [searchParams, plans]);
 
   const loadPlans = async () => {
     try {
@@ -105,14 +118,15 @@ const PaaSAppCreate: React.FC = () => {
 
   return (
     <div className="container max-w-2xl mx-auto py-8 px-4">
-      <Button
-        variant="ghost"
-        onClick={() => navigate('/paas')}
-        className="mb-4"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Applications
-      </Button>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <Button variant="ghost" onClick={() => navigate('/paas')}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Applications
+        </Button>
+        <Button variant="outline" onClick={() => navigate('/paas/plans')}>
+          Compare Plans
+        </Button>
+      </div>
 
       <Card>
         <CardHeader>
@@ -124,6 +138,40 @@ const PaaSAppCreate: React.FC = () => {
                 Deploy your application in minutes
               </CardDescription>
             </div>
+
+            {selectedPlan && (
+              <div className="rounded-lg border bg-muted/50 p-4 text-sm space-y-2">
+                <p className="font-semibold">{selectedPlan.name}</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <p>
+                    <span className="text-muted-foreground">CPU/RAM:</span>{' '}
+                    {selectedPlan.cpu_cores} vCPU · {selectedPlan.ram_mb}MB
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Replicas:</span>{' '}
+                    Up to {selectedPlan.max_replicas}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Disk:</span>{' '}
+                    {selectedPlan.disk_gb}GB SSD
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Pricing:</span>{' '}
+                    ${selectedPlan.price_per_hour.toFixed(2)}/hr · ${selectedPlan.price_per_month?.toFixed(2) ?? '—'}/mo
+                  </p>
+                </div>
+                {selectedPlan.features && (
+                  <div className="text-xs text-muted-foreground">
+                    Includes:{' '}
+                    {Object.keys(selectedPlan.features)
+                      .slice(0, 4)
+                      .map((feature) => feature.replace(/_/g, ' '))
+                      .join(', ')}
+                    {Object.keys(selectedPlan.features).length > 4 && ', …'}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>

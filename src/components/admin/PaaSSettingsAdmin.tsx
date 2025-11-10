@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { apiClient } from '@/lib/api';
 
 const SENSITIVE_PLACEHOLDER = '***REDACTED***';
@@ -36,6 +37,10 @@ export const PaaSSettingsAdmin: React.FC = () => {
       (data.settings || []).forEach((setting: any) => {
         nextSettings[setting.key] = parseSettingValue(setting);
       });
+
+      if (!nextSettings.git_auth_type) {
+        nextSettings.git_auth_type = 'none';
+      }
 
       setSettings(nextSettings);
       setOriginalSettings({ ...nextSettings });
@@ -286,6 +291,76 @@ export const PaaSSettingsAdmin: React.FC = () => {
               }
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Git Authentication</CardTitle>
+          <CardDescription>Configure credentials used for cloning private repositories</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Auth Strategy</Label>
+            <Select
+              value={settings.git_auth_type || 'none'}
+              onValueChange={(value) => updateSetting('git_auth_type', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select auth type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None (public repos only)</SelectItem>
+                <SelectItem value="https">HTTPS Token</SelectItem>
+                <SelectItem value="ssh">SSH Deploy Key</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {settings.git_auth_type === 'https' && (
+            <>
+              <div>
+                <Label>Token Username</Label>
+                <Input
+                  value={getDisplayValue('git_access_username') || 'oauth2'}
+                  onChange={(e) => updateSetting('git_access_username', e.target.value)}
+                  placeholder="oauth2"
+                />
+              </div>
+              <div>
+                <Label>Personal Access Token</Label>
+                <Input
+                  type="password"
+                  value={getDisplayValue('git_access_token')}
+                  onChange={(e) => updateSetting('git_access_token', e.target.value)}
+                  placeholder="ghp_xxx"
+                />
+              </div>
+            </>
+          )}
+
+          {settings.git_auth_type === 'ssh' && (
+            <>
+              <div>
+                <Label>SSH Private Key</Label>
+                <Textarea
+                  rows={6}
+                  value={getDisplayValue('git_ssh_private_key')}
+                  onChange={(e) => updateSetting('git_ssh_private_key', e.target.value)}
+                  placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                />
+              </div>
+              <div>
+                <Label>Known Hosts (optional)</Label>
+                <Textarea
+                  rows={4}
+                  value={getDisplayValue('git_known_hosts')}
+                  onChange={(e) => updateSetting('git_known_hosts', e.target.value)}
+                  placeholder="github.com ssh-rsa AAAAB3Nza..."
+                />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

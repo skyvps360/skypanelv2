@@ -11,9 +11,42 @@ import { NodeManagerService } from '../../services/paas/nodeManagerService.js';
 import { DeployerService } from '../../services/paas/deployerService.js';
 import { logActivity } from '../../services/activityLogger.js';
 import { body, param, validationResult } from 'express-validator';
+import { handlePaasApiError } from '../../utils/paasApiError.js';
+import { PaasBillingService } from '../../services/paas/billingService.js';
+import { PaasPlanService } from '../../services/paas/planService.js';
 
 const router = express.Router();
 const SENSITIVE_PLACEHOLDER = '***REDACTED***';
+const APP_STATUSES = ['inactive', 'building', 'deploying', 'running', 'stopped', 'failed', 'suspended'];
+const WORKER_STATUSES = ['provisioning', 'active', 'draining', 'down', 'unreachable'];
+
+interface StatusCountRow {
+  status: string;
+  count: number | string;
+}
+
+const normalizeStatusCounts = (rows: StatusCountRow[], knownStatuses: string[]): StatusCountRow[] => {
+  const normalized = knownStatuses.map((status) => {
+    const row = rows.find((r) => r.status === status);
+    return {
+      status,
+      count: row ? Number(row.count) : 0,
+    };
+  });
+
+  const extraStatuses = rows.filter((row) => !knownStatuses.includes(row.status));
+  for (const extra of extraStatuses) {
+    normalized.push({
+      status: extra.status,
+      count: Number(extra.count ?? 0),
+    });
+  }
+
+  return normalized;
+};
+
+const getStatusCount = (rows: StatusCountRow[], status: string): number =>
+  Number(rows.find((row) => row.status === status)?.count ?? 0);
 
 interface AdminActivityPayload {
   userId: string;
@@ -56,40 +89,75 @@ router.use(authenticateToken, requireAdmin);
  */
 router.get('/overview', async (req: Request, res: Response) => {
   try {
-    // Total applications
-    const appsResult = await pool.query(
-      'SELECT COUNT(*) as total, status, COUNT(*) FILTER (WHERE status = \'running\') as running FROM paas_applications GROUP BY status'
+    const applicationStatusResult = await pool.query(
+      `SELECT status, COUNT(*)::int as count
+       FROM paas_applications
+       GROUP BY status`
     );
+    const applicationStats = normalizeStatusCounts(applicationStatusResult.rows, APP_STATUSES);
+    const totalApplications = applicationStats.reduce((sum, row) => sum + Number(row.count), 0);
+    const runningApplications = getStatusCount(applicationStats, 'running');
 
-    // Total deployments today
     const deploymentsResult = await pool.query(
-      "SELECT COUNT(*) as total FROM paas_deployments WHERE created_at > NOW() - INTERVAL '24 hours'"
-    );
-
-    // Total resource usage
-    const usageResult = await pool.query(
       `SELECT
-        SUM(cpu_cores * replicas) as total_cpu,
-        SUM(ram_mb * replicas) as total_ram_mb,
-        SUM(cost) as total_cost_today
-       FROM paas_resource_usage
-       WHERE recorded_at > NOW() - INTERVAL '24 hours'`
+        COALESCE(COUNT(*), 0)::int as total,
+        COALESCE(COUNT(*) FILTER (WHERE status = 'deployed'), 0)::int as deployed,
+        COALESCE(COUNT(*) FILTER (WHERE status = 'failed' OR status = 'build_failed'), 0)::int as failed
+       FROM paas_deployments
+       WHERE created_at >= NOW() - INTERVAL '24 hours'`
     );
+    const deployments = deploymentsResult.rows[0] ?? { total: 0, deployed: 0, failed: 0 };
 
-    // Worker node stats
-    const nodesResult = await pool.query(
-      'SELECT COUNT(*) as total, status FROM paas_worker_nodes GROUP BY status'
+    const capacityResult = await pool.query(
+      `SELECT
+        COALESCE(SUM(COALESCE(p.cpu_cores, 0) * GREATEST(COALESCE(a.replicas, 1), 1)), 0)::float as total_cpu,
+        COALESCE(SUM(COALESCE(p.ram_mb, 0) * GREATEST(COALESCE(a.replicas, 1), 1)), 0)::float as total_ram_mb
+       FROM paas_applications a
+       LEFT JOIN paas_plans p ON p.id = a.plan_id
+       WHERE a.status IN ('running', 'deploying', 'building')`
     );
+    const billingResult = await pool.query(
+      `SELECT
+        COALESCE(SUM(total_cost), 0)::float as total_cost_today
+       FROM paas_resource_usage
+       WHERE (
+        (billed_at IS NOT NULL AND billed_at >= NOW() - INTERVAL '24 hours')
+        OR (billed_at IS NULL AND period_end >= NOW() - INTERVAL '24 hours')
+       )`
+    );
+    const resourceUsage = {
+      total_cpu: Number(capacityResult.rows[0]?.total_cpu ?? 0),
+      total_ram_mb: Number(capacityResult.rows[0]?.total_ram_mb ?? 0),
+      total_cost_today: Number(billingResult.rows[0]?.total_cost_today ?? 0),
+    };
+
+    const nodesResult = await pool.query(
+      `SELECT status, COUNT(*)::int as count
+       FROM paas_worker_nodes
+       GROUP BY status`
+    );
+    const workerNodes = normalizeStatusCounts(nodesResult.rows, WORKER_STATUSES);
+    const activeWorkers = getStatusCount(workerNodes, 'active');
 
     res.json({
-      applications: appsResult.rows,
-      deployments: deploymentsResult.rows[0],
-      resource_usage: usageResult.rows[0],
-      worker_nodes: nodesResult.rows,
+      applications: applicationStats,
+      deployments,
+      resource_usage: resourceUsage,
+      worker_nodes: workerNodes,
+      summary: {
+        total_applications: totalApplications,
+        running_applications: runningApplications,
+        active_workers: activeWorkers,
+      },
     });
   } catch (error: any) {
-    console.error('Failed to get PaaS overview:', error);
-    res.status(500).json({ error: 'Failed to get overview' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS overview',
+      clientMessage: 'Failed to get overview',
+    });
   }
 });
 
@@ -115,8 +183,13 @@ router.get('/apps', async (req: Request, res: Response) => {
 
     res.json({ apps: result.rows });
   } catch (error: any) {
-    console.error('Failed to list all apps:', error);
-    res.status(500).json({ error: 'Failed to list applications' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to list all apps',
+      clientMessage: 'Failed to list applications',
+    });
   }
 });
 
@@ -171,8 +244,13 @@ router.post('/apps/:id/suspend', param('id').isUUID(), async (req: Request, res:
 
     res.json({ message: 'Application suspended' });
   } catch (error: any) {
-    console.error('Failed to suspend app:', error);
-    res.status(500).json({ error: 'Failed to suspend application' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to suspend PaaS application',
+      clientMessage: 'Failed to suspend application',
+    });
   }
 });
 
@@ -247,8 +325,13 @@ router.post('/apps/:id/resume', param('id').isUUID(), async (req: Request, res: 
 
     res.json({ message: 'Application resumed' });
   } catch (error: any) {
-    console.error('Failed to resume app:', error);
-    res.status(500).json({ error: 'Failed to resume application' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to resume PaaS application',
+      clientMessage: 'Failed to resume application',
+    });
   }
 });
 
@@ -261,8 +344,13 @@ router.get('/workers', async (req: Request, res: Response) => {
     const statuses = await NodeManagerService.getNodeStatuses();
     res.json({ workers: statuses });
   } catch (error: any) {
-    console.error('Failed to get workers:', error);
-    res.status(500).json({ error: 'Failed to get worker nodes' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get worker nodes',
+      clientMessage: 'Failed to get worker nodes',
+    });
   }
 });
 
@@ -309,8 +397,13 @@ router.post(
 
       res.status(201).json({ message: 'Worker node added', nodeId });
     } catch (error: any) {
-      console.error('Failed to add worker:', error);
-      res.status(500).json({ error: error.message || 'Failed to add worker node' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to add worker node',
+        clientMessage: (error as Error)?.message || 'Failed to add worker node',
+      });
     }
   }
 );
@@ -340,8 +433,13 @@ router.delete('/workers/:id', param('id').isUUID(), async (req: Request, res: Re
 
     res.json({ message: 'Worker node removed' });
   } catch (error: any) {
-    console.error('Failed to remove worker:', error);
-    res.status(500).json({ error: error.message || 'Failed to remove worker node' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to remove worker node',
+      clientMessage: (error as Error)?.message || 'Failed to remove worker node',
+    });
   }
 });
 
@@ -366,8 +464,13 @@ router.post('/swarm/init', async (req: Request, res: Response) => {
       managerIp: swarmConfig.managerIp,
     });
   } catch (error: any) {
-    console.error('Failed to initialize Swarm:', error);
-    res.status(500).json({ error: error.message || 'Failed to initialize Swarm' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to initialize Swarm',
+      clientMessage: (error as Error)?.message || 'Failed to initialize Swarm',
+    });
   }
 });
 
@@ -380,8 +483,13 @@ router.get('/settings', async (req: Request, res: Response) => {
     const settings = await PaasSettingsService.getAll(false); // Don't include sensitive values
     res.json({ settings });
   } catch (error: any) {
-    console.error('Failed to get settings:', error);
-    res.status(500).json({ error: 'Failed to get settings' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS settings',
+      clientMessage: 'Failed to get settings',
+    });
   }
 });
 
@@ -416,11 +524,14 @@ router.put(
         return res.json({ message: 'No changes detected' });
       }
 
-      for (const [key, value] of Object.entries(updates)) {
-        await PaasSettingsService.set(key, value as any, {
-          is_sensitive: isSensitiveSettingKey(key),
-        });
+      const optionsMap: Record<string, any> = {};
+      for (const key of keysToUpdate) {
+        if (isSensitiveSettingKey(key)) {
+          optionsMap[key] = { is_sensitive: true };
+        }
       }
+
+      await PaasSettingsService.updateSettings(updates, optionsMap);
 
       await logAdminPaasActivity({
         userId,
@@ -433,11 +544,52 @@ router.put(
 
       res.json({ message: 'Settings updated' });
     } catch (error: any) {
-      console.error('Failed to update settings:', error);
-      res.status(500).json({ error: 'Failed to update settings' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to update PaaS settings',
+        clientMessage: 'Failed to update settings',
+      });
     }
   }
 );
+
+/**
+ * POST /api/admin/paas/settings/validate
+ * Validate external dependencies (S3, Loki, Swarm)
+ */
+router.post('/settings/validate', async (req: Request, res: Response) => {
+  try {
+    const diagnostics = await PaasSettingsService.runDiagnostics();
+
+    const swarm = await NodeManagerService.validateSwarmConnectivity()
+      .then((details) => ({
+        ok: true,
+        details,
+      }))
+      .catch((error: any) => ({
+        ok: false,
+        details: error?.message || 'Failed to validate Swarm connectivity',
+      }));
+
+    res.json({
+      validation: {
+        storage: diagnostics.storage,
+        logging: diagnostics.logging,
+        swarm,
+      },
+    });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to validate PaaS settings',
+      clientMessage: 'Failed to validate settings',
+    });
+  }
+});
 
 /**
  * GET /api/admin/paas/plans
@@ -445,14 +597,16 @@ router.put(
  */
 router.get('/plans', async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
-      'SELECT * FROM paas_plans ORDER BY price_per_hour ASC'
-    );
-
-    res.json({ plans: result.rows });
+    const plans = await PaasPlanService.getAdminPlans();
+    res.json({ plans });
   } catch (error: any) {
-    console.error('Failed to get plans:', error);
-    res.status(500).json({ error: 'Failed to get plans' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS plans',
+      clientMessage: 'Failed to get plans',
+    });
   }
 });
 
@@ -480,12 +634,25 @@ router.post(
 
       const userId = (req as any).userId;
       const { name, slug, cpu_cores, ram_mb, disk_gb, max_replicas, price_per_hour, features } = req.body;
+      const pricing = PaasPlanService.calculatePricing(Number(price_per_hour));
+      const featuresPayload = features || {};
 
       const result = await pool.query(
-        `INSERT INTO paas_plans (name, slug, cpu_cores, ram_mb, disk_gb, max_replicas, price_per_hour, features)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO paas_plans (name, slug, cpu_cores, ram_mb, disk_gb, max_replicas, price_per_hour, price_per_month, hourly_rate, features)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
-        [name, slug, cpu_cores, ram_mb, disk_gb, max_replicas, price_per_hour, features || {}]
+        [
+          name,
+          slug,
+          cpu_cores,
+          ram_mb,
+          disk_gb,
+          max_replicas,
+          pricing.price_per_hour,
+          pricing.price_per_month,
+          pricing.hourly_rate,
+          featuresPayload,
+        ]
       );
 
       await logAdminPaasActivity({
@@ -496,10 +663,15 @@ router.post(
         metadata: { name, slug },
       });
 
-      res.status(201).json({ plan: result.rows[0] });
+      res.status(201).json({ plan: PaasPlanService.formatPlanRow(result.rows[0]) });
     } catch (error: any) {
-      console.error('Failed to create plan:', error);
-      res.status(500).json({ error: 'Failed to create plan' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to create PaaS plan',
+        clientMessage: 'Failed to create plan',
+      });
     }
   }
 );
@@ -510,7 +682,17 @@ router.post(
  */
 router.patch(
   '/plans/:id',
-  param('id').isUUID(),
+  [
+    param('id').isUUID(),
+    body('name').optional().trim().isLength({ min: 1, max: 255 }),
+    body('cpu_cores').optional().isFloat({ min: 0.1 }),
+    body('ram_mb').optional().isInt({ min: 128 }),
+    body('disk_gb').optional().isInt({ min: 1 }),
+    body('max_replicas').optional().isInt({ min: 1 }),
+    body('price_per_hour').optional().isFloat({ min: 0 }),
+    body('is_active').optional().isBoolean(),
+    body('features').optional().isObject(),
+  ],
   async (req: Request, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -520,30 +702,50 @@ router.patch(
 
       const userId = (req as any).userId;
       const planId = req.params.id;
-      const updates = req.body;
+      const incoming = req.body;
 
-      // Build update query
-      const fields: string[] = [];
-      const values: any[] = [];
-      let paramCount = 1;
+      const allowedFields = [
+        'name',
+        'cpu_cores',
+        'ram_mb',
+        'disk_gb',
+        'max_replicas',
+        'price_per_hour',
+        'is_active',
+        'features',
+      ];
 
-      const allowedFields = ['name', 'cpu_cores', 'ram_mb', 'disk_gb', 'max_replicas', 'price_per_hour', 'is_active', 'features'];
-
-      for (const [key, value] of Object.entries(updates)) {
-        if (allowedFields.includes(key)) {
-          fields.push(`${key} = $${paramCount++}`);
-          values.push(value);
+      const resolvedUpdates: Record<string, any> = {};
+      for (const field of allowedFields) {
+        if (incoming[field] !== undefined) {
+          resolvedUpdates[field] = incoming[field];
         }
       }
 
-      if (fields.length === 0) {
+      if (resolvedUpdates.price_per_hour !== undefined) {
+        const pricing = PaasPlanService.calculatePricing(Number(resolvedUpdates.price_per_hour));
+        resolvedUpdates.price_per_hour = pricing.price_per_hour;
+        resolvedUpdates.price_per_month = pricing.price_per_month;
+        resolvedUpdates.hourly_rate = pricing.hourly_rate;
+      }
+
+      if (Object.keys(resolvedUpdates).length === 0) {
         return res.status(400).json({ error: 'No valid fields to update' });
+      }
+
+      const setClauses: string[] = [];
+      const values: any[] = [];
+      let paramCount = 1;
+
+      for (const [field, value] of Object.entries(resolvedUpdates)) {
+        setClauses.push(`${field} = $${paramCount++}`);
+        values.push(value);
       }
 
       values.push(planId);
 
       const result = await pool.query(
-        `UPDATE paas_plans SET ${fields.join(', ')}
+        `UPDATE paas_plans SET ${setClauses.join(', ')}, updated_at = NOW()
          WHERE id = $${paramCount}
          RETURNING *`,
         values
@@ -558,13 +760,18 @@ router.patch(
         eventType: 'admin.paas.plan.update',
         entityType: 'paas_plan',
         entityId: planId,
-        metadata: updates,
+        metadata: resolvedUpdates,
       });
 
-      res.json({ plan: result.rows[0] });
+      res.json({ plan: PaasPlanService.formatPlanRow(result.rows[0]) });
     } catch (error: any) {
-      console.error('Failed to update plan:', error);
-      res.status(500).json({ error: 'Failed to update plan' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to update PaaS plan',
+        clientMessage: 'Failed to update plan',
+      });
     }
   }
 );
@@ -585,11 +792,13 @@ router.delete('/plans/:id', param('id').isUUID(), async (req: Request, res: Resp
 
     // Check if plan is in use
     const inUse = await pool.query(
-      'SELECT COUNT(*) as count FROM paas_applications WHERE plan_id = $1',
+      'SELECT COALESCE(COUNT(*), 0)::int as count FROM paas_applications WHERE plan_id = $1',
       [planId]
     );
 
-    if (parseInt(inUse.rows[0].count) > 0) {
+    const planUsageCount = Number(inUse.rows[0]?.count ?? 0);
+
+    if (planUsageCount > 0) {
       return res.status(400).json({ error: 'Cannot delete plan that is in use by applications' });
     }
 
@@ -604,8 +813,33 @@ router.delete('/plans/:id', param('id').isUUID(), async (req: Request, res: Resp
 
     res.json({ message: 'Plan deleted' });
   } catch (error: any) {
-    console.error('Failed to delete plan:', error);
-    res.status(500).json({ error: 'Failed to delete plan' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to delete PaaS plan',
+      clientMessage: 'Failed to delete plan',
+    });
+  }
+});
+
+/**
+ * GET /api/admin/paas/billing
+ * Get global billing overview
+ */
+router.get('/billing', async (req: Request, res: Response) => {
+  try {
+    const range = (req.query.range as string) || '30d';
+    const overview = await PaasBillingService.getAdminBillingOverview(range);
+    res.json({ billing: overview });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS billing overview',
+      clientMessage: 'Failed to get billing overview',
+    });
   }
 });
 
@@ -618,9 +852,9 @@ router.get('/usage', async (req: Request, res: Response) => {
     const result = await pool.query(
       `SELECT
         DATE_TRUNC('hour', recorded_at) as hour,
-        SUM(cpu_cores * replicas) as total_cpu,
-        SUM(ram_mb * replicas) as total_ram_mb,
-        SUM(cost) as total_cost
+        COALESCE(SUM(cpu_hours), 0)::float as total_cpu_hours,
+        COALESCE(SUM(ram_mb_hours), 0)::float as total_ram_mb_hours,
+        COALESCE(SUM(total_cost), 0)::float as total_cost
        FROM paas_resource_usage
        WHERE recorded_at > NOW() - INTERVAL '7 days'
        GROUP BY hour
@@ -629,8 +863,13 @@ router.get('/usage', async (req: Request, res: Response) => {
 
     res.json({ usage: result.rows });
   } catch (error: any) {
-    console.error('Failed to get usage:', error);
-    res.status(500).json({ error: 'Failed to get usage statistics' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS usage statistics',
+      clientMessage: 'Failed to get usage statistics',
+    });
   }
 });
 

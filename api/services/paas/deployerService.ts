@@ -14,6 +14,7 @@ import axios from 'axios';
 import { createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import * as tar from 'tar';
+import { HealthCheckService } from './healthCheckService.js';
 
 const execAsync = promisify(exec);
 
@@ -246,17 +247,8 @@ CMD ["/start", "web"]
     // Service name
     const serviceName = `paas-${app.slug}`;
 
-    // Build environment variable flags
-    const envFlags = Object.entries(envVars)
-      .map(([key, value]) => `--env ${key}="${value.replace(/"/g, '\\"')}"`)
-      .join(' ');
-
-    // Add system environment variables
-    const systemEnvFlags = `
-      --env PORT=5000
-      --env DYNO=web.1
-      --env PS=web
-    `;
+    const envArgs = Object.entries(envVars).map(([key, value]) => `--env ${key}="${value.replace(/"/g, '\\"')}"`);
+    const systemEnvArgs = ['--env PORT=5000', '--env DYNO=web.1', '--env PS=web'];
 
     // Get default domain
     const defaultDomain = await PaasSettingsService.get('default_domain') as string || 'apps.example.com';
@@ -273,55 +265,64 @@ CMD ["/start", "web"]
     // Check if service exists
     const serviceExists = await this.checkServiceExists(serviceName);
 
+    const healthConfig = HealthCheckService.getConfig(app);
+    const healthArgs = HealthCheckService.buildDockerArgs(healthConfig);
+
     if (serviceExists) {
+      await execAsync(`docker service update --placement-pref-rm "spread=node.id" ${serviceName}`).catch(() => {});
       // Update existing service
-      const updateCommand = `
-        docker service update \\
-          --image ${imageName} \\
-          --replicas ${replicas} \\
-          --limit-cpu ${cpuLimit} \\
-          --limit-memory ${ramLimit}m \\
-          ${envFlags} \\
-          ${systemEnvFlags} \\
-          --label "traefik.enable=true" \\
-          --label "traefik.http.routers.${app.slug}.rule=Host(\`${appUrl}\`)" \\
-          --label "traefik.http.services.${app.slug}.loadbalancer.server.port=5000" \\
-          ${serviceName}
-      `.replace(/\s+/g, ' ').trim();
+      const updateArgs = [
+        'docker service update',
+        `--image ${imageName}`,
+        `--replicas ${replicas}`,
+        `--limit-cpu ${cpuLimit}`,
+        `--limit-memory ${ramLimit}m`,
+        '--placement-pref-add "spread=node.id"',
+        '--update-failure-action rollback',
+        '--update-monitor 10s',
+        '--update-max-failure-ratio 0.2',
+        ...envArgs,
+        ...systemEnvArgs,
+        `--label "traefik.enable=true"`,
+        `--label "traefik.http.routers.${app.slug}.rule=Host(\`${appUrl}\`)"`,
+        `--label "traefik.http.services.${app.slug}.loadbalancer.server.port=5000"`,
+        ...healthArgs,
+        serviceName,
+      ];
 
-      await execAsync(updateCommand);
+      await execAsync(updateArgs.join(' '));
     } else {
-      // Create new service
-      const createCommand = `
-        docker service create \\
-          --name ${serviceName} \\
-          --replicas ${replicas} \\
-          --limit-cpu ${cpuLimit} \\
-          --limit-memory ${ramLimit}m \\
-          --reserve-cpu ${cpuLimit * 0.5} \\
-          --reserve-memory ${ramLimit * 0.5}m \\
-          --network ${networkName} \\
-          --network paas-public \\
-          ${envFlags} \\
-          ${systemEnvFlags} \\
-          --label "traefik.enable=true" \\
-          --label "traefik.http.routers.${app.slug}.rule=Host(\`${appUrl}\`)" \\
-          --label "traefik.http.services.${app.slug}.loadbalancer.server.port=5000" \\
-          --label "paas.app.id=${app.id}" \\
-          --label "paas.app.name=${app.name}" \\
-          --label "paas.deployment.id=${deployment.id}" \\
-          --restart-condition on-failure \\
-          --restart-max-attempts 3 \\
-          --update-parallelism 1 \\
-          --update-delay 10s \\
-          --health-cmd "curl -f http://localhost:5000/health || exit 1" \\
-          --health-interval 30s \\
-          --health-timeout 10s \\
-          --health-retries 3 \\
-          ${imageName}
-      `.replace(/\s+/g, ' ').trim();
+      const createArgs = [
+        'docker service create',
+        `--name ${serviceName}`,
+        `--replicas ${replicas}`,
+        `--limit-cpu ${cpuLimit}`,
+        `--limit-memory ${ramLimit}m`,
+        `--reserve-cpu ${Math.max(cpuLimit * 0.5, 0.1)}`,
+        `--reserve-memory ${Math.max(ramLimit * 0.5, 128)}m`,
+        `--network ${networkName}`,
+        '--network paas-public',
+        '--placement-pref "spread=node.id"',
+        ...envArgs,
+        ...systemEnvArgs,
+        `--label "traefik.enable=true"`,
+        `--label "traefik.http.routers.${app.slug}.rule=Host(\`${appUrl}\`)"`,
+        `--label "traefik.http.services.${app.slug}.loadbalancer.server.port=5000"`,
+        `--label "paas.app.id=${app.id}"`,
+        `--label "paas.app.name=${app.name}"`,
+        `--label "paas.deployment.id=${deployment.id}"`,
+        '--restart-condition on-failure',
+        '--restart-max-attempts 3',
+        '--update-parallelism 1',
+        '--update-delay 10s',
+        '--update-failure-action rollback',
+        '--update-monitor 10s',
+        '--update-max-failure-ratio 0.2',
+        ...healthArgs,
+        imageName,
+      ];
 
-      await execAsync(createCommand);
+      await execAsync(createArgs.join(' '));
     }
 
     // Get service ID
@@ -370,10 +371,20 @@ CMD ["/start", "web"]
     const serviceName = `paas-${app.rows[0].slug}`;
 
     try {
+      const previousReplicas = app.rows[0].replicas || 0;
       await execAsync(`docker service scale ${serviceName}=0`);
       await pool.query(
-        'UPDATE paas_applications SET status = $1, replicas = 0 WHERE id = $2',
-        ['stopped', appId]
+        `UPDATE paas_applications
+         SET status = $1,
+             replicas = 0,
+             metadata = jsonb_set(
+               COALESCE(metadata, '{}'::jsonb),
+               '{last_running_replicas}',
+               to_jsonb($3::int),
+               true
+             )
+         WHERE id = $2`,
+        ['stopped', appId, previousReplicas]
       );
     } catch (error) {
       throw new Error(`Failed to stop application: ${error}`);
@@ -414,12 +425,28 @@ CMD ["/start", "web"]
   }
 
   /**
-   * Rollback to a previous deployment
+   * Prepare rollback by cloning an existing deployment record and scheduling redeploy
    */
-  static async rollback(appId: string, targetVersion: number): Promise<DeployResult> {
-    // Get target deployment
+  static async rollback(
+    appId: string,
+    targetVersion: number,
+    userId?: string
+  ): Promise<{
+    app: PaasApplication;
+    targetDeployment: PaasDeployment;
+    newDeployment: PaasDeployment;
+  }> {
+    const appResult = await pool.query<PaasApplication>('SELECT * FROM paas_applications WHERE id = $1', [appId]);
+
+    if (appResult.rows.length === 0) {
+      throw new Error('Application not found');
+    }
+
+    const app = appResult.rows[0];
+
     const deploymentResult = await pool.query<PaasDeployment>(
-      'SELECT * FROM paas_deployments WHERE application_id = $1 AND version = $2',
+      `SELECT * FROM paas_deployments
+       WHERE application_id = $1 AND version = $2 AND status IN ('deployed', 'failed', 'rolled_back')`,
       [appId, targetVersion]
     );
 
@@ -427,9 +454,117 @@ CMD ["/start", "web"]
       throw new Error('Target deployment not found');
     }
 
-    const deployment = deploymentResult.rows[0];
+    const targetDeployment = deploymentResult.rows[0];
 
-    // Deploy the old version
-    return await this.deploy({ deploymentId: deployment.id });
+    if (!targetDeployment.slug_url) {
+      throw new Error('Target deployment is missing slug artifact and cannot be rolled back to');
+    }
+
+    const versionResult = await pool.query(
+      'SELECT COALESCE(MAX(version), 0) + 1 as next_version FROM paas_deployments WHERE application_id = $1',
+      [appId]
+    );
+    const nextVersion = versionResult.rows[0].next_version;
+
+    const newDeploymentResult = await pool.query<PaasDeployment>(
+      `INSERT INTO paas_deployments (
+        application_id,
+        version,
+        git_commit,
+        slug_url,
+        slug_size_bytes,
+        buildpack_used,
+        status,
+        created_by,
+        build_started_at,
+        build_completed_at,
+        rolled_back_from
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'deploying', $7, NOW(), NOW(), $8)
+      RETURNING *`,
+      [
+        appId,
+        nextVersion,
+        targetDeployment.git_commit,
+        targetDeployment.slug_url,
+        targetDeployment.slug_size_bytes,
+        targetDeployment.buildpack_used,
+        userId || null,
+        targetDeployment.id,
+      ]
+    );
+
+    await pool.query('UPDATE paas_applications SET status = $1 WHERE id = $2', ['deploying', appId]);
+    await pool.query('UPDATE paas_deployments SET status = $1 WHERE id = $2', ['rolled_back', targetDeployment.id]);
+
+    return {
+      app,
+      targetDeployment,
+      newDeployment: newDeploymentResult.rows[0],
+    };
+  }
+
+  /**
+   * Restart an application by scaling or redeploying the latest slug
+   */
+  static async restart(appId: string, requestedReplicas?: number): Promise<{ replicas: number }> {
+    const appResult = await pool.query<PaasApplication>('SELECT * FROM paas_applications WHERE id = $1', [appId]);
+
+    if (appResult.rows.length === 0) {
+      throw new Error('Application not found');
+    }
+
+    const app = appResult.rows[0];
+
+    const planResult = await pool.query('SELECT max_replicas FROM paas_plans WHERE id = $1', [app.plan_id]);
+    if (planResult.rows.length === 0) {
+      throw new Error('Plan not found');
+    }
+
+    const maxReplicas = Number(planResult.rows[0].max_replicas || 1);
+    const metadata = (app.metadata as Record<string, any>) || {};
+    const fallbackReplicas =
+      typeof metadata.last_running_replicas === 'number' && metadata.last_running_replicas > 0
+        ? metadata.last_running_replicas
+        : 1;
+
+    const desiredReplicas = Math.max(1, Math.min(maxReplicas, requestedReplicas ?? fallbackReplicas));
+    const serviceName = `paas-${app.slug}`;
+
+    if (await this.checkServiceExists(serviceName)) {
+      await execAsync(`docker service scale ${serviceName}=${desiredReplicas}`);
+      await pool.query(
+        `UPDATE paas_applications
+           SET status = 'running',
+               replicas = $1,
+               metadata = COALESCE(metadata, '{}'::jsonb) - 'last_running_replicas'
+         WHERE id = $2`,
+        [desiredReplicas, appId]
+      );
+      return { replicas: desiredReplicas };
+    }
+
+    const latestDeployment = await pool.query<PaasDeployment>(
+      `SELECT * FROM paas_deployments
+         WHERE application_id = $1 AND slug_url IS NOT NULL
+         ORDER BY version DESC
+         LIMIT 1`,
+      [appId]
+    );
+
+    if (latestDeployment.rows.length === 0) {
+      throw new Error('No deployment artifacts available to restart');
+    }
+
+    await this.deploy({ deploymentId: latestDeployment.rows[0].id, replicas: desiredReplicas });
+    await pool.query(
+      `UPDATE paas_applications
+         SET status = 'running',
+             replicas = $1,
+             metadata = COALESCE(metadata, '{}'::jsonb) - 'last_running_replicas'
+       WHERE id = $2`,
+      [desiredReplicas, appId]
+    );
+
+    return { replicas: desiredReplicas };
   }
 }

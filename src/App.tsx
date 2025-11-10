@@ -58,6 +58,7 @@ import SSHKeys from "./pages/SSHKeys";
 import PaaSApps from "./pages/PaaS/PaaSApps";
 import PaaSAppCreate from "./pages/PaaS/PaaSAppCreate";
 import PaaSAppDetail from "./pages/PaaS/PaaSAppDetail";
+import PaaSPlans from "./pages/PaaS/PaaSPlans";
 
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 
@@ -349,6 +350,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <PaaSApps />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/paas/plans"
+          element={
+            <ProtectedRoute>
+              <PaaSPlans />
             </ProtectedRoute>
           }
         />

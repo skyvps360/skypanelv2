@@ -19,6 +19,7 @@ import {
   FileText,
   Key,
   Globe,
+  BarChart3,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,6 +33,9 @@ import { LogViewer } from '@/components/PaaS/LogViewer';
 import { EnvVarManager } from '@/components/PaaS/EnvVarManager';
 import { AppSettings } from '@/components/PaaS/AppSettings';
 import { ScaleSlider } from '@/components/PaaS/ScaleSlider';
+import { DomainManager } from '@/components/PaaS/DomainManager';
+import { ResourceMetrics } from '@/components/PaaS/ResourceMetrics';
+import { DeploymentProgress } from '@/components/PaaS/DeploymentProgress';
 
 interface App {
   id: string;
@@ -47,6 +51,8 @@ interface App {
   cpu_cores: number;
   ram_mb: number;
   disk_gb: number;
+  max_replicas?: number;
+  plan_price_per_hour?: number;
   created_at: string;
 }
 
@@ -60,14 +66,21 @@ const statusColors: Record<string, string> = {
   suspended: 'bg-orange-500',
 };
 
+const getJobStorageKey = (appId: string) => `paas:deploy-job:${appId}`;
+
 const PaaSAppDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [app, setApp] = useState<App | null>(null);
   const [loading, setLoading] = useState(true);
   const [deploying, setDeploying] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeJob, setActiveJob] = useState<{ jobId: string; queue?: string } | null>(null);
+  const [deploymentsRefresh, setDeploymentsRefresh] = useState(0);
+  const [defaultDomain, setDefaultDomain] = useState('apps.example.com');
   const { token } = useAuth();
   const navigate = useNavigate();
+  const currentAppId = app?.id || id || '';
 
   const loadApp = useCallback(async () => {
     if (!id || !token) return;
@@ -81,6 +94,33 @@ const PaaSAppDetail: React.FC = () => {
       setLoading(false);
     }
   }, [id, token]);
+
+  useEffect(() => {
+    const loadDefaultDomainSetting = async () => {
+      try {
+        const data = await apiClient.get('/admin/paas/settings');
+        const domainSetting = data.settings?.find((setting: any) => setting.key === 'default_domain');
+        if (domainSetting?.value_encrypted) {
+          setDefaultDomain(domainSetting.value_encrypted);
+        }
+      } catch (error) {
+        console.warn('Failed to load default domain setting:', error);
+      }
+    };
+    loadDefaultDomainSetting();
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const stored = sessionStorage.getItem(getJobStorageKey(id));
+      if (stored) {
+        setActiveJob(JSON.parse(stored));
+      }
+    } catch {
+      sessionStorage.removeItem(getJobStorageKey(id));
+    }
+  }, [id]);
 
   useEffect(() => {
     loadApp();
@@ -97,8 +137,14 @@ const PaaSAppDetail: React.FC = () => {
     if (!app) return;
     setDeploying(true);
     try {
-      await apiClient.post(`/paas/apps/${app.id}/deploy`, {});
+      const response = await apiClient.post<{ jobId?: string; queue?: string }>(`/paas/apps/${app.id}/deploy`, {});
       toast.success('Deployment started!');
+      if (response?.jobId) {
+        const jobPayload = { jobId: String(response.jobId), queue: response.queue };
+        setActiveJob(jobPayload);
+        sessionStorage.setItem(getJobStorageKey(app.id), JSON.stringify(jobPayload));
+      }
+      setActiveTab('deployments');
       loadApp();
     } catch (error: any) {
       toast.error(error.message || 'Failed to start deployment');
@@ -118,6 +164,20 @@ const PaaSAppDetail: React.FC = () => {
     }
   };
 
+  const handleRestart = async () => {
+    if (!app) return;
+    setRestarting(true);
+    try {
+      await apiClient.post(`/paas/apps/${app.id}/restart`, {});
+      toast.success('Application restarting');
+      loadApp();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to restart application');
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!app) return;
     if (!confirm(`Are you sure you want to delete "${app.name}"? This cannot be undone.`)) {
@@ -131,6 +191,19 @@ const PaaSAppDetail: React.FC = () => {
       toast.error(error.message || 'Failed to delete application');
     }
   };
+
+  const triggerDeploymentRefresh = useCallback(() => {
+    setDeploymentsRefresh((value) => value + 1);
+  }, []);
+
+  const handleJobComplete = useCallback(() => {
+    if (currentAppId) {
+      sessionStorage.removeItem(getJobStorageKey(currentAppId));
+    }
+    setActiveJob(null);
+    triggerDeploymentRefresh();
+    loadApp();
+  }, [currentAppId, triggerDeploymentRefresh, loadApp]);
 
   if (loading) {
     return (
@@ -154,7 +227,10 @@ const PaaSAppDetail: React.FC = () => {
     );
   }
 
-  const appUrl = `https://${app.subdomain}.apps.example.com`;
+  const domainHost = defaultDomain || 'apps.example.com';
+  const appUrl = `https://${app.subdomain}.${domainHost}`;
+  const maxReplicas = app.max_replicas ?? 20;
+  const hourlyRate = Number(app.plan_price_per_hour ?? 0);
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -180,26 +256,23 @@ const PaaSAppDetail: React.FC = () => {
         </div>
 
         <div className="flex gap-2">
-          {app.status === 'running' && (
+          {app.status === 'running' ? (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(appUrl, '_blank')}
-              >
+              <Button variant="outline" size="sm" onClick={() => window.open(appUrl, '_blank')}>
                 <ExternalLink className="w-4 h-4 mr-2" />
                 Open App
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleStop}
-              >
+              <Button variant="outline" size="sm" onClick={handleStop}>
                 <Square className="w-4 h-4 mr-2" />
                 Stop
               </Button>
             </>
-          )}
+          ) : ['stopped', 'suspended'].includes(app.status) ? (
+            <Button variant="outline" size="sm" onClick={handleRestart} disabled={restarting}>
+              <Play className="w-4 h-4 mr-2" />
+              {restarting ? 'Restarting...' : 'Restart'}
+            </Button>
+          ) : null}
           <Button
             size="sm"
             onClick={handleDeploy}
@@ -264,7 +337,7 @@ const PaaSAppDetail: React.FC = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-7 gap-2">
           <TabsTrigger value="overview">
             <Activity className="w-4 h-4 mr-2" />
             Overview
@@ -284,6 +357,14 @@ const PaaSAppDetail: React.FC = () => {
           <TabsTrigger value="settings">
             <Settings className="w-4 h-4 mr-2" />
             Settings
+          </TabsTrigger>
+          <TabsTrigger value="domains">
+            <Globe className="w-4 h-4 mr-2" />
+            Domains
+          </TabsTrigger>
+          <TabsTrigger value="metrics">
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Metrics
           </TabsTrigger>
         </TabsList>
 
@@ -305,7 +386,13 @@ const PaaSAppDetail: React.FC = () => {
 
               <div>
                 <h4 className="font-semibold mb-2">Scale Application</h4>
-                <ScaleSlider appId={app.id} currentReplicas={app.replicas} onUpdate={loadApp} />
+                <ScaleSlider
+                  appId={app.id}
+                  currentReplicas={app.replicas}
+                  maxReplicas={maxReplicas}
+                  hourlyRate={hourlyRate}
+                  onUpdate={loadApp}
+                />
               </div>
 
               <div>
@@ -327,8 +414,14 @@ const PaaSAppDetail: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="deployments">
-          <DeploymentsList appId={app.id} />
+        <TabsContent value="deployments" className="space-y-4">
+          <DeploymentProgress
+            appId={app.id}
+            jobInfo={activeJob}
+            onJobComplete={handleJobComplete}
+            onDeploymentUpdated={triggerDeploymentRefresh}
+          />
+          <DeploymentsList appId={app.id} refreshToken={deploymentsRefresh} />
         </TabsContent>
 
         <TabsContent value="logs">
@@ -341,6 +434,14 @@ const PaaSAppDetail: React.FC = () => {
 
         <TabsContent value="settings">
           <AppSettings app={app} onUpdate={loadApp} />
+        </TabsContent>
+
+        <TabsContent value="domains">
+          <DomainManager appId={app.id} appSlug={app.slug} defaultDomain={domainHost} />
+        </TabsContent>
+
+        <TabsContent value="metrics">
+          <ResourceMetrics appId={app.id} />
         </TabsContent>
       </Tabs>
     </div>

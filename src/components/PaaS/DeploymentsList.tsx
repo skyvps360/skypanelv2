@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Deployments List Component
  * Shows deployment history with rollback capability
  */
@@ -20,10 +20,13 @@ interface Deployment {
   build_completed_at?: string;
   deployed_at?: string;
   error_message?: string;
+  rolled_back_from?: string;
+  rolled_back_from_version?: number;
 }
 
 interface DeploymentsListProps {
   appId: string;
+  refreshToken?: number;
 }
 
 const statusIcons: Record<string, React.ReactNode> = {
@@ -32,9 +35,10 @@ const statusIcons: Record<string, React.ReactNode> = {
   build_failed: <XCircle className="w-4 h-4 text-red-500" />,
   building: <Clock className="w-4 h-4 text-blue-500 animate-spin" />,
   deploying: <Clock className="w-4 h-4 text-yellow-500 animate-spin" />,
+  rolled_back: <RotateCcw className="w-4 h-4 text-purple-500" />,
 };
 
-export const DeploymentsList: React.FC<DeploymentsListProps> = ({ appId }) => {
+export const DeploymentsList: React.FC<DeploymentsListProps> = ({ appId, refreshToken }) => {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,7 +56,7 @@ export const DeploymentsList: React.FC<DeploymentsListProps> = ({ appId }) => {
 
   useEffect(() => {
     loadDeployments();
-  }, [loadDeployments]);
+  }, [loadDeployments, refreshToken]);
 
   const handleRollback = async (version: number) => {
     if (!confirm(`Rollback to version ${version}?`)) return;
@@ -88,11 +92,19 @@ export const DeploymentsList: React.FC<DeploymentsListProps> = ({ appId }) => {
                     <div className="font-semibold">Version {deployment.version}</div>
                     <div className="text-sm text-muted-foreground">
                       {deployment.git_commit?.substring(0, 7)}
-                      {' • '}
+                      {' · '}
                       {deployment.deployed_at
                         ? formatDistanceToNow(new Date(deployment.deployed_at), { addSuffix: true })
                         : 'Not deployed'}
                     </div>
+                    {deployment.status === 'rolled_back' && (
+                      <div className="text-xs text-muted-foreground">Rolled back and inactive</div>
+                    )}
+                    {deployment.rolled_back_from_version && deployment.status !== 'rolled_back' && (
+                      <div className="text-xs text-muted-foreground">
+                        Restored from version {deployment.rolled_back_from_version}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -115,3 +127,4 @@ export const DeploymentsList: React.FC<DeploymentsListProps> = ({ appId }) => {
     </Card>
   );
 };
+

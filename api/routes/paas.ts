@@ -13,6 +13,12 @@ import { ScalerService } from '../services/paas/scalerService.js';
 import { LoggerService } from '../services/paas/loggerService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { body, param, query as validateQuery, validationResult } from 'express-validator';
+import { handlePaasApiError } from '../utils/paasApiError.js';
+import { PaasBillingService } from '../services/paas/billingService.js';
+import { buildQueue, deployQueue } from '../worker/queues.js';
+import { SSLService } from '../services/paas/sslService.js';
+import { SlugService } from '../services/paas/slugService.js';
+import { PaasPlanService } from '../services/paas/planService.js';
 
 const router = express.Router();
 
@@ -56,7 +62,7 @@ router.get('/apps', async (req: Request, res: Response) => {
     const orgId = (req as any).organizationId;
 
     const result = await pool.query(
-      `SELECT a.*, p.name as plan_name, p.cpu_cores, p.ram_mb
+      `SELECT a.*, p.name as plan_name, p.cpu_cores, p.ram_mb, p.max_replicas, p.price_per_hour as plan_price_per_hour
        FROM paas_applications a
        LEFT JOIN paas_plans p ON a.plan_id = p.id
        WHERE a.organization_id = $1
@@ -66,8 +72,13 @@ router.get('/apps', async (req: Request, res: Response) => {
 
     res.json({ apps: result.rows });
   } catch (error: any) {
-    console.error('Failed to list apps:', error);
-    res.status(500).json({ error: 'Failed to list applications' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to list organization PaaS apps',
+      clientMessage: 'Failed to list applications',
+    });
   }
 });
 
@@ -89,7 +100,7 @@ router.get(
       const appId = req.params.id;
 
       const result = await pool.query(
-        `SELECT a.*, p.name as plan_name, p.cpu_cores, p.ram_mb, p.disk_gb
+        `SELECT a.*, p.name as plan_name, p.cpu_cores, p.ram_mb, p.disk_gb, p.max_replicas, p.price_per_hour as plan_price_per_hour
          FROM paas_applications a
          LEFT JOIN paas_plans p ON a.plan_id = p.id
          WHERE a.id = $1 AND a.organization_id = $2`,
@@ -102,8 +113,13 @@ router.get(
 
       res.json({ app: result.rows[0] });
     } catch (error: any) {
-      console.error('Failed to get app:', error);
-      res.status(500).json({ error: 'Failed to get application' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to get PaaS application',
+        clientMessage: 'Failed to get application',
+      });
     }
   }
 );
@@ -183,8 +199,13 @@ router.post(
 
       res.status(201).json({ app });
     } catch (error: any) {
-      console.error('Failed to create app:', error);
-      res.status(500).json({ error: 'Failed to create application' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to create PaaS application',
+        clientMessage: 'Failed to create application',
+      });
     }
   }
 );
@@ -201,6 +222,12 @@ router.patch(
     body('git_url').optional().isURL(),
     body('git_branch').optional().trim().isLength({ min: 1, max: 255 }),
     body('buildpack').optional().trim().isLength({ min: 1, max: 255 }),
+    body('health_check_enabled').optional().isBoolean(),
+    body('health_check_path').optional().isLength({ min: 1, max: 255 }),
+    body('health_check_interval_seconds').optional().isInt({ min: 5, max: 600 }),
+    body('health_check_timeout_seconds').optional().isInt({ min: 1, max: 60 }),
+    body('health_check_retries').optional().isInt({ min: 1, max: 10 }),
+    body('health_check_protocol').optional().isIn(['http', 'https']),
   ],
   async (req: Request, res: Response) => {
     try {
@@ -219,8 +246,21 @@ router.patch(
       const values: any[] = [];
       let paramCount = 1;
 
+      const allowedFields = new Set([
+        'name',
+        'git_url',
+        'git_branch',
+        'buildpack',
+        'health_check_enabled',
+        'health_check_path',
+        'health_check_interval_seconds',
+        'health_check_timeout_seconds',
+        'health_check_retries',
+        'health_check_protocol',
+      ]);
+
       for (const [key, value] of Object.entries(updates)) {
-        if (['name', 'git_url', 'git_branch', 'buildpack'].includes(key)) {
+        if (allowedFields.has(key)) {
           fields.push(`${key} = $${paramCount++}`);
           values.push(value);
         }
@@ -253,8 +293,13 @@ router.patch(
 
       res.json({ app: result.rows[0] });
     } catch (error: any) {
-      console.error('Failed to update app:', error);
-      res.status(500).json({ error: 'Failed to update application' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to update PaaS application',
+        clientMessage: 'Failed to update application',
+      });
     }
   }
 );
@@ -276,6 +321,9 @@ router.delete('/apps/:id', param('id').isUUID(), async (req: Request, res: Respo
 
     // Stop and delete the Swarm service
     await DeployerService.delete(appId);
+
+    // Remove slug artifacts from storage
+    await SlugService.deleteAppSlugs(appId);
 
     // Delete from database (cascades to related tables)
     const result = await pool.query(
@@ -300,8 +348,13 @@ router.delete('/apps/:id', param('id').isUUID(), async (req: Request, res: Respo
 
     res.json({ message: 'Application deleted successfully' });
   } catch (error: any) {
-    console.error('Failed to delete app:', error);
-    res.status(500).json({ error: 'Failed to delete application' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to delete PaaS application',
+      clientMessage: 'Failed to delete application',
+    });
   }
 });
 
@@ -343,24 +396,15 @@ router.post(
         return res.status(400).json({ error: 'No git URL configured' });
       }
 
-      // Start build asynchronously
-      BuilderService.build({
+      const job = await buildQueue.add({
         applicationId: app.id,
         gitUrl: app.git_url,
         gitBranch: app.git_branch,
         gitCommit: git_commit,
         buildpack: app.buildpack,
         userId,
-      })
-        .then(async (buildResult) => {
-          if (buildResult.success) {
-            // Deploy after successful build
-            await DeployerService.deploy({ deploymentId: buildResult.deploymentId });
-          }
-        })
-        .catch((error) => {
-          console.error('Build/deploy failed:', error);
-        });
+        replicas: app.replicas,
+      });
 
       await logPaasActivity({
         userId,
@@ -369,14 +413,20 @@ router.post(
         eventType: 'paas.app.deploy',
         metadata: {
           git_commit,
+          job_id: job.id,
         },
-        message: 'Deployment started',
+        message: 'Deployment queued',
       });
 
-      res.json({ message: 'Deployment started', appId });
+      res.json({ message: 'Deployment queued', appId, jobId: job.id, queue: job.queue.name });
     } catch (error: any) {
-      console.error('Failed to start deployment:', error);
-      res.status(500).json({ error: 'Failed to start deployment' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to queue PaaS deployment',
+        clientMessage: 'Failed to queue deployment',
+      });
     }
   }
 );
@@ -406,18 +456,33 @@ router.get('/apps/:id/deployments', param('id').isUUID(), async (req: Request, r
     }
 
     const result = await pool.query(
-      `SELECT id, version, git_commit, status, build_started_at, build_completed_at, deployed_at, error_message
-       FROM paas_deployments
-       WHERE application_id = $1
-       ORDER BY version DESC
+      `SELECT d.id,
+              d.version,
+              d.git_commit,
+              d.status,
+              d.build_started_at,
+              d.build_completed_at,
+              d.deployed_at,
+              d.error_message,
+              d.rolled_back_from,
+              prev.version as rolled_back_from_version
+       FROM paas_deployments d
+       LEFT JOIN paas_deployments prev ON prev.id = d.rolled_back_from
+       WHERE d.application_id = $1
+       ORDER BY d.version DESC
        LIMIT 50`,
       [appId]
     );
 
     res.json({ deployments: result.rows });
   } catch (error: any) {
-    console.error('Failed to get deployments:', error);
-    res.status(500).json({ error: 'Failed to get deployments' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS deployments',
+      clientMessage: 'Failed to get deployments',
+    });
   }
 });
 
@@ -450,25 +515,40 @@ router.post(
         return res.status(404).json({ error: 'Application not found' });
       }
 
-      const result = await DeployerService.rollback(appId, version);
+      const rollback = await DeployerService.rollback(appId, version, userId);
 
-      if (!result.success) {
-        return res.status(500).json({ error: result.error });
-      }
+      const job = await deployQueue.add({
+        deploymentId: rollback.newDeployment.id,
+        replicas: rollback.app.replicas,
+      });
 
       await logPaasActivity({
         userId,
         organizationId: orgId,
         appId,
         eventType: 'paas.app.rollback',
-        metadata: { version },
-        message: `Rollback to version ${version} initiated`,
+        metadata: {
+          jobId: job.id,
+          targetVersion: version,
+          newVersion: rollback.newDeployment.version,
+        },
+        message: `Rollback to version ${version} queued`,
       });
 
-      res.json({ message: 'Rollback initiated', version });
+      res.json({
+        message: 'Rollback queued',
+        version,
+        deploymentId: rollback.newDeployment.id,
+        jobId: job.id,
+      });
     } catch (error: any) {
-      console.error('Failed to rollback:', error);
-      res.status(500).json({ error: 'Failed to rollback' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to rollback PaaS deployment',
+        clientMessage: 'Failed to rollback deployment',
+      });
     }
   }
 );
@@ -515,8 +595,13 @@ router.get(
 
       res.json({ logs });
     } catch (error: any) {
-      console.error('Failed to get logs:', error);
-      res.status(500).json({ error: 'Failed to get logs' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to get PaaS logs',
+        clientMessage: 'Failed to get logs',
+      });
     }
   }
 );
@@ -525,42 +610,74 @@ router.get(
  * GET /api/paas/apps/:id/logs/stream
  * Stream logs in real-time (SSE)
  */
-router.get('/apps/:id/logs/stream', param('id').isUUID(), async (req: Request, res: Response) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+router.get(
+  '/apps/:id/logs/stream',
+  [
+    param('id').isUUID(),
+    validateQuery('level').optional().isIn(['info', 'warn', 'error', 'debug']),
+    validateQuery('search').optional().isLength({ min: 1, max: 100 }),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const orgId = (req as any).organizationId;
+      const appId = req.params.id;
+
+      // Verify app belongs to org
+      const appCheck = await pool.query(
+        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
+        [appId, orgId]
+      );
+
+      if (appCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const level = req.query.level as 'info' | 'warn' | 'error' | 'debug' | undefined;
+      const search = (req.query.search as string) || undefined;
+
+      // Set up SSE
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const abortController = new AbortController();
+      req.on('close', () => abortController.abort());
+
+      try {
+        const logStream = LoggerService.streamLogs(
+          appId,
+          {
+            level,
+            search,
+          },
+          abortController.signal
+        );
+
+        for await (const log of logStream) {
+          if (abortController.signal.aborted) {
+            break;
+          }
+          res.write(`data: ${JSON.stringify(log)}\n\n`);
+        }
+      } finally {
+        abortController.abort();
+      }
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to stream PaaS logs',
+        clientMessage: 'Failed to stream logs',
+      });
     }
-
-    const orgId = (req as any).organizationId;
-    const appId = req.params.id;
-
-    // Verify app belongs to org
-    const appCheck = await pool.query(
-      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-      [appId, orgId]
-    );
-
-    if (appCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Application not found' });
-    }
-
-    // Set up SSE
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    // Stream logs
-    const logStream = LoggerService.streamLogs(appId);
-
-    for await (const log of logStream) {
-      res.write(`data: ${JSON.stringify(log)}\n\n`);
-    }
-  } catch (error: any) {
-    console.error('Failed to stream logs:', error);
-    res.status(500).json({ error: 'Failed to stream logs' });
   }
-});
+);
 
 /**
  * GET /api/paas/apps/:id/env
@@ -594,8 +711,13 @@ router.get('/apps/:id/env', param('id').isUUID(), async (req: Request, res: Resp
     // Don't send decrypted values, just keys
     res.json({ env_vars: result.rows });
   } catch (error: any) {
-    console.error('Failed to get env vars:', error);
-    res.status(500).json({ error: 'Failed to get environment variables' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get environment variables',
+      clientMessage: 'Failed to get environment variables',
+    });
   }
 });
 
@@ -654,8 +776,222 @@ router.put(
 
       res.json({ message: 'Environment variables updated' });
     } catch (error: any) {
-      console.error('Failed to update env vars:', error);
-      res.status(500).json({ error: 'Failed to update environment variables' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to update environment variables',
+        clientMessage: 'Failed to update environment variables',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/paas/apps/:id/domains
+ * List custom domains for an application
+ */
+router.get('/apps/:id/domains', param('id').isUUID(), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const orgId = (req as any).organizationId;
+    const appId = req.params.id;
+
+    const appCheck = await pool.query('SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2', [
+      appId,
+      orgId,
+    ]);
+
+    if (appCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const domains = await pool.query('SELECT * FROM paas_domains WHERE application_id = $1 ORDER BY created_at DESC', [
+      appId,
+    ]);
+
+    res.json({ domains: domains.rows });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to list PaaS domains',
+      clientMessage: 'Failed to list domains',
+    });
+  }
+});
+
+/**
+ * POST /api/paas/apps/:id/domains
+ * Add a custom domain
+ */
+router.post(
+  '/apps/:id/domains',
+  [param('id').isUUID(), body('domain').isFQDN({ require_tld: true })],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const orgId = (req as any).organizationId;
+      const appId = req.params.id;
+      const { domain } = req.body;
+
+      const appCheck = await pool.query('SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2', [
+        appId,
+        orgId,
+      ]);
+
+      if (appCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const token = SSLService.generateVerificationToken();
+      const recordValue = `paas-verify=${token}`;
+
+      const result = await pool.query(
+        `INSERT INTO paas_domains (
+          application_id,
+          domain,
+          is_verified,
+          ssl_enabled,
+          dns_verification_token,
+          verification_status,
+          verification_requested_at,
+          ssl_status
+        ) VALUES ($1, $2, false, false, $3, 'pending', NOW(), 'pending')
+        RETURNING *`,
+        [appId, domain.toLowerCase(), token]
+      );
+
+      res.status(201).json({
+        domain: result.rows[0],
+        verification: {
+          type: 'TXT',
+          host: `_paas-verify.${domain.toLowerCase()}`,
+          value: recordValue,
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'Domain already in use' });
+      }
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to add custom domain',
+        clientMessage: 'Failed to add domain',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/paas/apps/:id/domains/:domainId/verify
+ * Verify DNS ownership and enable SSL
+ */
+router.post(
+  '/apps/:id/domains/:domainId/verify',
+  [param('id').isUUID(), param('domainId').isUUID()],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const orgId = (req as any).organizationId;
+      const appId = req.params.id;
+      const domainId = req.params.domainId;
+
+      const domainResult = await pool.query(
+        `SELECT d.*
+           FROM paas_domains d
+          JOIN paas_applications a ON a.id = d.application_id
+          WHERE d.id = $1 AND d.application_id = $2 AND a.organization_id = $3`,
+        [domainId, appId, orgId]
+      );
+
+      if (domainResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Domain not found' });
+      }
+
+      const domain = domainResult.rows[0];
+
+      const verified = await SSLService.validateDomainOwnership(domain);
+      if (!verified) {
+        return res.status(400).json({ error: 'DNS verification record not found yet' });
+      }
+
+      await SSLService.markDomainVerified(domain.id);
+      await SSLService.beginCertificateProvision(domain.id);
+      await SSLService.markCertificateActive(domain.id);
+
+      const updated = await pool.query('SELECT * FROM paas_domains WHERE id = $1', [domain.id]);
+
+      res.json({ domain: updated.rows[0] });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to verify custom domain',
+        clientMessage: 'Failed to verify domain',
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/paas/apps/:id/domains/:domainId
+ * Remove a custom domain
+ */
+router.delete(
+  '/apps/:id/domains/:domainId',
+  [param('id').isUUID(), param('domainId').isUUID()],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const orgId = (req as any).organizationId;
+      const appId = req.params.id;
+      const domainId = req.params.domainId;
+
+      const result = await pool.query(
+        `DELETE FROM paas_domains
+          USING paas_applications
+          WHERE paas_domains.id = $1
+            AND paas_domains.application_id = paas_applications.id
+            AND paas_applications.id = $2
+            AND paas_applications.organization_id = $3
+        RETURNING paas_domains.*`,
+        [domainId, appId, orgId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Domain not found' });
+      }
+
+      res.json({ message: 'Domain removed' });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to delete custom domain',
+        clientMessage: 'Failed to delete domain',
+      });
     }
   }
 );
@@ -708,8 +1044,13 @@ router.delete(
 
       res.json({ message: 'Environment variable deleted' });
     } catch (error: any) {
-      console.error('Failed to delete env var:', error);
-      res.status(500).json({ error: 'Failed to delete environment variable' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to delete environment variable',
+        clientMessage: 'Failed to delete environment variable',
+      });
     }
   }
 );
@@ -757,14 +1098,31 @@ router.post(
         organizationId: orgId,
         appId,
         eventType: 'paas.app.scale',
-        metadata: { replicas },
+        metadata: {
+          replicas,
+          previousReplicas: result.previousReplicas,
+          hourlyCostBefore: result.hourlyCostBefore,
+          hourlyCostAfter: result.hourlyCostAfter,
+        },
         message: `Scaling to ${replicas} replicas`,
       });
 
-      res.json({ message: 'Application scaled', replicas: result.currentReplicas });
+      res.json({
+        message: 'Application scaled',
+        replicas: result.currentReplicas,
+        previousReplicas: result.previousReplicas,
+        hourlyCostBefore: result.hourlyCostBefore,
+        hourlyCostAfter: result.hourlyCostAfter,
+        walletBalance: result.walletBalance,
+      });
     } catch (error: any) {
-      console.error('Failed to scale app:', error);
-      res.status(500).json({ error: 'Failed to scale application' });
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to scale PaaS application',
+        clientMessage: 'Failed to scale application',
+      });
     }
   }
 );
@@ -806,10 +1164,67 @@ router.post('/apps/:id/stop', param('id').isUUID(), async (req: Request, res: Re
 
     res.json({ message: 'Application stopped' });
   } catch (error: any) {
-    console.error('Failed to stop app:', error);
-    res.status(500).json({ error: 'Failed to stop application' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to stop PaaS application',
+      clientMessage: 'Failed to stop application',
+    });
   }
 });
+
+/**
+ * POST /api/paas/apps/:id/restart
+ * Restart an application (scale back up or redeploy latest slug)
+ */
+router.post(
+  '/apps/:id/restart',
+  [param('id').isUUID(), body('replicas').optional().isInt({ min: 1, max: 100 })],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const orgId = (req as any).organizationId;
+      const userId = (req as any).userId;
+      const appId = req.params.id;
+      const { replicas } = req.body;
+
+      const appCheck = await pool.query(
+        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
+        [appId, orgId]
+      );
+
+      if (appCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const result = await DeployerService.restart(appId, replicas);
+
+      await logPaasActivity({
+        userId,
+        organizationId: orgId,
+        appId,
+        eventType: 'paas.app.restart',
+        metadata: { replicas: result.replicas },
+        message: `Application restarted with ${result.replicas} replica${result.replicas !== 1 ? 's' : ''}`,
+      });
+
+      res.json({ message: 'Application restarted', replicas: result.replicas });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to restart PaaS application',
+        clientMessage: 'Failed to restart application',
+      });
+    }
+  }
+);
 
 /**
  * GET /api/paas/plans
@@ -817,14 +1232,90 @@ router.post('/apps/:id/stop', param('id').isUUID(), async (req: Request, res: Re
  */
 router.get('/plans', async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
-      'SELECT * FROM paas_plans WHERE is_active = true ORDER BY price_per_hour ASC'
-    );
-
-    res.json({ plans: result.rows });
+    const plans = await PaasPlanService.getActivePlans();
+    res.json({ plans });
   } catch (error: any) {
-    console.error('Failed to get plans:', error);
-    res.status(500).json({ error: 'Failed to get plans' });
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get active PaaS plans',
+      clientMessage: 'Failed to get plans',
+    });
+  }
+});
+
+/**
+ * GET /api/paas/usage
+ * Get billing usage for the current organization
+ */
+router.get('/usage', async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).organizationId;
+    const range = (req.query.range as string) || '7d';
+
+    const usage = await PaasBillingService.getOrganizationUsage(orgId, range);
+    res.json(usage);
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS usage summary',
+      clientMessage: 'Failed to get usage summary',
+    });
+  }
+});
+
+/**
+ * GET /api/paas/jobs/:id
+ * Retrieve job status for build/deploy queues
+ */
+router.get('/jobs/:id', param('id').isLength({ min: 1 }), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const jobId = req.params.id;
+    const preferredQueue = typeof req.query.queue === 'string' ? req.query.queue : null;
+    const queueOrder = preferredQueue ? [preferredQueue] : ['paas-build', 'paas-deploy'];
+
+    let job: any = null;
+    for (const queueName of queueOrder) {
+      if (!job && (queueName === 'paas-build' || queueName === 'build')) {
+        job = await buildQueue.getJob(jobId);
+      }
+      if (!job && (queueName === 'paas-deploy' || queueName === 'deploy')) {
+        job = await deployQueue.getJob(jobId);
+      }
+    }
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const state = await job.getState();
+    const progress = await job.progress();
+    res.json({
+      id: job.id,
+      queue: job.queue.name,
+      state,
+      progress,
+      attemptsMade: job.attemptsMade,
+      failedReason: job.failedReason,
+      returnValue: job.returnvalue,
+      data: job.data,
+    });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get PaaS job status',
+      clientMessage: 'Failed to get job status',
+    });
   }
 });
 

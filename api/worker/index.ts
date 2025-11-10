@@ -1,6 +1,6 @@
 /**
  * PaaS Worker Process
- * Background worker for build/deploy queue processing
+ * Background worker for build/deploy/billing queue processing
  */
 
 import dotenv from 'dotenv';
@@ -8,31 +8,28 @@ if (!process.env.IN_DOCKER) {
   dotenv.config();
 }
 
-import Queue from 'bull';
 import { BuilderService } from '../services/paas/builderService.js';
 import { DeployerService } from '../services/paas/deployerService.js';
 import { NodeManagerService } from '../services/paas/nodeManagerService.js';
-import { BillingService } from '../services/billingService.js';
+import { PaasBillingService } from '../services/paas/billingService.js';
+import { HealthCheckService } from '../services/paas/healthCheckService.js';
+import { LoggerService } from '../services/paas/loggerService.js';
+import { buildQueue, deployQueue, billingQueue, redisUrl } from './queues.js';
 
-// Initialize Bull queues
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-
-const buildQueue = new Queue('paas-build', REDIS_URL);
-const deployQueue = new Queue('paas-deploy', REDIS_URL);
-const billingQueue = new Queue('paas-billing', REDIS_URL);
-
-console.log('🚀 PaaS Worker starting...');
-console.log(`📦 Redis URL: ${REDIS_URL}`);
+console.log('PaaS worker starting...');
+console.log(`Redis URL: ${redisUrl}`);
 
 /**
  * Build Queue Processor
  */
 buildQueue.process(async (job) => {
   console.log(`[Build] Processing job ${job.id}`);
+  job.progress(5);
 
-  const { applicationId, gitUrl, gitBranch, gitCommit, buildpack, userId } = job.data;
+  const { applicationId, gitUrl, gitBranch, gitCommit, buildpack, userId, replicas } = job.data;
 
   try {
+    job.progress(20);
     const buildResult = await BuilderService.build({
       applicationId,
       gitUrl,
@@ -43,15 +40,17 @@ buildQueue.process(async (job) => {
     });
 
     if (buildResult.success) {
-      // Queue deployment
+      job.progress(80);
       await deployQueue.add({
         deploymentId: buildResult.deploymentId,
+        replicas,
       });
     }
 
+    job.progress(100);
     return buildResult;
   } catch (error: any) {
-    console.error(`[Build] Failed:`, error);
+    console.error('[Build] Failed:', error);
     throw error;
   }
 });
@@ -61,6 +60,7 @@ buildQueue.process(async (job) => {
  */
 deployQueue.process(async (job) => {
   console.log(`[Deploy] Processing job ${job.id}`);
+  job.progress(10);
 
   const { deploymentId, replicas } = job.data;
 
@@ -70,24 +70,22 @@ deployQueue.process(async (job) => {
       replicas,
     });
 
+    job.progress(100);
     return deployResult;
   } catch (error: any) {
-    console.error(`[Deploy] Failed:`, error);
+    console.error('[Deploy] Failed:', error);
     throw error;
   }
 });
 
 /**
  * Billing Queue Processor
- * Runs hourly to calculate PaaS resource usage and charge organizations
  */
 billingQueue.process(async (job) => {
   console.log(`[Billing] Processing job ${job.id}`);
 
   try {
-    // Run PaaS hourly billing
-    const result = await BillingService.runPaaSHourlyBilling();
-
+    const result = await PaasBillingService.recordHourlyUsage();
     console.log(`[Billing] Completed - ${result.billedInstances} apps billed, $${result.totalAmount.toFixed(2)} charged`);
 
     if (result.failedInstances.length > 0) {
@@ -96,22 +94,77 @@ billingQueue.process(async (job) => {
 
     return result;
   } catch (error: any) {
-    console.error(`[Billing] Critical error:`, error);
+    console.error('[Billing] Critical error:', error);
     throw error;
   }
 });
 
 /**
- * Node Health Monitor
- * Updates node status every 5 minutes
+ * Ensure hourly billing job is scheduled
  */
-setInterval(async () => {
+const ensureBillingSchedule = async () => {
+  try {
+    const scheduled = await billingQueue.getRepeatableJobs();
+    const hourlyJobId = 'paas-hourly-billing';
+    const exists = scheduled.some((job) => job.id === hourlyJobId);
+
+    if (!exists) {
+      await billingQueue.add(
+        'hourly',
+        {},
+        {
+          repeat: { cron: '0 * * * *' },
+          jobId: hourlyJobId,
+          removeOnComplete: true,
+        }
+      );
+      console.log('[Billing] Scheduled hourly billing job');
+    }
+  } catch (error) {
+    console.error('[Billing] Failed to ensure hourly billing schedule:', error);
+  }
+};
+
+ensureBillingSchedule().catch((error) => console.error('Failed to initialize billing schedule:', error));
+
+/**
+ * Node Health Monitor
+ */
+const pollWorkerNodes = async (): Promise<void> => {
   try {
     await NodeManagerService.updateNodeResources();
   } catch (error) {
     console.error('[Health] Failed to update node resources:', error);
   }
-}, 5 * 60 * 1000);
+};
+
+pollWorkerNodes().catch((error) => console.error('Initial worker node sync failed:', error));
+setInterval(pollWorkerNodes, 30 * 1000);
+
+/**
+ * Application Health Monitor
+ */
+setInterval(async () => {
+  try {
+    await HealthCheckService.monitorHealthChecks();
+  } catch (error) {
+    console.error('[Health] Failed to monitor application health:', error);
+  }
+}, 60 * 1000);
+
+/**
+ * Log retention enforcement
+ */
+const enforceLogRetention = async () => {
+  try {
+    await LoggerService.enforceRetention();
+  } catch (error) {
+    console.error('[Logs] Failed to enforce log retention:', error);
+  }
+};
+
+enforceLogRetention().catch((error) => console.error('Initial log retention check failed:', error));
+setInterval(enforceLogRetention, 6 * 60 * 60 * 1000);
 
 /**
  * Queue Event Handlers
@@ -132,21 +185,29 @@ deployQueue.on('failed', (job, err) => {
   console.error(`[Deploy] Job ${job?.id} failed:`, err);
 });
 
+billingQueue.on('completed', (job) => {
+  console.log(`[Billing] Job ${job.id} completed`);
+});
+
+billingQueue.on('failed', (job, err) => {
+  console.error(`[Billing] Job ${job?.id} failed:`, err);
+});
+
 /**
  * Graceful Shutdown
  */
 process.on('SIGTERM', async () => {
-  console.log('⏸️  Shutting down worker...');
+  console.log('Shutting down worker...');
 
   await buildQueue.close();
   await deployQueue.close();
   await billingQueue.close();
 
-  console.log('👋 Worker shut down gracefully');
+  console.log('Worker shut down gracefully');
   process.exit(0);
 });
 
-console.log('✅ PaaS Worker is ready!');
+console.log('PaaS worker ready.');
 console.log('   - Build queue: listening');
 console.log('   - Deploy queue: listening');
 console.log('   - Billing queue: listening');

@@ -12,6 +12,7 @@ import * as path from 'path';
 import { createReadStream } from 'fs';
 import * as tar from 'tar';
 import * as crypto from 'crypto';
+import { GitService } from './gitService.js';
 
 const execAsync = promisify(exec);
 
@@ -165,7 +166,10 @@ export class BuilderService {
     const slugPath = path.join(this.directories.slug, `${deploymentId}.tar.gz`);
 
     try {
-      // 1. Clone repository
+      // 1. Validate repo + branch and clone
+      await this.logBuild(deploymentId, '-----> Validating repository access...');
+      await this.validateRepository(options.gitUrl, options.gitBranch);
+
       await this.logBuild(deploymentId, '-----> Cloning repository...');
       await this.cloneRepository(options.gitUrl, options.gitBranch, workDir);
 
@@ -201,15 +205,29 @@ export class BuilderService {
   }
 
   /**
-   * Clone git repository
+   * Validate git repository access before cloning
+   */
+  private static async validateRepository(gitUrl: string, branch: string): Promise<void> {
+    try {
+      await GitService.validateRepository(gitUrl, branch);
+    } catch (error: any) {
+      throw new Error(
+        error?.message?.includes('not found')
+          ? `Git branch "${branch}" not found`
+          : 'Unable to access repository. Verify URL, credentials, and branch name.'
+      );
+    }
+  }
+
+  /**
+   * Clone git repository (HTTPS or SSH with auth)
    */
   private static async cloneRepository(gitUrl: string, branch: string, targetDir: string): Promise<void> {
-    // Security: Validate git URL
-    if (!gitUrl.match(/^(https?:\/\/|git@)/)) {
-      throw new Error('Invalid git URL');
+    try {
+      await GitService.cloneRepository(gitUrl, branch, targetDir);
+    } catch (error: any) {
+      throw new Error(`Git clone failed: ${error?.message || error}`);
     }
-
-    await execAsync(`git clone --depth 1 --branch ${branch} ${gitUrl} ${targetDir}`);
   }
 
   /**

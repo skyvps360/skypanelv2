@@ -10,8 +10,37 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { Client } from 'ssh2';
 import * as fs from 'fs/promises';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+import { logActivity } from '../activityLogger.js';
 
 const execAsync = promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SETUP_SCRIPT_PATH = path.resolve(__dirname, '../../../scripts/setup-worker.sh');
+
+let cachedSetupScript: string | null = null;
+
+const NANOS_IN_CPU = 1_000_000_000;
+const BYTES_IN_MB = 1024 * 1024;
+const WORKER_ALERT_COOLDOWN_MS = 15 * 60 * 1000;
+const workerAlertHistory = new Map<string, number>();
+let cachedAdminRecipients: { ids: string[]; fetchedAt: number } = { ids: [], fetchedAt: 0 };
+type WorkerAlertType = 'down' | 'unreachable' | 'resource';
+
+async function getSetupScriptContent(): Promise<string> {
+  if (cachedSetupScript) {
+    return cachedSetupScript;
+  }
+
+  try {
+    const script = await fs.readFile(SETUP_SCRIPT_PATH, 'utf-8');
+    cachedSetupScript = script;
+    return script;
+  } catch (error: any) {
+    throw new Error(`Setup script not found at ${SETUP_SCRIPT_PATH}: ${error?.message || error}`);
+  }
+}
 
 export interface NodeProvisionOptions {
   name: string;
@@ -26,6 +55,9 @@ export interface NodeStatus {
   id: string;
   name: string;
   status: string;
+  availability?: string | null;
+  ipAddress?: string;
+  hostname?: string | null;
   cpu: {
     total: number;
     used: number;
@@ -37,6 +69,7 @@ export interface NodeStatus {
     available: number;
   };
   containers: number;
+  warnings?: string[];
   lastHeartbeat?: string;
 }
 
@@ -98,8 +131,14 @@ export class NodeManagerService {
    */
   static async addWorkerNode(options: NodeProvisionOptions): Promise<string> {
     try {
+      const trimmedKey = options.sshKey?.trim();
+
+      if (options.autoProvision && !trimmedKey) {
+        throw new Error('SSH private key is required for auto-provisioning');
+      }
+
       // Encrypt SSH key if provided
-      const sshKeyEncrypted = options.sshKey ? encrypt(options.sshKey) : null;
+      const sshKeyEncrypted = trimmedKey ? encrypt(trimmedKey) : null;
 
       // Insert node into database
       const result = await pool.query<PaasWorkerNode>(
@@ -121,7 +160,13 @@ export class NodeManagerService {
 
       // Auto-provision if requested
       if (options.autoProvision) {
-        await this.provisionNode(node.id);
+        try {
+          await this.provisionNode(node.id);
+        } catch (error) {
+          throw error instanceof Error
+            ? error
+            : new Error('Auto-provisioning failed. Check worker logs for details.');
+        }
       }
 
       return node.id;
@@ -146,58 +191,33 @@ export class NodeManagerService {
     const node = nodeResult.rows[0];
 
     try {
-      // Get Swarm join token
       const swarmConfig = await PaasSettingsService.getSwarmConfig();
 
       if (!swarmConfig.initialized) {
         throw new Error('Swarm not initialized. Please initialize Swarm first.');
       }
 
-      // SSH into node and run setup script
       const sshKey = node.ssh_key_encrypted ? decrypt(node.ssh_key_encrypted) : null;
 
       if (!sshKey) {
         throw new Error('SSH key required for auto-provisioning');
       }
 
-      // Run setup commands via SSH
+      const setupScript = await getSetupScriptContent();
+      const scriptBase64 = Buffer.from(setupScript, 'utf-8').toString('base64');
+      const remoteScriptPath = `/tmp/skypanel-worker-${node.id}.sh`;
+
+      // Reconfirm provisioning state
+      await pool.query('UPDATE paas_worker_nodes SET status = $1 WHERE id = $2', ['provisioning', nodeId]);
+
       await this.runSSHCommands(node, sshKey, [
-        // Install Docker
-        'apt-get update',
-        'apt-get install -y apt-transport-https ca-certificates curl software-properties-common',
-        'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -',
-        'add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"',
-        'apt-get update',
-        'apt-get install -y docker-ce docker-ce-cli containerd.io',
-        'systemctl enable docker',
-        'systemctl start docker',
-
-        // Configure firewall
-        'ufw allow 2377/tcp',  // Swarm cluster management
-        'ufw allow 7946/tcp',  // Container network discovery
-        'ufw allow 7946/udp',
-        'ufw allow 4789/udp',  // Overlay network traffic
-
-        // Join Swarm
-        `docker swarm join --token ${swarmConfig.workerToken} ${swarmConfig.managerIp}:2377`,
+        `echo '${scriptBase64}' | base64 -d > ${remoteScriptPath}`,
+        `chmod +x ${remoteScriptPath}`,
+        `${remoteScriptPath} ${swarmConfig.workerToken} ${swarmConfig.managerIp}`,
+        `rm -f ${remoteScriptPath}`,
       ]);
 
-      // Get Swarm node ID
-      const { stdout: nodeIdOutput } = await execAsync(
-        `docker node ls --filter "name=${node.name}" --format "{{.ID}}"`
-      );
-
-      const swarmNodeId = nodeIdOutput.trim();
-
-      // Update node status
-      await pool.query(
-        `UPDATE paas_worker_nodes SET
-          status = $1,
-          swarm_node_id = $2,
-          last_heartbeat_at = NOW()
-        WHERE id = $3`,
-        ['active', swarmNodeId, nodeId]
-      );
+      await this.syncNodeMetadata(node, { retries: 6 });
     } catch (error: any) {
       await pool.query(
         'UPDATE paas_worker_nodes SET status = $1 WHERE id = $2',
@@ -267,6 +287,291 @@ export class NodeManagerService {
   }
 
   /**
+   * Match Swarm metadata with database record and persist capacities/status
+   */
+  private static async syncNodeMetadata(
+    node: PaasWorkerNode,
+    options: { retries?: number } = {}
+  ): Promise<void> {
+    const retries = Math.max(options.retries ?? 3, 1);
+
+    for (let attempt = 0; attempt < retries; attempt++) {
+      const match = await this.findSwarmNode(node.ip_address, node.name);
+
+      if (match) {
+        const nanoCpus = Number(match.info?.Description?.Resources?.NanoCPUs || 0);
+        const memoryBytes = Number(match.info?.Description?.Resources?.MemoryBytes || 0);
+
+        const capacityCpu = Number((nanoCpus / NANOS_IN_CPU).toFixed(2));
+        const capacityRamMb = Math.round(memoryBytes / BYTES_IN_MB);
+        const hostname = match.info?.Description?.Hostname || null;
+
+        await pool.query(
+          `UPDATE paas_worker_nodes SET
+            swarm_node_id = $1,
+            status = 'active',
+            capacity_cpu = $2,
+            capacity_ram_mb = $3,
+            last_heartbeat_at = NOW(),
+            metadata = jsonb_set(
+              COALESCE(metadata, '{}'::jsonb),
+              '{hostname}',
+              CASE WHEN $4 IS NULL THEN 'null'::jsonb ELSE to_jsonb($4::text) END,
+              true
+            )
+          WHERE id = $5`,
+          [match.id, capacityCpu, capacityRamMb, hostname, node.id]
+        );
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+
+    throw new Error(
+      `Node "${node.name}" (${node.ip_address}) joined but couldn't be matched in Swarm. Verify networking and try again.`
+    );
+  }
+
+  private static async findSwarmNode(
+    ipAddress?: string,
+    preferredHostname?: string
+  ): Promise<{ id: string; info: any } | null> {
+    const { stdout } = await execAsync('docker node ls -q');
+    const ids = stdout
+      .trim()
+      .split('\n')
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0);
+
+    for (const id of ids) {
+      const { stdout: inspectJson } = await execAsync(`docker node inspect ${id} --format "{{json .}}"`);
+      const info = JSON.parse(inspectJson || '{}');
+      const addr = info?.Status?.Addr;
+      const hostname = info?.Description?.Hostname;
+
+      if ((ipAddress && addr && addr.toString().startsWith(ipAddress)) || (preferredHostname && hostname === preferredHostname)) {
+        return { id, info };
+      }
+    }
+
+    return null;
+  }
+
+  private static async collectNodeMetrics(
+    swarmNodeId: string,
+    resourceCache: Map<string, { cpu: number; ramMb: number }>
+  ): Promise<{
+    status: string;
+    availability: string | null;
+    hostname: string | null;
+    address: string | null;
+    cpuTotal: number;
+    ramTotalMb: number;
+    usedCpu: number;
+    usedRamMb: number;
+    containers: number;
+  }> {
+    const { stdout } = await execAsync(`docker node inspect ${swarmNodeId} --format "{{json .}}"`);
+    const info = JSON.parse(stdout || '{}');
+
+    const nanoCpus = Number(info?.Description?.Resources?.NanoCPUs || 0);
+    const memoryBytes = Number(info?.Description?.Resources?.MemoryBytes || 0);
+
+    const usage = await this.computeTaskUsage(swarmNodeId, resourceCache);
+
+    return {
+      status: info?.Status?.State || 'unknown',
+      availability: info?.Spec?.Availability || info?.Status?.Availability || null,
+      hostname: info?.Description?.Hostname || null,
+      address: info?.Status?.Addr || null,
+      cpuTotal: Number((nanoCpus / NANOS_IN_CPU).toFixed(2)),
+      ramTotalMb: Math.round(memoryBytes / BYTES_IN_MB),
+      usedCpu: Number(usage.usedCpu.toFixed(2)),
+      usedRamMb: usage.usedRamMb,
+      containers: usage.containers,
+    };
+  }
+
+  private static async computeTaskUsage(
+    swarmNodeId: string,
+    resourceCache: Map<string, { cpu: number; ramMb: number }>
+  ): Promise<{ usedCpu: number; usedRamMb: number; containers: number }> {
+    const { stdout } = await execAsync(
+      `docker node ps ${swarmNodeId} --filter "desired-state=running" --format "{{json .}}"`
+    );
+
+    const lines = stdout
+      .trim()
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    let usedCpu = 0;
+    let usedRamMb = 0;
+    let containers = 0;
+
+    for (const line of lines) {
+      const task = JSON.parse(line);
+      if ((task?.CurrentState || '').toLowerCase().startsWith('running')) {
+        containers += 1;
+      }
+
+      const serviceName = task?.ServiceName;
+      if (!serviceName) continue;
+
+      const resources = await this.getServiceResourceUsage(serviceName, resourceCache);
+      usedCpu += resources.cpu;
+      usedRamMb += resources.ramMb;
+    }
+
+    return { usedCpu, usedRamMb, containers };
+  }
+
+  private static async getServiceResourceUsage(
+    serviceName: string,
+    resourceCache: Map<string, { cpu: number; ramMb: number }>
+  ): Promise<{ cpu: number; ramMb: number }> {
+    if (resourceCache.has(serviceName)) {
+      return resourceCache.get(serviceName)!;
+    }
+
+    try {
+      const { stdout } = await execAsync(
+        `docker service inspect ${serviceName} --format "{{json .Spec.TaskTemplate.Resources}}"`
+      );
+      const resources = JSON.parse(stdout || '{}');
+      const limits = resources?.Limits || {};
+      const reservations = resources?.Reservations || {};
+
+      const nanoCpus = Number(limits.NanoCPUs || reservations.NanoCPUs || 0);
+      const memoryBytes = Number(limits.MemoryBytes || reservations.MemoryBytes || 0);
+
+      const usage = {
+        cpu: Number((nanoCpus / NANOS_IN_CPU).toFixed(2)),
+        ramMb: Math.round(memoryBytes / BYTES_IN_MB),
+      };
+
+      resourceCache.set(serviceName, usage);
+      return usage;
+    } catch (error) {
+      console.warn(`Unable to inspect service ${serviceName} for resource usage:`, error);
+      const fallback = { cpu: 0, ramMb: 0 };
+      resourceCache.set(serviceName, fallback);
+      return fallback;
+    }
+  }
+
+  private static mapDockerStatus(state?: string, fallback?: string): PaasWorkerNode['status'] {
+    const normalized = (state || '').toLowerCase();
+    switch (normalized) {
+      case 'ready':
+      case 'active':
+        return 'active';
+      case 'drain':
+      case 'draining':
+        return 'draining';
+      case 'down':
+      case 'disconnected':
+        return 'down';
+      default:
+        return (fallback as PaasWorkerNode['status']) || 'unreachable';
+    }
+  }
+
+  private static async evaluateAlertConditions(
+    node: PaasWorkerNode,
+    status: PaasWorkerNode['status'],
+    metrics: { cpuTotal: number; usedCpu: number; ramTotalMb: number; usedRamMb: number }
+  ): Promise<void> {
+    if ((status === 'down' || status === 'unreachable') && status !== node.status) {
+      await this.emitWorkerAlert(
+        node,
+        status,
+        `Worker node ${node.name} is now ${status}`,
+        {
+          previous_status: node.status,
+          current_status: status,
+        }
+      );
+    }
+
+    if (status !== 'active') {
+      return;
+    }
+
+    const cpuExceeded = metrics.cpuTotal > 0 && metrics.usedCpu / metrics.cpuTotal >= 0.9;
+    const ramExceeded = metrics.ramTotalMb > 0 && metrics.usedRamMb / metrics.ramTotalMb >= 0.9;
+
+    if (cpuExceeded || ramExceeded) {
+      await this.emitWorkerAlert(node, 'resource', `Worker node ${node.name} resources are constrained`, {
+        cpu_used: metrics.usedCpu,
+        cpu_total: metrics.cpuTotal,
+        ram_used_mb: metrics.usedRamMb,
+        ram_total_mb: metrics.ramTotalMb,
+      });
+    }
+  }
+
+  private static async emitWorkerAlert(
+    node: PaasWorkerNode,
+    type: WorkerAlertType,
+    message: string,
+    metadata: Record<string, any>
+  ): Promise<void> {
+    const cooldownKey = `${node.id}:${type}`;
+    const now = Date.now();
+    const lastAlert = workerAlertHistory.get(cooldownKey);
+    if (lastAlert && now - lastAlert < WORKER_ALERT_COOLDOWN_MS) {
+      return;
+    }
+    workerAlertHistory.set(cooldownKey, now);
+
+    const adminIds = await this.getAdminUserIds();
+    if (adminIds.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      adminIds.map((adminId) =>
+        logActivity({
+          userId: adminId,
+          eventType: `admin.paas.worker.${type}`,
+          entityType: 'paas_worker',
+          entityId: node.id,
+          message,
+          status: type === 'resource' ? 'warning' : 'error',
+          metadata: {
+            node_id: node.id,
+            node_name: node.name,
+            ip_address: node.ip_address,
+            ...metadata,
+          },
+        }).catch((error) => console.warn('Worker alert logging failed:', error))
+      )
+    );
+  }
+
+  private static async getAdminUserIds(): Promise<string[]> {
+    const now = Date.now();
+    if (cachedAdminRecipients.ids.length > 0 && now - cachedAdminRecipients.fetchedAt < 5 * 60 * 1000) {
+      return cachedAdminRecipients.ids;
+    }
+
+    try {
+      const result = await pool.query<{ id: string }>('SELECT id FROM users WHERE role = $1', ['admin']);
+      cachedAdminRecipients = {
+        ids: result.rows.map((row) => row.id),
+        fetchedAt: now,
+      };
+    } catch (error) {
+      console.error('Failed to fetch admin recipients for worker alerts:', error);
+    }
+
+    return cachedAdminRecipients.ids;
+  }
+
+  /**
    * Remove a worker node from Swarm
    */
   static async removeNode(nodeId: string): Promise<void> {
@@ -282,6 +587,7 @@ export class NodeManagerService {
     const node = nodeResult.rows[0];
 
     try {
+      await pool.query('UPDATE paas_worker_nodes SET status = $1 WHERE id = $2', ['draining', nodeId]);
       if (node.swarm_node_id) {
         // Drain node
         await execAsync(`docker node update --availability drain ${node.swarm_node_id}`);
@@ -308,102 +614,141 @@ export class NodeManagerService {
       'SELECT * FROM paas_worker_nodes ORDER BY created_at DESC'
     );
 
-    const statuses: NodeStatus[] = [];
+    return nodes.rows.map((node) => {
+      const totalCpu = Number(node.capacity_cpu || 0);
+      const usedCpu = Number(node.used_cpu || 0);
+      const totalRam = Number(node.capacity_ram_mb || 0);
+      const usedRam = Number(node.used_ram_mb || 0);
 
-    for (const node of nodes.rows) {
-      if (node.swarm_node_id) {
-        try {
-          // Get node stats from Docker
-          const { stdout } = await execAsync(
-            `docker node inspect ${node.swarm_node_id} --format "{{json .}}"`
-          );
-
-          const nodeInfo = JSON.parse(stdout);
-
-          // Count containers on this node
-          let containerCount = 0;
-          try {
-            const { stdout: tasksOutput } = await execAsync(
-              `docker node ps ${node.swarm_node_id} --filter "desired-state=running" --format "{{.ID}}"`
-            );
-            containerCount = tasksOutput.trim().split('\n').filter(line => line.length > 0).length;
-          } catch (countError) {
-            console.warn(`Failed to count containers for node ${node.name}:`, countError);
-          }
-
-          // Get resource usage (simplified - in production would use Prometheus)
-          statuses.push({
-            id: node.id,
-            name: node.name,
-            status: nodeInfo.Status.State,
-            cpu: {
-              total: node.capacity_cpu || 0,
-              used: node.used_cpu,
-              available: (node.capacity_cpu || 0) - node.used_cpu,
-            },
-            ram: {
-              total: node.capacity_ram_mb || 0,
-              used: node.used_ram_mb,
-              available: (node.capacity_ram_mb || 0) - node.used_ram_mb,
-            },
-            containers: containerCount,
-            lastHeartbeat: node.last_heartbeat_at,
-          });
-        } catch (error) {
-          // Node might be down
-          statuses.push({
-            id: node.id,
-            name: node.name,
-            status: 'unreachable',
-            cpu: { total: 0, used: 0, available: 0 },
-            ram: { total: 0, used: 0, available: 0 },
-            containers: 0,
-            lastHeartbeat: node.last_heartbeat_at,
-          });
-        }
-      } else {
-        statuses.push({
-          id: node.id,
-          name: node.name,
-          status: node.status,
-          cpu: { total: 0, used: 0, available: 0 },
-          ram: { total: 0, used: 0, available: 0 },
-          containers: 0,
-          lastHeartbeat: node.last_heartbeat_at,
-        });
+      const metadata = (node.metadata ?? {}) as Record<string, any>;
+      const warnings: string[] = [];
+      if (node.status === 'unreachable' || node.status === 'down') {
+        warnings.push('Node unreachable');
       }
-    }
+      if (totalCpu > 0 && usedCpu / totalCpu > 0.9) {
+        warnings.push('CPU usage above 90%');
+      }
+      if (totalRam > 0 && usedRam / totalRam > 0.9) {
+        warnings.push('RAM usage above 90%');
+      }
+      if (metadata.last_error) {
+        warnings.push(metadata.last_error);
+      }
 
-    return statuses;
+      return {
+        id: node.id,
+        name: node.name,
+        status: node.status,
+        availability: metadata.availability || null,
+        ipAddress: node.ip_address,
+        hostname: metadata.hostname || null,
+        cpu: {
+          total: totalCpu,
+          used: usedCpu,
+          available: Math.max(totalCpu - usedCpu, 0),
+        },
+        ram: {
+          total: totalRam,
+          used: usedRam,
+          available: Math.max(totalRam - usedRam, 0),
+        },
+        containers: Number(metadata.containers || 0),
+        warnings,
+        lastHeartbeat: node.last_heartbeat_at,
+      };
+    });
   }
 
   /**
    * Update node resource usage (called periodically)
    */
   static async updateNodeResources(): Promise<void> {
-    const nodes = await pool.query<PaasWorkerNode>(
-      'SELECT * FROM paas_worker_nodes WHERE swarm_node_id IS NOT NULL'
-    );
+    const nodes = await pool.query<PaasWorkerNode>('SELECT * FROM paas_worker_nodes ORDER BY created_at DESC');
+    const serviceResourceCache = new Map<string, { cpu: number; ramMb: number }>();
 
     for (const node of nodes.rows) {
-      try {
-        // Get running tasks on this node
-        const { stdout } = await execAsync(
-          `docker node ps ${node.swarm_node_id} --filter "desired-state=running" --format "{{json .}}"`
-        );
+      if (!node.swarm_node_id) {
+        if (node.status !== 'provisioning') {
+          await this.syncNodeMetadata(node, { retries: 1 }).catch(() => {
+            // Node might still be pending manual provisioning
+          });
+        }
+        continue;
+      }
 
-        // Parse resource usage (simplified)
-        // In production, integrate with Prometheus/cAdvisor for accurate metrics
+      try {
+        const metrics = await this.collectNodeMetrics(node.swarm_node_id, serviceResourceCache);
+        const normalizedStatus = this.mapDockerStatus(metrics.status, node.status);
+        await this.evaluateAlertConditions(node, normalizedStatus, metrics);
 
         await pool.query(
           `UPDATE paas_worker_nodes SET
-            last_heartbeat_at = NOW()
-          WHERE id = $1`,
-          [node.id]
+            status = $1,
+            capacity_cpu = $2,
+            used_cpu = $3,
+            capacity_ram_mb = $4,
+            used_ram_mb = $5,
+            last_heartbeat_at = NOW(),
+            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+              'hostname', $6,
+              'address', $7,
+              'availability', $8,
+              'containers', $9
+            )
+          WHERE id = $10`,
+          [
+            normalizedStatus,
+            metrics.cpuTotal,
+            metrics.usedCpu,
+            metrics.ramTotalMb,
+            metrics.usedRamMb,
+            metrics.hostname,
+            metrics.address,
+            metrics.availability,
+            metrics.containers,
+            node.id,
+          ]
         );
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Failed to update node ${node.name}:`, error);
+        await pool.query(
+          `UPDATE paas_worker_nodes SET
+            status = 'unreachable',
+            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('last_error', $1)
+           WHERE id = $2`,
+          [error?.message || 'Unknown error', node.id]
+        );
       }
+    }
+  }
+
+  /**
+   * Validate Docker Swarm connectivity on the manager node
+   */
+  static async validateSwarmConnectivity(): Promise<{
+    localNodeState: string;
+    nodeId?: string;
+    managers?: number;
+    nodes?: number;
+  }> {
+    try {
+      const { stdout } = await execAsync('docker info --format "{{json .Swarm}}"');
+      const swarmInfo = JSON.parse(stdout || '{}');
+
+      if (!swarmInfo.LocalNodeState || swarmInfo.LocalNodeState.toLowerCase() !== 'active') {
+        throw new Error(
+          `Swarm local node state is ${swarmInfo.LocalNodeState || 'unavailable'}`
+        );
+      }
+
+      return {
+        localNodeState: swarmInfo.LocalNodeState,
+        nodeId: swarmInfo.NodeID,
+        managers: Number(swarmInfo.Managers || 0),
+        nodes: Number(swarmInfo.Nodes || 0),
+      };
+    } catch (error: any) {
+      throw new Error(`Docker Swarm connectivity check failed: ${error?.message || error}`);
     }
   }
 }

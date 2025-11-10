@@ -3,6 +3,45 @@
 # Worker Node Setup Script for Ubuntu 24.04 LTS
 # This script is run on remote worker nodes to install Docker and join the Swarm cluster
 
+# When executed from within the SkyPanelV2 repo, auto-manage the .env so the UI metrics
+# have Prometheus defaults without manual edits.
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$( cd "${SCRIPT_DIR}/.." && pwd )"
+
+ensure_env_key() {
+  local env_file="$1"
+  local key="$2"
+  local value="$3"
+
+  if grep -q "^${key}=" "$env_file" 2>/dev/null; then
+    local current
+    current="$(grep -E "^${key}=" "$env_file" | tail -n 1 | cut -d '=' -f2-)"
+    if [ "$current" != "$value" ]; then
+      sed -i.bak -E "s|^${key}=.*|${key}=${value}|" "$env_file"
+      rm -f "${env_file}.bak"
+      echo "�o. Updated ${key} in ${env_file}"
+    fi
+  else
+    {
+      echo ""
+      echo "# Auto-added by setup-worker.sh"
+      echo "${key}=${value}"
+    } >> "$env_file"
+    echo "�o. Added ${key} to ${env_file}"
+  fi
+}
+
+ENV_PATH="${REPO_ROOT}/.env"
+if [ -n "$ENV_PATH" ]; then
+  if [ ! -f "$ENV_PATH" ]; then
+    touch "$ENV_PATH"
+    echo "�o. Created ${ENV_PATH}"
+  fi
+
+  ensure_env_key "$ENV_PATH" "VITE_PROMETHEUS_URL" "http://localhost:9090"
+  ensure_env_key "$ENV_PATH" "VITE_PROMETHEUS_APP_LABEL" "app_id"
+fi
+
 set -e
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

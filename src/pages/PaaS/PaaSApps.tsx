@@ -24,6 +24,7 @@ interface PaasApp {
   plan_name: string;
   cpu_cores: number;
   ram_mb: number;
+  max_replicas?: number;
   created_at: string;
   updated_at: string;
 }
@@ -112,17 +113,22 @@ const PaaSApps: React.FC = () => {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-3xl font-bold">Applications</h1>
           <p className="text-muted-foreground mt-1">
             Deploy and manage your applications
           </p>
         </div>
-        <Button onClick={() => navigate('/paas/new')}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Application
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate('/paas/plans')}>
+            Compare Plans
+          </Button>
+          <Button onClick={() => navigate('/paas/new')}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Application
+          </Button>
+        </div>
       </div>
 
       {apps.length === 0 ? (

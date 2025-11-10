@@ -40,6 +40,8 @@ import sshKeysRoutes from './routes/sshKeys.js';
 import pricingRoutes from './routes/pricing.js';
 import paasRoutes from './routes/paas.js';
 import { notificationService } from './services/notificationService.js';
+import { PaasSettingsService } from './services/paas/settingsService.js';
+import { PaasPlanService } from './services/paas/planService.js';
 import { performStartupValidation, initializeConfigurationMonitoring } from './services/rateLimitConfigValidator.js';
 import { initializeMetricsCollection, startMetricsPersistence } from './services/rateLimitMetrics.js';
 
@@ -61,6 +63,14 @@ startMetricsPersistence();
 // Start notification service for real-time updates
 notificationService.start().catch(err => {
   console.error('Failed to start notification service:', err);
+});
+
+PaasSettingsService.initializeDefaults().catch(err => {
+  console.error('Failed to ensure default PaaS settings:', err);
+});
+
+PaasPlanService.ensureDefaultPlans().catch(err => {
+  console.error('Failed to ensure default PaaS plans:', err);
 });
 
 const app: express.Application = express()
