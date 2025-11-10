@@ -2,6 +2,36 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
+vi.mock('util', () => {
+  const promisify = (fn: any) => fn;
+  return { promisify, default: { promisify } };
+});
+
+vi.mock('child_process', () => {
+  const exec = vi.fn();
+  return { exec, default: { exec } };
+});
+
+vi.mock('path', async () => {
+  const actual = await vi.importActual<typeof import('path')>('path');
+  return { ...actual, default: actual };
+});
+
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return { ...actual, default: actual };
+});
+
+vi.mock('fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('fs/promises')>('fs/promises');
+  return { ...actual, default: actual };
+});
+
+vi.mock('crypto', async () => {
+  const actual = await vi.importActual<typeof import('crypto')>('crypto');
+  return { ...actual, default: actual };
+});
+
 const queryMock = vi.hoisted(() => vi.fn()) as Mock;
 
 vi.mock('../../middleware/auth.js', () => ({
@@ -17,6 +47,45 @@ vi.mock('../../lib/database.js', () => ({
   pool: {
     query: queryMock,
   },
+}));
+
+vi.mock('../../services/paas/settingsService.js', () => ({
+  PaasSettingsService: {
+    list: vi.fn(),
+  },
+}));
+
+vi.mock('../../services/paas/nodeManagerService.js', () => ({
+  NodeManagerService: {
+    list: vi.fn(),
+  },
+}));
+
+vi.mock('../../services/paas/deployerService.js', () => ({
+  DeployerService: {
+    getStatus: vi.fn(),
+  },
+}));
+
+vi.mock('../../services/activityLogger.js', () => ({
+  logActivity: vi.fn(),
+}));
+
+vi.mock('../../services/paas/billingService.js', () => ({
+  PaasBillingService: {
+    getSystemTotals: vi.fn(),
+  },
+}));
+
+vi.mock('../../services/paas/planService.js', () => ({
+  PaasPlanService: {
+    listAll: vi.fn(),
+  },
+}));
+
+vi.mock('../../utils/paasApiError.js', () => ({
+  handlePaasApiError: ({ res, clientMessage }: any) =>
+    res.status(500).json({ error: clientMessage ?? 'error' }),
 }));
 
 import adminPaasRouter from './paas.js';

@@ -1659,15 +1659,18 @@ router.post('/marketplace/deploy/:slug',
       const app = appResult.rows[0];
 
       // Merge default env vars with custom env vars
-      const envVars = { ...template.default_env_vars, ...custom_env_vars };
+      const envSources = {
+        ...(template.default_env_vars || {}),
+        ...(custom_env_vars || {}),
+      } as Record<string, unknown>;
 
-      // Insert environment variables
-      for (const [key, value] of Object.entries(envVars)) {
-        await pool.query(
-          'INSERT INTO paas_environment_vars (application_id, key, value, created_at) VALUES ($1, $2, $3, NOW())',
-          [app.id, key, value]
-        );
+      const sanitizedEnvVars: Record<string, string> = {};
+      for (const [key, value] of Object.entries(envSources)) {
+        if (value === undefined || value === null) continue;
+        sanitizedEnvVars[key] = String(value);
       }
+
+      await PaasEnvironmentService.upsertMany(app.id, orgId, sanitizedEnvVars);
 
       // Create template deployment record
       const deploymentTrackingResult = await pool.query(
