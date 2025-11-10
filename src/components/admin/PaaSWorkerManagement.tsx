@@ -209,7 +209,7 @@ export const PaaSWorkerManagement: React.FC = () => {
               />
               <Label>Auto-provision (install Docker, join Swarm automatically)</Label>
             </div>
-          </DialogContent>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
             <Button onClick={handleAdd}>Add Worker</Button>

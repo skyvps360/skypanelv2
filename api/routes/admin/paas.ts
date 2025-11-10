@@ -4,7 +4,7 @@
  */
 
 import express, { Request, Response } from 'express';
-import { authenticateToken, requireAdmin } from '../middleware/auth.js';
+import { authenticateToken, requireAdmin } from '../../middleware/auth.js';
 import { pool } from '../lib/database.js';
 import { PaasSettingsService } from '../services/paas/settingsService.js';
 import { NodeManagerService } from '../services/paas/nodeManagerService.js';
