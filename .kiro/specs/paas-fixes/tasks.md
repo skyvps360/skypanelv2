@@ -320,12 +320,12 @@
     - Show rollback progress
     - Update UI on completion
     - _Requirements: 14.1_
-  - [ ] 14.4 Optimize rollback performance
-    - Use cached slugs for fast rollback
-    - Skip build step for rollbacks
-    - Target 30-second rollback time
-    - Log rollback duration
-    - _Requirements: 14.5_
+    - [x] 14.4 Optimize rollback performance
+      - Use cached slugs for fast rollback
+      - Skip build step for rollbacks
+      - Target 30-second rollback time
+      - Log rollback duration
+      - _Requirements: 14.5_
 
 - [x] 15. Implement application lifecycle management
   - [x] 15.1 Add application stop functionality
@@ -439,93 +439,93 @@
 
 ## Phase 7: Environment Variables and Secrets
 
-- [ ] 19. Implement environment variable management
-  - [ ] 19.1 Enhance environment variable encryption
-    - Encrypt all values with organization key
-    - Derive keys from master key + org ID
-    - Store encrypted values in database
-    - Never log or expose decrypted values
-    - _Requirements: 12.1, 12.2, 4.5_
-  - [ ] 19.2 Implement environment variable injection
-    - Inject user-defined variables into containers
-    - Inject system variables (PORT, DYNO, PS)
-    - Inject automatically on deployment
-    - Handle variable updates with redeployment
-    - _Requirements: 12.3, 12.4_
-  - [ ] 19.3 Add environment variable validation
-    - Validate key format [A-Z0-9_]+
-    - Prevent reserved system variable names
-    - Validate value length limits
-    - Sanitize values for shell injection
-    - _Requirements: 12.5_
-  - [ ] 19.4 Implement bulk environment variable operations
-    - Support setting multiple variables at once
-    - Support importing from .env file format
-    - Support exporting to .env file format
-    - Trigger single redeployment for bulk updates
-    - _Requirements: 12.3_
+  - [x] 19. Implement environment variable management
+    - [x] 19.1 Enhance environment variable encryption
+      - Encrypt all values with organization key
+      - Derive keys from master key + org ID
+      - Store encrypted values in database
+      - Never log or expose decrypted values
+      - _Requirements: 12.1, 12.2, 4.5_
+    - [x] 19.2 Implement environment variable injection
+      - Inject user-defined variables into containers
+      - Inject system variables (PORT, DYNO, PS)
+      - Inject automatically on deployment
+      - Handle variable updates with redeployment
+      - _Requirements: 12.3, 12.4_
+    - [x] 19.3 Add environment variable validation
+      - Validate key format [A-Z0-9_]+
+      - Prevent reserved system variable names
+      - Validate value length limits
+      - Sanitize values for shell injection
+      - _Requirements: 12.5_
+    - [x] 19.4 Implement bulk environment variable operations
+      - Support setting multiple variables at once
+      - Support importing from .env file format
+      - Support exporting to .env file format
+      - Trigger single redeployment for bulk updates
+      - _Requirements: 12.3_
 
 ## Phase 8: Infrastructure and Initialization
 
-- [ ] 20. Implement infrastructure auto-deployment
-  - [ ] 20.1 Enhance `scripts/init-paas.ts` initialization script
-    - Initialize Docker Swarm if not initialized
-    - Deploy infrastructure via docker-compose
-    - Wait for services to be healthy
-    - Create default settings in database
-    - _Requirements: 11.1, 11.5_
-  - [ ] 20.2 Configure Traefik for SSL
-    - Set up Let's Encrypt certificate resolver
-    - Configure ACME challenge
-    - Set admin email for certificates
-    - Enable automatic certificate renewal
-    - _Requirements: 11.2_
-  - [ ] 20.3 Configure Loki for log retention
-    - Read retention period from settings
-    - Update Loki configuration
-    - Restart Loki service if needed
-    - Verify retention is applied
-    - _Requirements: 11.3_
-  - [ ] 20.4 Configure Grafana datasources
-    - Add Loki as datasource
-    - Add Prometheus as datasource
-    - Configure default dashboards
-    - Set admin credentials
-    - _Requirements: 11.4_
-  - [ ] 20.5 Verify infrastructure health
-    - Check all services are running
-    - Check Loki is accepting logs
-    - Check Traefik is routing traffic
-    - Check Prometheus is scraping metrics
-    - _Requirements: 11.5_
+  - [x] 20. Implement infrastructure auto-deployment
+    - [x] 20.1 Enhance `scripts/init-paas.ts` initialization script
+      - Initialize Docker Swarm if not initialized
+      - Deploy infrastructure via docker-compose
+      - Wait for services to be healthy
+      - Create default settings in database
+      - _Requirements: 11.1, 11.5_
+    - [x] 20.2 Configure Traefik for SSL
+      - Set up Let's Encrypt certificate resolver
+      - Configure ACME challenge
+      - Set admin email for certificates
+      - Enable automatic certificate renewal
+      - _Requirements: 11.2_
+    - [x] 20.3 Configure Loki for log retention
+      - Read retention period from settings
+      - Update Loki configuration
+      - Restart Loki service if needed
+      - Verify retention is applied
+      - _Requirements: 11.3_
+    - [x] 20.4 Configure Grafana datasources
+      - Add Loki as datasource
+      - Add Prometheus as datasource
+      - Configure default dashboards
+      - Set admin credentials
+      - _Requirements: 11.4_
+    - [x] 20.5 Verify infrastructure health
+      - Check all services are running
+      - Check Loki is accepting logs
+      - Check Traefik is routing traffic
+      - Check Prometheus is scraping metrics
+      - _Requirements: 11.5_
 
 ## Phase 9: User Management Integration
 
-- [ ] 21. Integrate PaaS with user management
-  - [ ] 21.1 Add PaaS statistics to user management UI
-    - Display application count per organization
-    - Display total PaaS costs per organization
-    - Display resource usage per organization
-    - Add PaaS section to organization detail view
-    - _Requirements: 16.1, 16.2, 16.4_
-  - [ ] 21.2 Implement organization deletion handling
-    - Prompt to delete or reassign PaaS applications
-    - Stop all applications before deletion
-    - Delete all application data
-    - Handle deletion errors gracefully
-    - _Requirements: 16.3_
-  - [ ] 21.3 Add PaaS suspension functionality
-    - Create endpoint to suspend all org applications
-    - Stop all running applications
-    - Update application statuses
-    - Prevent new deployments while suspended
-    - _Requirements: 16.5_
-  - [ ] 21.4 Add PaaS usage reports
-    - Show usage by organization
-    - Show usage by application
-    - Show usage over time
-    - Export usage reports to CSV
-    - _Requirements: 16.4_
+  - [x] 21. Integrate PaaS with user management
+    - [x] 21.1 Add PaaS statistics to user management UI
+      - Display application count per organization
+      - Display total PaaS costs per organization
+      - Display resource usage per organization
+      - Add PaaS section to organization detail view
+      - _Requirements: 16.1, 16.2, 16.4_
+    - [x] 21.2 Implement organization deletion handling
+      - Prompt to delete or reassign PaaS applications
+      - Stop all applications before deletion
+      - Delete all application data
+      - Handle deletion errors gracefully
+      - _Requirements: 16.3_
+    - [x] 21.3 Add PaaS suspension functionality
+      - Create endpoint to suspend all org applications
+      - Stop all running applications
+      - Update application statuses
+      - Prevent new deployments while suspended
+      - _Requirements: 16.5_
+    - [x] 21.4 Add PaaS usage reports
+      - Show usage by organization
+      - Show usage by application
+      - Show usage over time
+      - Export usage reports to CSV
+      - _Requirements: 16.4_
 
 ## Phase 10: Build Caching and Optimization
 

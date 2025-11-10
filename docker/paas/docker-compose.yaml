@@ -12,7 +12,7 @@ services:
       - "3100:3100"
     volumes:
       - loki-data:/loki
-      - ./loki-config.yaml:/etc/loki/local-config.yaml
+      - ./generated/loki-config.yaml:/etc/loki/local-config.yaml
     networks:
       - paas-infrastructure
     restart: unless-stopped
@@ -42,13 +42,14 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:3001/
       - GF_SERVER_SERVE_FROM_SUB_PATH=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./generated/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
     networks:
       - paas-infrastructure
     restart: unless-stopped
@@ -66,7 +67,10 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entryPoint.permanent=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:-admin@example.com}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
     ports:
       - "80:80"

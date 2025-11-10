@@ -62,12 +62,18 @@ deployQueue.process(async (job) => {
   console.log(`[Deploy] Processing job ${job.id}`);
   job.progress(10);
 
-  const { deploymentId, replicas } = job.data;
+  const { deploymentId, replicas, cachedSlugPath } = job.data as {
+    deploymentId: string;
+    replicas?: number;
+    cachedSlugPath?: string;
+  };
 
   try {
     const deployResult = await DeployerService.deploy({
       deploymentId,
       replicas,
+      cachedSlugPath,
+      startedAt: Date.now(),
     });
 
     job.progress(100);

@@ -50,6 +50,7 @@ import MarketplaceManager from "@/components/admin/MarketplaceManager";
 import { AdminSupportView } from "@/components/admin/AdminSupportView";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { PaaSOverview } from "@/components/admin/PaaSOverview";
+import { PaaSUsageReports } from "@/components/admin/PaaSUsageReports";
 import { PaaSAllAppsAdmin } from "@/components/admin/PaaSAllAppsAdmin";
 import { PaaSWorkerManagement } from "@/components/admin/PaaSWorkerManagement";
 import { PaaSSettingsAdmin } from "@/components/admin/PaaSSettingsAdmin";
@@ -3985,6 +3986,10 @@ const Admin: React.FC = () => {
 
     <SectionPanel section="paas-overview" activeSection={activeTab}>
       <PaaSOverview />
+    </SectionPanel>
+
+    <SectionPanel section="paas-usage" activeSection={activeTab}>
+      <PaaSUsageReports />
     </SectionPanel>
 
     <SectionPanel section="paas-apps" activeSection={activeTab}>

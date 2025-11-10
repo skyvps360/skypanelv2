@@ -24,6 +24,8 @@ interface Organization {
   memberCount: number;
   ownerName: string;
   ownerEmail: string;
+  paasAppCount?: number;
+  paasCost30d?: number;
 }
 
 interface OrganizationDeleteDialogProps {
@@ -31,6 +33,7 @@ interface OrganizationDeleteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  availableOrganizations: Organization[];
 }
 
 export const OrganizationDeleteDialog: React.FC<OrganizationDeleteDialogProps> = ({
@@ -38,17 +41,22 @@ export const OrganizationDeleteDialog: React.FC<OrganizationDeleteDialogProps> =
   open,
   onOpenChange,
   onSuccess,
+  availableOrganizations,
 }) => {
   const { token } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [confirmationText, setConfirmationText] = useState('');
   const [error, setError] = useState('');
+  const [paasAction, setPaasAction] = useState<'delete' | 'reassign'>('delete');
+  const [targetOrgId, setTargetOrgId] = useState('');
 
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (open) {
       setConfirmationText('');
       setError('');
+      setPaasAction((organization?.paasAppCount || 0) > 0 ? 'delete' : 'delete');
+      setTargetOrgId('');
     }
   }, [open]);
 
@@ -58,6 +66,7 @@ export const OrganizationDeleteDialog: React.FC<OrganizationDeleteDialogProps> =
   }
 
   const isConfirmationValid = confirmationText === organization.name;
+  const formatCurrency = (value?: number | null) => `$${(Number(value ?? 0)).toFixed(2)}`;
 
   const handleDelete = async () => {
     if (!isConfirmationValid) {
@@ -69,11 +78,26 @@ export const OrganizationDeleteDialog: React.FC<OrganizationDeleteDialogProps> =
     setError('');
 
     try {
+      const payload: Record<string, any> = {
+        paasAction,
+      };
+
+      if (organization.paasAppCount && organization.paasAppCount > 0 && paasAction === 'reassign') {
+        if (!targetOrgId) {
+          setError('Select a target organization for reassignment');
+          setIsLoading(false);
+          return;
+        }
+        payload.targetOrganizationId = targetOrgId;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/admin/organizations/${organization.id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -150,6 +174,64 @@ export const OrganizationDeleteDialog: React.FC<OrganizationDeleteDialogProps> =
                 {organization.ownerName} ({organization.ownerEmail})
               </p>
             </div>
+
+            {organization.paasAppCount && organization.paasAppCount > 0 && (
+              <div className="rounded-lg border p-4 bg-muted/50 space-y-3">
+                <div>
+                  <h4 className="font-semibold mb-1">PaaS Applications</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {organization.paasAppCount} application{organization.paasAppCount !== 1 ? 's' : ''} attached to this organization.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Last 30 days cost: {formatCurrency(organization.paasCost30d)}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Choose how to handle these applications:</Label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="paasAction"
+                        value="delete"
+                        checked={paasAction === 'delete'}
+                        onChange={() => setPaasAction('delete')}
+                      />
+                      Delete all applications permanently
+                    </label>
+                    <label className="flex flex-col gap-2 text-sm">
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="paasAction"
+                          value="reassign"
+                          checked={paasAction === 'reassign'}
+                          onChange={() => setPaasAction('reassign')}
+                        />
+                        Reassign applications to another organization
+                      </span>
+                      {paasAction === 'reassign' && (
+                        <select
+                          className="border rounded-md px-3 py-2 text-sm"
+                          value={targetOrgId}
+                          onChange={(e) => setTargetOrgId(e.target.value)}
+                        >
+                          <option value="">Select organization</option>
+                          {availableOrganizations
+                            .filter((orgOption) => orgOption.id !== organization.id)
+                            .map((orgOption) => (
+                              <option key={orgOption.id} value={orgOption.id}>
+                                {orgOption.name}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Confirmation Input */}
             <div className="space-y-2">

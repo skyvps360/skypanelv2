@@ -230,6 +230,144 @@ export class PaasBillingService {
     };
   }
 
+  static async getUsageReport(range = '30d') {
+    const window = getRangeWindow(range);
+
+    const perOrg = await pool.query(
+      `SELECT
+         o.id,
+         o.name,
+         COALESCE(usage.total_cost, 0)::float AS total_cost,
+         COALESCE(usage.cpu_hours, 0)::float AS cpu_hours,
+         COALESCE(usage.ram_mb_hours, 0)::float AS ram_mb_hours,
+         COALESCE(app_counts.app_count, 0)::int AS app_count,
+         usage.last_usage_at
+       FROM organizations o
+       LEFT JOIN LATERAL (
+         SELECT
+           SUM(u.total_cost) AS total_cost,
+           SUM(u.cpu_hours) AS cpu_hours,
+           SUM(u.ram_mb_hours) AS ram_mb_hours,
+           MAX(u.recorded_at) AS last_usage_at
+         FROM paas_resource_usage u
+         WHERE u.organization_id = o.id
+           AND u.recorded_at >= $1
+       ) usage ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) AS app_count
+         FROM paas_applications a
+         WHERE a.organization_id = o.id
+       ) app_counts ON TRUE
+       WHERE usage.total_cost IS NOT NULL
+          OR app_counts.app_count > 0
+       ORDER BY COALESCE(usage.total_cost, 0) DESC`,
+      [window.start]
+    );
+
+    const perApp = await pool.query(
+      `SELECT
+         a.id,
+         a.name AS application_name,
+         o.name AS organization_name,
+         COALESCE(SUM(u.total_cost), 0)::float AS total_cost,
+         COALESCE(SUM(u.cpu_hours), 0)::float AS cpu_hours,
+         COALESCE(SUM(u.ram_mb_hours), 0)::float AS ram_mb_hours,
+         MAX(u.recorded_at) AS last_usage_at
+       FROM paas_applications a
+       JOIN organizations o ON o.id = a.organization_id
+       LEFT JOIN paas_resource_usage u
+         ON u.application_id = a.id
+        AND u.recorded_at >= $1
+       GROUP BY a.id, o.name
+       ORDER BY total_cost DESC
+       LIMIT 200`,
+      [window.start]
+    );
+
+    const timeline = await pool.query(
+      `SELECT
+         DATE_TRUNC('day', recorded_at) AS bucket,
+         COALESCE(SUM(total_cost), 0)::float AS total_cost,
+         COALESCE(SUM(cpu_hours), 0)::float AS cpu_hours,
+         COALESCE(SUM(ram_mb_hours), 0)::float AS ram_mb_hours
+       FROM paas_resource_usage
+       WHERE recorded_at >= $1
+       GROUP BY bucket
+       ORDER BY bucket ASC`,
+      [window.start]
+    );
+
+    const organizations = perOrg.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      totalCost: Number(row.total_cost || 0),
+      cpuHours: Number(row.cpu_hours || 0),
+      ramMbHours: Number(row.ram_mb_hours || 0),
+      appCount: Number(row.app_count || 0),
+      lastUsageAt: row.last_usage_at,
+    }));
+
+    const applications = perApp.rows.map((row) => ({
+      id: row.id,
+      applicationName: row.application_name,
+      organizationName: row.organization_name,
+      totalCost: Number(row.total_cost || 0),
+      cpuHours: Number(row.cpu_hours || 0),
+      ramMbHours: Number(row.ram_mb_hours || 0),
+      lastUsageAt: row.last_usage_at,
+    }));
+
+    const timelineSeries = timeline.rows.map((row) => ({
+      bucket: row.bucket,
+      totalCost: Number(row.total_cost || 0),
+      cpuHours: Number(row.cpu_hours || 0),
+      ramMbHours: Number(row.ram_mb_hours || 0),
+    }));
+
+    return {
+      range: window,
+      organizations,
+      applications,
+      timeline: timelineSeries,
+    };
+  }
+
+  static async exportUsageReport(range = '30d', type: 'organization' | 'application' = 'organization'): Promise<string> {
+    const report = await this.getUsageReport(range);
+    const rows = type === 'organization' ? report.organizations : report.applications;
+
+    const headers =
+      type === 'organization'
+        ? ['organization_id', 'organization_name', 'total_cost', 'cpu_hours', 'ram_mb_hours', 'app_count', 'last_usage_at']
+        : ['application_id', 'application_name', 'organization_name', 'total_cost', 'cpu_hours', 'ram_mb_hours', 'last_usage_at'];
+
+    const lines = rows.map((row: any) => {
+      if (type === 'organization') {
+        return [
+          row.id,
+          row.name,
+          Number(row.totalCost || 0).toFixed(4),
+          Number(row.cpuHours || 0).toFixed(2),
+          Number(row.ramMbHours || 0).toFixed(2),
+          row.appCount || 0,
+          row.lastUsageAt || '',
+        ].join(',');
+      }
+
+      return [
+        row.id,
+        row.applicationName,
+        row.organizationName,
+        Number(row.totalCost || 0).toFixed(4),
+        Number(row.cpuHours || 0).toFixed(2),
+        Number(row.ramMbHours || 0).toFixed(2),
+        row.lastUsageAt || '',
+      ].join(',');
+    });
+
+    return [headers.join(','), ...lines].join('\n');
+  }
+
   private static async getBillableApplications(): Promise<BillableApplication[]> {
     const result = await pool.query(
       `SELECT

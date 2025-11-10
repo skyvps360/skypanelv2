@@ -873,4 +873,49 @@ router.get('/usage', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/admin/paas/usage/report
+ * Detailed usage report for organizations and applications
+ */
+router.get('/usage/report', async (req: Request, res: Response) => {
+  try {
+    const range = (req.query.range as string) || '30d';
+    const report = await PaasBillingService.getUsageReport(range);
+    res.json(report);
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get detailed PaaS usage report',
+      clientMessage: 'Failed to get usage report',
+    });
+  }
+});
+
+/**
+ * GET /api/admin/paas/usage/report/export
+ * Export usage report as CSV
+ */
+router.get('/usage/report/export', async (req: Request, res: Response) => {
+  try {
+    const range = (req.query.range as string) || '30d';
+    const typeParam = (req.query.type as string) || 'organization';
+    const type = typeParam === 'application' ? 'application' : 'organization';
+
+    const csv = await PaasBillingService.exportUsageReport(range, type);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="paas-usage-${type}-${range}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to export PaaS usage report',
+      clientMessage: 'Failed to export usage report',
+    });
+  }
+});
+
 export default router;

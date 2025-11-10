@@ -6,11 +6,12 @@
 import express, { Request, Response } from 'express';
 import { authenticateToken, requireOrganization } from '../middleware/auth.js';
 import { pool } from '../lib/database.js';
-import { encrypt, decrypt } from '../lib/crypto.js';
 import { BuilderService } from '../services/paas/builderService.js';
 import { DeployerService } from '../services/paas/deployerService.js';
 import { ScalerService } from '../services/paas/scalerService.js';
 import { LoggerService } from '../services/paas/loggerService.js';
+import { PaasEnvironmentService } from '../services/paas/environmentService.js';
+import { PaasOrganizationService } from '../services/paas/organizationService.js';
 import { logActivity } from '../services/activityLogger.js';
 import { body, param, query as validateQuery, validationResult } from 'express-validator';
 import { handlePaasApiError } from '../utils/paasApiError.js';
@@ -48,6 +49,22 @@ const logPaasActivity = async ({
     message,
     metadata,
   });
+};
+
+const ensureOrgActive = async (orgId: string) => {
+  await PaasOrganizationService.assertActive(orgId);
+};
+
+const ensureAppOrgActive = async (appId: string, orgId?: string) => {
+  if (orgId) {
+    await ensureOrgActive(orgId);
+    return;
+  }
+  const app = await pool.query('SELECT organization_id FROM paas_applications WHERE id = $1', [appId]);
+  if (app.rows.length === 0) {
+    throw new Error('Application not found');
+  }
+  await ensureOrgActive(app.rows[0].organization_id as unknown as string);
 };
 
 // Apply authentication middleware to all routes
@@ -152,6 +169,8 @@ router.post(
       const orgId = (req as any).organizationId;
       const userId = (req as any).userId;
       const { name, slug, git_url, git_branch, buildpack, plan_id } = req.body;
+
+      await ensureOrgActive(orgId);
 
       // Check if slug is unique within organization
       const existingApp = await pool.query(
@@ -396,6 +415,8 @@ router.post(
         return res.status(400).json({ error: 'No git URL configured' });
       }
 
+      await ensureAppOrgActive(appId, orgId);
+
       const job = await buildQueue.add({
         applicationId: app.id,
         gitUrl: app.git_url,
@@ -516,10 +537,18 @@ router.post(
       }
 
       const rollback = await DeployerService.rollback(appId, version, userId);
+      let cachedSlugPath: string | undefined;
+      try {
+        cachedSlugPath = await DeployerService.prefetchSlug(rollback.targetDeployment.slug_url!);
+      } catch (cacheError) {
+        console.warn(`[Rollback] Failed to prefetch slug for deployment ${rollback.targetDeployment.id}:`, cacheError);
+      }
 
       const job = await deployQueue.add({
         deploymentId: rollback.newDeployment.id,
         replicas: rollback.app.replicas,
+        cachedSlugPath,
+        rollback: true,
       });
 
       await logPaasActivity({
@@ -629,13 +658,15 @@ router.get(
 
       // Verify app belongs to org
       const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
+        'SELECT id, status FROM paas_applications WHERE id = $1 AND organization_id = $2',
         [appId, orgId]
       );
 
       if (appCheck.rows.length === 0) {
         return res.status(404).json({ error: 'Application not found' });
       }
+
+      await ensureAppOrgActive(appId, orgId);
 
       const level = req.query.level as 'info' | 'warn' | 'error' | 'debug' | undefined;
       const search = (req.query.search as string) || undefined;
@@ -703,13 +734,8 @@ router.get('/apps/:id/env', param('id').isUUID(), async (req: Request, res: Resp
       return res.status(404).json({ error: 'Application not found' });
     }
 
-    const result = await pool.query(
-      'SELECT id, key, is_system, created_at FROM paas_environment_vars WHERE application_id = $1 ORDER BY key',
-      [appId]
-    );
-
-    // Don't send decrypted values, just keys
-    res.json({ env_vars: result.rows });
+    const envVars = await PaasEnvironmentService.list(appId);
+    res.json({ env_vars: envVars });
   } catch (error: any) {
     handlePaasApiError({
       req,
@@ -750,19 +776,7 @@ router.put(
         return res.status(404).json({ error: 'Application not found' });
       }
 
-      // Upsert environment variables
-      for (const [key, value] of Object.entries(vars)) {
-        const encryptedValue = encrypt(value as string);
-
-        await pool.query(
-          `INSERT INTO paas_environment_vars (application_id, key, value_encrypted)
-           VALUES ($1, $2, $3)
-           ON CONFLICT (application_id, key) DO UPDATE SET
-             value_encrypted = EXCLUDED.value_encrypted,
-             updated_at = NOW()`,
-          [appId, key, encryptedValue]
-        );
-      }
+      const updatedKeys = await PaasEnvironmentService.upsertMany(appId, orgId, vars);
 
       await logPaasActivity({
         userId,
@@ -770,11 +784,13 @@ router.put(
         appId,
         eventType: 'paas.app.env.update',
         metadata: {
-          keys_updated: Object.keys(vars),
+          keys_updated: updatedKeys,
         },
       });
 
-      res.json({ message: 'Environment variables updated' });
+      void triggerEnvRedeploy(appId);
+
+      res.json({ message: 'Environment variables updated', keys: updatedKeys });
     } catch (error: any) {
       handlePaasApiError({
         req,
@@ -786,6 +802,98 @@ router.put(
     }
   }
 );
+
+/**
+ * POST /api/paas/apps/:id/env/import
+ * Bulk import environment variables
+ */
+router.post(
+  '/apps/:id/env/import',
+  [param('id').isUUID(), body('content').isString(), body('format').optional().isString()],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const orgId = (req as any).organizationId;
+      const userId = (req as any).userId;
+      const appId = req.params.id;
+      const { content, format = 'env' } = req.body;
+
+      const appCheck = await pool.query(
+        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
+        [appId, orgId]
+      );
+
+      if (appCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const parsed = PaasEnvironmentService.parseEnv(content);
+      const updatedKeys = await PaasEnvironmentService.upsertMany(appId, orgId, parsed);
+
+      await logPaasActivity({
+        userId,
+        organizationId: orgId,
+        appId,
+        eventType: 'paas.app.env.import',
+        metadata: { format, keys_updated: updatedKeys },
+      });
+
+      void triggerEnvRedeploy(appId);
+
+      res.json({ message: 'Environment variables imported', keys: updatedKeys });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to import environment variables',
+        clientMessage: 'Failed to import environment variables',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/paas/apps/:id/env/export
+ * Export encrypted environment variables
+ */
+router.get('/apps/:id/env/export', param('id').isUUID(), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const orgId = (req as any).organizationId;
+    const appId = req.params.id;
+
+    const appCheck = await pool.query(
+      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
+      [appId, orgId]
+    );
+
+    if (appCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const payload = await PaasEnvironmentService.export(appId);
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', `attachment; filename="env-${appId}.enc"`);
+    res.send(payload);
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to export environment variables',
+      clientMessage: 'Failed to export environment variables',
+    });
+  }
+});
 
 /**
  * GET /api/paas/apps/:id/domains
@@ -1025,12 +1133,8 @@ router.delete(
         return res.status(404).json({ error: 'Application not found' });
       }
 
-      const result = await pool.query(
-        'DELETE FROM paas_environment_vars WHERE application_id = $1 AND key = $2 AND is_system = false RETURNING key',
-        [appId, key]
-      );
-
-      if (result.rows.length === 0) {
+      const deleted = await PaasEnvironmentService.delete(appId, key);
+      if (!deleted) {
         return res.status(404).json({ error: 'Environment variable not found or is system variable' });
       }
 
@@ -1041,6 +1145,8 @@ router.delete(
         eventType: 'paas.app.env.delete',
         metadata: { key },
       });
+
+      void triggerEnvRedeploy(appId);
 
       res.json({ message: 'Environment variable deleted' });
     } catch (error: any) {
@@ -1083,6 +1189,8 @@ router.post(
       if (appCheck.rows.length === 0) {
         return res.status(404).json({ error: 'Application not found' });
       }
+
+      await ensureAppOrgActive(appId, orgId);
 
       const result = await ScalerService.scale({
         applicationId: appId,
@@ -1202,6 +1310,8 @@ router.post(
         return res.status(404).json({ error: 'Application not found' });
       }
 
+      await ensureAppOrgActive(appId, orgId);
+
       const result = await DeployerService.restart(appId, replicas);
 
       await logPaasActivity({
@@ -1320,3 +1430,21 @@ router.get('/jobs/:id', param('id').isLength({ min: 1 }), async (req: Request, r
 });
 
 export default router;
+
+async function triggerEnvRedeploy(appId: string): Promise<void> {
+  try {
+    const result = await pool.query('SELECT organization_id FROM paas_applications WHERE id = $1', [appId]);
+    if (result.rows.length === 0) {
+      return;
+    }
+    const orgId = result.rows[0].organization_id as string;
+    const suspended = await PaasOrganizationService.isSuspended(orgId);
+    if (suspended) {
+      console.warn(`Skipping redeploy for app ${appId} because organization is suspended`);
+      return;
+    }
+    await DeployerService.restart(appId);
+  } catch (error: any) {
+    console.warn(`Failed to redeploy app ${appId} after env change:`, error?.message || error);
+  }
+}

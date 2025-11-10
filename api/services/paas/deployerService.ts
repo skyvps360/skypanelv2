@@ -3,24 +3,30 @@
  * Handles deployment of built applications to Docker Swarm
  */
 
-import { pool, PaasApplication, PaasDeployment, PaasEnvironmentVar } from '../../lib/database.js';
+import { pool, PaasApplication, PaasDeployment } from '../../lib/database.js';
 import { PaasSettingsService } from './settingsService.js';
-import { decrypt } from '../../lib/crypto.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 import axios from 'axios';
 import { createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import * as tar from 'tar';
+import crypto from 'crypto';
 import { HealthCheckService } from './healthCheckService.js';
+import { PaasEnvironmentService } from './environmentService.js';
+import { logActivity } from '../activityLogger.js';
 
 const execAsync = promisify(exec);
+const SLUG_CACHE_DIR = process.env.PAAS_SLUG_CACHE_DIR || path.join(os.tmpdir(), 'paas-slug-cache');
 
 export interface DeployOptions {
   deploymentId: string;
   replicas?: number;
+  cachedSlugPath?: string;
+  startedAt?: number;
 }
 
 export interface DeployResult {
@@ -35,6 +41,7 @@ export class DeployerService {
    */
   static async deploy(options: DeployOptions): Promise<DeployResult> {
     try {
+      const startTime = options.startedAt ?? Date.now();
       // Get deployment
       const deploymentResult = await pool.query<PaasDeployment>(
         'SELECT * FROM paas_deployments WHERE id = $1',
@@ -83,7 +90,11 @@ export class DeployerService {
       );
 
       // Extract slug to runtime location
-      const runtimeDir = await this.extractSlug(deployment.slug_url!, deployment.id);
+      const runtimeDir = await this.extractSlug(
+        deployment.slug_url!,
+        deployment.id,
+        options.cachedSlugPath
+      );
 
       // Build Docker image from slug
       const imageName = await this.buildDockerImage(runtimeDir, app, deployment);
@@ -109,6 +120,26 @@ export class DeployerService {
         WHERE id = $2`,
         ['deployed', options.deploymentId]
       );
+
+      if (deployment.rolled_back_from) {
+        const durationMs = Date.now() - startTime;
+        console.log(
+          `[Rollback] Deployment ${deployment.id} redeployed in ${(durationMs / 1000).toFixed(2)}s`
+        );
+        await logActivity({
+          userId: deployment.created_by || undefined,
+          organizationId: app.organization_id,
+          eventType: 'paas.app.rollback.complete',
+          entityType: 'paas_app',
+          entityId: deployment.application_id,
+          status: 'success',
+          metadata: {
+            duration_ms: durationMs,
+            replicas: options.replicas || app.replicas,
+          },
+          message: `Rollback completed in ${(durationMs / 1000).toFixed(2)}s`,
+        });
+      }
 
       await pool.query(
         'UPDATE paas_applications SET status = $1, replicas = $2 WHERE id = $3',
@@ -139,12 +170,18 @@ export class DeployerService {
   /**
    * Extract slug to runtime directory
    */
-  private static async extractSlug(slugUrl: string, deploymentId: string): Promise<string> {
+  private static async extractSlug(
+    slugUrl: string,
+    deploymentId: string,
+    cachedPath?: string
+  ): Promise<string> {
     if (!slugUrl) {
       throw new Error('Deployment artifact missing slug URL');
     }
 
-    const { localPath, cleanup } = await this.ensureLocalSlug(slugUrl);
+    const { localPath, cleanup } = cachedPath
+      ? { localPath: cachedPath, cleanup: false }
+      : await this.ensureLocalSlug(slugUrl);
     const runtimeDir = `/var/paas/runtime/${deploymentId}`;
     await fs.mkdir(runtimeDir, { recursive: true });
 
@@ -161,24 +198,47 @@ export class DeployerService {
     return runtimeDir;
   }
 
-  private static async ensureLocalSlug(slugUrl: string): Promise<{ localPath: string; cleanup: boolean }> {
-    const isRemote = slugUrl.startsWith('http://') || slugUrl.startsWith('https://');
+  private static async ensureLocalSlug(
+    slugUrl: string
+  ): Promise<{ localPath: string; cleanup: boolean }> {
+    const isRemote = /^https?:\/\//i.test(slugUrl);
 
     if (!isRemote) {
       return { localPath: slugUrl, cleanup: false };
     }
 
-    const tempDir = '/tmp/paas-slugs';
-    await fs.mkdir(tempDir, { recursive: true });
+    await fs.mkdir(SLUG_CACHE_DIR, { recursive: true });
+    const cacheKey = crypto.createHash('sha1').update(slugUrl).digest('hex');
+    const cachePath = path.join(SLUG_CACHE_DIR, `${cacheKey}.tgz`);
 
-    const url = new URL(slugUrl);
-    const fileName = path.basename(url.pathname) || `${Date.now()}.tar.gz`;
-    const localPath = path.join(tempDir, `${Date.now()}-${fileName}`);
+    if (await this.pathExists(cachePath)) {
+      return { localPath: cachePath, cleanup: false };
+    }
 
+    const tempPath = path.join(SLUG_CACHE_DIR, `${cacheKey}-${Date.now()}.tmp`);
     const response = await axios.get(slugUrl, { responseType: 'stream' });
-    await pipeline(response.data, createWriteStream(localPath));
+    await pipeline(response.data, createWriteStream(tempPath));
+    await fs.rename(tempPath, cachePath).catch(async () => {
+      if (!(await this.pathExists(cachePath))) {
+        throw new Error('Failed to cache slug artifact');
+      }
+    });
 
-    return { localPath, cleanup: true };
+    return { localPath: cachePath, cleanup: false };
+  }
+
+  private static async pathExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  static async prefetchSlug(slugUrl: string): Promise<string> {
+    const { localPath } = await this.ensureLocalSlug(slugUrl);
+    return localPath;
   }
 
   /**
@@ -217,18 +277,7 @@ CMD ["/start", "web"]
    * Get application environment variables
    */
   private static async getEnvironmentVariables(appId: string): Promise<Record<string, string>> {
-    const result = await pool.query<PaasEnvironmentVar>(
-      'SELECT key, value_encrypted FROM paas_environment_vars WHERE application_id = $1',
-      [appId]
-    );
-
-    const envVars: Record<string, string> = {};
-
-    for (const row of result.rows) {
-      envVars[row.key] = decrypt(row.value_encrypted);
-    }
-
-    return envVars;
+    return PaasEnvironmentService.getRuntimeEnv(appId);
   }
 
   /**

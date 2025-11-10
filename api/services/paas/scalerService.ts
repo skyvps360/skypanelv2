@@ -6,6 +6,7 @@
 import { pool, PaasApplication } from '../../lib/database.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { PaasOrganizationService } from './organizationService.js';
 
 const execAsync = promisify(exec);
 
@@ -41,6 +42,10 @@ export class ScalerService {
       }
 
       const app = appResult.rows[0];
+      const orgSuspended = await PaasOrganizationService.isSuspended(app.organization_id as unknown as string);
+      if (orgSuspended && options.replicas > 0) {
+        throw new Error('PaaS is suspended for this organization');
+      }
 
       // Get plan limits and pricing
       const planResult = await pool.query(

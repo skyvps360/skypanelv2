@@ -46,6 +46,8 @@ import {
   upsertRateLimitOverride,
   deleteRateLimitOverride,
 } from "../services/rateLimitOverrideService.js";
+import { PaasOrganizationService } from '../services/paas/organizationService.js';
+import { DeployerService } from '../services/paas/deployerService.js';
 import { 
   OrganizationValidation, 
   MemberValidation, 
@@ -2382,10 +2384,17 @@ router.get(
           org.owner_id,
           org.created_at,
           org.updated_at,
-          owner.name AS owner_name,
-          owner.email AS owner_email,
-          COUNT(DISTINCT om.user_id) AS member_count,
-          COUNT(DISTINCT pa.id) AS paas_app_count,
+          org.paas_suspended AS "paasSuspended",
+          org.paas_suspend_reason AS "paasSuspendReason",
+          org.paas_suspended_at AS "paasSuspendedAt",
+          owner.name AS "ownerName",
+          owner.email AS "ownerEmail",
+          COUNT(DISTINCT om.user_id) AS "memberCount",
+          COUNT(DISTINCT pa.id) AS "paasAppCount",
+          COALESCE(usage.cost_30d, 0)::float AS "paasCost30d",
+          COALESCE(usage.cpu_hours_30d, 0)::float AS "paasCpuHours30d",
+          COALESCE(usage.ram_mb_hours_30d, 0)::float AS "paasRamMbHours30d",
+          usage.last_usage_at AS "paasLastUsageAt",
           COALESCE(
             jsonb_agg(
               DISTINCT jsonb_build_object(
@@ -2404,7 +2413,17 @@ router.get(
         LEFT JOIN organization_members om ON om.organization_id = org.id
         LEFT JOIN users mem ON mem.id = om.user_id
         LEFT JOIN paas_applications pa ON pa.organization_id = org.id
-        GROUP BY org.id, owner.id
+        LEFT JOIN LATERAL (
+          SELECT
+            COALESCE(SUM(u.total_cost), 0)::float AS cost_30d,
+            COALESCE(SUM(u.cpu_hours), 0)::float AS cpu_hours_30d,
+            COALESCE(SUM(u.ram_mb_hours), 0)::float AS ram_mb_hours_30d,
+            MAX(u.recorded_at) AS last_usage_at
+          FROM paas_resource_usage u
+          WHERE u.organization_id = org.id
+            AND u.recorded_at >= NOW() - INTERVAL '30 days'
+        ) usage ON TRUE
+        GROUP BY org.id, owner.id, usage.cost_30d, usage.cpu_hours_30d, usage.ram_mb_hours_30d, usage.last_usage_at
         ORDER BY org.created_at DESC`
       );
       res.json({ organizations: result.rows || [] });
@@ -4279,6 +4298,8 @@ router.delete(
   requireAdmin,
   auditLogger("delete_organization"),
   OrganizationValidation.delete,
+  body('paasAction').optional().isIn(['delete', 'reassign']),
+  body('targetOrganizationId').optional().isUUID(),
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -4316,10 +4337,63 @@ router.delete(
         [id]
       );
 
+      const { paasAction = 'delete', targetOrganizationId } = (req.body || {}) as {
+        paasAction?: 'delete' | 'reassign';
+        targetOrganizationId?: string;
+      };
+
+      const paasApps = await query(
+        'SELECT id, name FROM paas_applications WHERE organization_id = $1',
+        [id]
+      );
+
+      if (paasApps.rows.length > 0 && paasAction === 'reassign') {
+        if (!targetOrganizationId) {
+          res.status(400).json(formatBusinessLogicError("Target organization is required for reassignment", "TARGET_ORG_REQUIRED"));
+          return;
+        }
+        if (targetOrganizationId === id) {
+          res.status(400).json(formatBusinessLogicError("Cannot reassign to the same organization", "TARGET_ORG_INVALID"));
+          return;
+        }
+        const targetExists = await BusinessValidation.organizationExists(targetOrganizationId);
+        if (!targetExists) {
+          res.status(404).json(formatBusinessLogicError("Target organization not found", "TARGET_ORG_NOT_FOUND"));
+          return;
+        }
+      } else if (paasApps.rows.length > 0 && paasAction !== 'delete') {
+        res.status(400).json(formatBusinessLogicError("Specify how to handle PaaS applications (delete or reassign)", "PAAS_ACTION_REQUIRED"));
+        return;
+      }
+
+      if (paasAction === 'delete' && paasApps.rows.length > 0) {
+        for (const app of paasApps.rows) {
+          try {
+            await DeployerService.stop(app.id);
+          } catch (error) {
+            console.warn(`Failed to stop app ${app.id} during organization delete:`, error);
+          }
+        }
+      }
+
       // Begin transaction for cascading deletion
       await query('BEGIN');
 
       try {
+        if (paasApps.rows.length > 0) {
+          if (paasAction === 'reassign' && targetOrganizationId) {
+            await query(
+              'UPDATE paas_applications SET organization_id = $1 WHERE organization_id = $2',
+              [targetOrganizationId, id]
+            );
+          } else if (paasAction === 'delete') {
+            await query(
+              'DELETE FROM paas_applications WHERE organization_id = $1',
+              [id]
+            );
+          }
+        }
+
         // Delete VPS instances (this will cascade to billing cycles)
         await query(
           "DELETE FROM vps_instances WHERE organization_id = $1",
@@ -4400,6 +4474,64 @@ router.delete(
     } catch (err: any) {
       console.error("Admin organization delete error:", err);
       res.status(500).json(formatServerError(err.message || "Failed to delete organization", "ORGANIZATION_DELETE_ERROR"));
+    }
+  }
+);
+
+// Suspend PaaS for an organization
+router.post(
+  '/organizations/:id/paas/suspend',
+  authenticateToken,
+  requireAdmin,
+  auditLogger('suspend_organization_paas'),
+  [body('reason').optional().isLength({ max: 500 })],
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json(formatValidationErrors(errors.array()));
+        return;
+      }
+
+      const { id } = req.params;
+      const { reason } = req.body as { reason?: string };
+
+      const orgExists = await BusinessValidation.organizationExists(id);
+      if (!orgExists) {
+        res.status(404).json(formatBusinessLogicError("Organization not found", "ORGANIZATION_NOT_FOUND"));
+        return;
+      }
+
+      await PaasOrganizationService.suspend(id, req.user!.id, reason);
+      res.json({ message: 'Organization PaaS suspended' });
+    } catch (err: any) {
+      console.error("Admin organization suspend error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to suspend organization", "ORGANIZATION_SUSPEND_ERROR"));
+    }
+  }
+);
+
+// Resume PaaS for an organization
+router.post(
+  '/organizations/:id/paas/resume',
+  authenticateToken,
+  requireAdmin,
+  auditLogger('resume_organization_paas'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const orgExists = await BusinessValidation.organizationExists(id);
+      if (!orgExists) {
+        res.status(404).json(formatBusinessLogicError("Organization not found", "ORGANIZATION_NOT_FOUND"));
+        return;
+      }
+
+      await PaasOrganizationService.resume(id, req.user!.id);
+      res.json({ message: 'Organization PaaS access resumed' });
+    } catch (err: any) {
+      console.error("Admin organization resume error:", err);
+      res.status(500).json(formatServerError(err.message || "Failed to resume organization", "ORGANIZATION_RESUME_ERROR"));
     }
   }
 );

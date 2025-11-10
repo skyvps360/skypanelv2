@@ -121,6 +121,32 @@ const SETTING_DEFINITIONS: Record<string, SettingDefinition> = {
         throw new Error('loki_retention_days must be greater than zero');
       }
     },
+  traefik_acme_email: {
+    key: 'traefik_acme_email',
+    type: 'string',
+    category: 'networking',
+    description: "Email address used for Traefik's Let's Encrypt account",
+    defaultValue: 'admin@example.com',
+    validate: (value: string) => {
+      if (!/.+@.+\..+/.test(value)) {
+        throw new Error('traefik_acme_email must be a valid email address');
+      }
+    },
+  },
+  grafana_admin_user: {
+    key: 'grafana_admin_user',
+    type: 'string',
+    category: 'monitoring',
+    description: 'Grafana admin username',
+    defaultValue: 'admin',
+  },
+  grafana_admin_password: {
+    key: 'grafana_admin_password',
+    type: 'string',
+    category: 'monitoring',
+    description: 'Grafana admin password used for the infrastructure dashboard',
+    sensitive: true,
+  },
   },
   default_domain: {
     key: 'default_domain',
