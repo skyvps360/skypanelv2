@@ -1,0 +1,689 @@
+# Implementation Plan
+
+## Phase 1: Critical API Fixes
+
+- [ ] 1. Fix admin PaaS overview endpoint errors
+  - [ ] 1.1 Update `/api/admin/paas/overview` to handle NULL aggregates with COALESCE
+    - Add COALESCE to all SUM/COUNT aggregate functions
+    - Handle empty result sets with UNION ALL for totals
+    - Add proper error logging with stack traces
+    - Return safe default values when no data exists
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+  - [ ] 1.2 Add comprehensive error logging to all PaaS API endpoints
+    - Log full error messages and stack traces
+    - Include request context (user ID, org ID, endpoint)
+    - Add development mode error details in responses
+    - Log to both console and file
+    - _Requirements: 1.4_
+  - [ ] 1.3 Test admin dashboard loads without 500 errors
+    - Verify overview endpoint returns valid data
+    - Test with empty database (no apps)
+    - Test with sample data
+    - Verify all statistics display correctly
+    - _Requirements: 1.1, 1.5_
+
+- [ ] 2. Fix database query issues across all PaaS endpoints
+  - [ ] 2.1 Audit all database queries for NULL handling
+    - Review all queries in `/api/routes/paas.ts`
+    - Review all queries in `/api/routes/admin/paas.ts`
+    - Add COALESCE where needed
+    - Add default values for empty results
+    - _Requirements: 1.2, 1.3_
+  - [ ] 2.2 Add database indexes for performance
+    - Create index on `paas_applications(organization_id, status)`
+    - Create index on `paas_deployments(application_id, status)`
+    - Create index on `paas_resource_usage(recorded_at)`
+    - Create index on `paas_environment_vars(application_id)`
+    - _Requirements: 4.2_
+  - [ ] 2.3 Fix foreign key CASCADE rules
+    - Update `paas_applications` FK to CASCADE on organization delete
+    - Update `paas_deployments` FK to CASCADE on application delete
+    - Update `paas_environment_vars` FK to CASCADE on application delete
+    - Update `paas_domains` FK to CASCADE on application delete
+    - _Requirements: 4.1, 4.4_
+
+## Phase 2: Backend Services Implementation
+
+- [ ] 3. Implement PaaS billing service
+  - [ ] 3.1 Create `PaasBillingService` class in `api/services/paas/billingService.ts`
+    - Implement `recordHourlyUsage()` method
+    - Query all running applications with plan details
+    - Calculate cost: `price_per_hour * replicas`
+    - Insert records into `paas_resource_usage` table
+    - _Requirements: 10.1, 10.2_
+  - [ ] 3.2 Implement wallet deduction logic
+    - Deduct calculated cost from organization wallet
+    - Check wallet balance after deduction
+    - Stop applications if balance <= 0
+    - Send notification to organization owner
+    - _Requirements: 10.3, 10.4_
+  - [ ] 3.3 Create billing API endpoints
+    - Add `GET /api/paas/usage` for user usage reports
+    - Add `GET /api/admin/paas/billing` for admin billing overview
+    - Return usage grouped by application and time period
+    - Include cost calculations and wallet impact
+    - _Requirements: 10.5_
+
+- [ ] 4. Implement worker queue system
+  - [ ] 4.1 Set up Bull queues in `api/worker/queues.ts`
+    - Create `buildQueue` for build jobs
+    - Create `deployQueue` for deployment jobs
+    - Create `billingQueue` for billing jobs
+    - Configure Redis connection from environment
+    - _Requirements: 20.1, 20.2, 20.3_
+  - [ ] 4.2 Implement queue processors
+    - Process build jobs with `BuilderService.build()`
+    - Process deploy jobs with `DeployerService.deploy()`
+    - Process billing jobs with `PaasBillingService.recordHourlyUsage()`
+    - Add error handling and retry logic
+    - _Requirements: 20.1, 20.2, 20.3_
+  - [ ] 4.3 Update API endpoints to use queues
+    - Modify `POST /api/paas/apps/:id/deploy` to add job to buildQueue
+    - Return job ID for status tracking
+    - Add `GET /api/paas/jobs/:id` endpoint for job status
+    - Update deployment status from queue events
+    - _Requirements: 20.1, 20.4_
+  - [ ] 4.4 Schedule recurring billing job
+    - Add cron job to billingQueue (hourly)
+    - Ensure only one billing job runs at a time
+    - Log billing job execution and results
+    - Handle billing job failures gracefully
+    - _Requirements: 20.3_
+
+- [ ] 5. Implement health check service
+  - [ ] 5.1 Create `HealthCheckService` in `api/services/paas/healthCheckService.ts`
+    - Implement `configureHealthCheck()` method
+    - Configure Docker Swarm health checks on services
+    - Support custom health check paths
+    - Set default intervals (30s) and retries (3)
+    - _Requirements: 18.1, 18.2, 18.3, 18.4_
+  - [ ] 5.2 Add health check configuration to deployments
+    - Update `DeployerService.deploy()` to configure health checks
+    - Read health check path from application settings
+    - Apply health check to Docker service creation
+    - Log health check configuration
+    - _Requirements: 18.1, 18.4_
+  - [ ] 5.3 Implement health check monitoring
+    - Create background job to monitor health status
+    - Query Docker service health status
+    - Log health check failures
+    - Update application status on repeated failures
+    - _Requirements: 18.2, 18.3_
+  - [ ] 5.4 Add health check settings to application model
+    - Add `health_check_path` column to `paas_applications`
+    - Add `health_check_enabled` column to `paas_applications`
+    - Update API to accept health check configuration
+    - Provide default `/health` path
+    - _Requirements: 18.4, 18.5_
+
+- [ ] 6. Implement SSL certificate provisioning
+  - [ ] 6.1 Create `SSLService` in `api/services/paas/sslService.ts`
+    - Implement `provisionCertificate()` method
+    - Configure Traefik labels for Let's Encrypt
+    - Support automatic certificate renewal
+    - Handle certificate provisioning errors
+    - _Requirements: 3.4, 13.4_
+  - [ ] 6.2 Implement domain validation
+    - Implement `validateDomainOwnership()` method
+    - Check for DNS TXT record `_paas-verify.{domain}`
+    - Verify TXT record contains application ID
+    - Return validation status
+    - _Requirements: 13.2_
+  - [ ] 6.3 Update domain management endpoints
+    - Add domain validation before activation
+    - Update Traefik configuration on domain add
+    - Monitor SSL certificate status
+    - Update domain SSL status in database
+    - _Requirements: 13.2, 13.3, 13.4_
+
+- [ ] 7. Implement log streaming service
+  - [ ] 7.1 Enhance `LoggerService` with streaming support
+    - Implement `streamLogs()` method with SSE
+    - Query Loki API for log streams
+    - Send logs to client via Server-Sent Events
+    - Handle client disconnection gracefully
+    - _Requirements: 7.1, 7.5_
+  - [ ] 7.2 Add log filtering capabilities
+    - Support time range filtering (since, until)
+    - Support search term filtering
+    - Support log level filtering (info, warn, error)
+    - Limit results to prevent overwhelming client
+    - _Requirements: 7.2_
+  - [ ] 7.3 Create log streaming API endpoint
+    - Add `GET /api/paas/apps/:id/logs/stream` endpoint
+    - Set proper SSE headers
+    - Stream logs in real-time
+    - Handle Loki connection errors
+    - _Requirements: 7.1, 7.5_
+  - [ ] 7.4 Implement log retention management
+    - Read retention period from settings
+    - Configure Loki retention in docker-compose
+    - Add cleanup job for old logs
+    - Log retention policy enforcement
+    - _Requirements: 7.4_
+
+## Phase 3: UI Components Implementation
+
+- [ ] 8. Create domain management UI component
+  - [ ] 8.1 Create `DomainManager.tsx` component
+    - Display list of custom domains for application
+    - Show domain status (pending, active, failed)
+    - Show SSL certificate status
+    - Show DNS configuration instructions
+    - _Requirements: 2.1, 13.1, 13.5_
+  - [ ] 8.2 Implement add domain functionality
+    - Create form to add new domain
+    - Validate domain format
+    - Call API to add domain
+    - Display validation instructions (TXT record)
+    - _Requirements: 13.1, 13.2_
+  - [ ] 8.3 Implement domain removal
+    - Add delete button for each domain
+    - Confirm deletion with user
+    - Call API to remove domain
+    - Update Traefik configuration
+    - _Requirements: 13.1_
+  - [ ] 8.4 Display SSL certificate information
+    - Show certificate status (pending, active, failed)
+    - Show certificate expiration date
+    - Show renewal status
+    - Handle certificate errors
+    - _Requirements: 13.4_
+
+- [ ] 9. Create resource metrics dashboard component
+  - [ ] 9.1 Create `ResourceMetrics.tsx` component
+    - Display CPU usage chart over time
+    - Display RAM usage chart over time
+    - Display request rate chart
+    - Support time range selection (1h, 6h, 24h, 7d)
+    - _Requirements: 2.2, 7.3_
+  - [ ] 9.2 Fetch metrics from Prometheus
+    - Query Prometheus API for CPU metrics
+    - Query Prometheus API for RAM metrics
+    - Query Prometheus API for request metrics
+    - Handle Prometheus connection errors
+    - _Requirements: 2.2_
+  - [ ] 9.3 Implement chart visualization
+    - Use recharts or similar library
+    - Display line charts for time series data
+    - Show current values and trends
+    - Support zooming and panning
+    - _Requirements: 2.2_
+
+- [ ] 10. Create deployment progress component
+  - [ ] 10.1 Create `DeploymentProgress.tsx` component
+    - Display deployment stages (Clone, Build, Package, Deploy)
+    - Show current stage with progress indicator
+    - Display real-time build logs
+    - Show success/failure status
+    - _Requirements: 2.3, 2.5_
+  - [ ] 10.2 Implement log streaming in UI
+    - Connect to SSE endpoint for logs
+    - Display logs in terminal-style viewer
+    - Auto-scroll to latest logs
+    - Handle connection errors
+    - _Requirements: 2.3, 2.5_
+  - [ ] 10.3 Add deployment status updates
+    - Poll deployment status every 5 seconds
+    - Update progress indicator based on status
+    - Show completion time
+    - Handle deployment failures
+    - _Requirements: 2.3_
+
+- [ ] 11. Create plan comparison page
+  - [ ] 11.1 Create `PaaSPlans.tsx` page component
+    - Display all available plans in table
+    - Show plan features (CPU, RAM, disk, replicas)
+    - Show pricing (hourly and monthly)
+    - Highlight recommended plan
+    - _Requirements: 2.4_
+  - [ ] 11.2 Implement plan selection
+    - Add "Select Plan" button for each plan
+    - Navigate to app creation with selected plan
+    - Pre-fill plan in creation form
+    - Show plan details in creation flow
+    - _Requirements: 2.4_
+  - [ ] 11.3 Add plan comparison features
+    - Highlight differences between plans
+    - Show feature availability per plan
+    - Add tooltips for feature explanations
+    - Support filtering by price range
+    - _Requirements: 2.4_
+
+## Phase 4: Application Lifecycle Features
+
+- [ ] 12. Implement complete deployment flow
+  - [ ] 12.1 Enhance `BuilderService` for git operations
+    - Implement git clone with authentication
+    - Support HTTPS and SSH git URLs
+    - Validate repository accessibility
+    - Validate branch existence
+    - _Requirements: 6.2, 19.1, 19.2, 19.3_
+  - [ ] 12.2 Implement buildpack detection
+    - Detect Node.js (package.json)
+    - Detect Python (requirements.txt, Pipfile)
+    - Detect Ruby (Gemfile)
+    - Detect PHP (composer.json, index.php)
+    - Detect Go (go.mod)
+    - Detect Java (pom.xml, build.gradle)
+    - _Requirements: 6.2_
+  - [ ] 12.3 Implement slug creation and storage
+    - Build application with detected buildpack
+    - Create compressed slug artifact
+    - Upload slug to S3 or local storage
+    - Store slug metadata in database
+    - _Requirements: 6.3_
+  - [ ] 12.4 Implement Docker Swarm deployment
+    - Create Docker service from slug
+    - Configure environment variables
+    - Configure resource limits (CPU, RAM)
+    - Configure health checks
+    - Configure Traefik routing
+    - _Requirements: 6.4_
+
+- [ ] 13. Implement application scaling
+  - [ ] 13.1 Update `ScalerService` for replica management
+    - Implement `scale()` method
+    - Update Docker Swarm service replicas
+    - Validate replica count against plan limits
+    - Update application record in database
+    - _Requirements: 15.1, 15.2, 15.5_
+  - [ ] 13.2 Update billing for scaled applications
+    - Recalculate costs based on new replica count
+    - Update resource usage records
+    - Notify user of cost changes
+    - Check wallet balance before scaling
+    - _Requirements: 15.4_
+  - [ ] 13.3 Implement load balancing
+    - Configure Docker Swarm load balancing
+    - Distribute replicas across worker nodes
+    - Ensure even distribution
+    - Handle node failures gracefully
+    - _Requirements: 15.3_
+
+- [ ] 14. Implement deployment rollback
+  - [ ] 14.1 Add rollback API endpoint
+    - Create `POST /api/paas/apps/:id/rollback` endpoint
+    - Accept target deployment version
+    - Validate deployment exists and is successful
+    - Queue rollback deployment job
+    - _Requirements: 14.1, 14.2_
+  - [ ] 14.2 Implement rollback logic in `DeployerService`
+    - Retrieve slug for target deployment
+    - Redeploy with previous slug
+    - Preserve current environment variables
+    - Update application status
+    - _Requirements: 14.2, 14.3, 14.4_
+  - [ ] 14.3 Add rollback UI in deployment history
+    - Add "Rollback" button for each successful deployment
+    - Confirm rollback action with user
+    - Show rollback progress
+    - Update UI on completion
+    - _Requirements: 14.1_
+  - [ ] 14.4 Optimize rollback performance
+    - Use cached slugs for fast rollback
+    - Skip build step for rollbacks
+    - Target 30-second rollback time
+    - Log rollback duration
+    - _Requirements: 14.5_
+
+- [ ] 15. Implement application lifecycle management
+  - [ ] 15.1 Add application stop functionality
+    - Update `POST /api/paas/apps/:id/stop` endpoint
+    - Stop Docker Swarm service
+    - Update application status to 'stopped'
+    - Stop billing for stopped applications
+    - _Requirements: 6.5_
+  - [ ] 15.2 Add application restart functionality
+    - Create `POST /api/paas/apps/:id/restart` endpoint
+    - Restart Docker Swarm service
+    - Maintain current deployment version
+    - Resume billing
+    - _Requirements: 6.5_
+  - [ ] 15.3 Add application deletion with cleanup
+    - Update `DELETE /api/paas/apps/:id` endpoint
+    - Stop and remove Docker Swarm service
+    - Delete slugs from storage
+    - Delete database records (cascading)
+    - Delete Traefik routes
+    - _Requirements: 6.5_
+
+## Phase 5: Settings and Configuration
+
+- [ ] 16. Implement settings management
+  - [ ] 16.1 Enhance `PaasSettingsService` with validation
+    - Add validation for each setting type
+    - Validate S3 credentials before saving
+    - Validate Loki endpoint connectivity
+    - Validate domain format
+    - _Requirements: 8.3, 8.5_
+  - [ ] 16.2 Add default settings initialization
+    - Create default settings on first run
+    - Set default domain to 'apps.example.com'
+    - Set default storage to 'local'
+    - Set default retention to 7 days
+    - _Requirements: 8.4, 9.4_
+  - [ ] 16.3 Implement settings encryption
+    - Encrypt sensitive settings (S3 keys, SSH keys)
+    - Use application encryption key
+    - Never return encrypted values in API
+    - Handle encryption errors gracefully
+    - _Requirements: 8.2_
+  - [ ] 16.4 Add settings validation API endpoint
+    - Create `POST /api/admin/paas/settings/validate` endpoint
+    - Test S3 connectivity
+    - Test Loki connectivity
+    - Test Docker Swarm connectivity
+    - Return validation results
+    - _Requirements: 8.3, 8.5_
+
+- [ ] 17. Implement resource plans management
+  - [ ] 17.1 Create default plans on initialization
+    - Create Hobby plan (0.5 CPU, 512MB, $5/mo)
+    - Create Standard plan (1 CPU, 1GB, $25/mo)
+    - Create Pro plan (2 CPU, 2GB, $50/mo)
+    - Create Business plan (4 CPU, 4GB, $100/mo)
+    - _Requirements: 9.5_
+  - [ ] 17.2 Implement plan CRUD operations
+    - Complete `POST /api/admin/paas/plans` endpoint
+    - Complete `PATCH /api/admin/paas/plans/:id` endpoint
+    - Complete `DELETE /api/admin/paas/plans/:id` endpoint
+    - Validate plan data before saving
+    - _Requirements: 9.1, 9.2_
+  - [ ] 17.3 Add plan usage validation
+    - Prevent deletion of plans in use
+    - Show application count per plan
+    - Warn before plan changes
+    - Handle plan updates gracefully
+    - _Requirements: 9.2, 9.4_
+  - [ ] 17.4 Implement plan pricing calculations
+    - Calculate monthly from hourly (hours * 730)
+    - Display both hourly and monthly pricing
+    - Update pricing in real-time
+    - Validate pricing is non-negative
+    - _Requirements: 9.3_
+
+## Phase 6: Worker Node Management
+
+- [ ] 18. Implement worker node management
+  - [ ] 18.1 Complete `NodeManagerService` implementation
+    - Implement `addWorkerNode()` method
+    - Implement `removeNode()` method
+    - Implement `getNodeStatuses()` method
+    - Implement `initializeSwarm()` method
+    - _Requirements: 5.1, 5.2_
+  - [ ] 18.2 Implement auto-provisioning
+    - SSH into worker node
+    - Install Docker via script
+    - Configure firewall rules
+    - Join Docker Swarm cluster
+    - _Requirements: 5.2_
+  - [ ] 18.3 Implement health monitoring
+    - Ping worker nodes every 30 seconds
+    - Check Docker daemon status
+    - Check Swarm membership status
+    - Update node status in database
+    - _Requirements: 5.3, 5.5_
+  - [ ] 18.4 Display worker node metrics
+    - Query Docker for node resources
+    - Show CPU usage per node
+    - Show RAM usage per node
+    - Show container count per node
+    - _Requirements: 5.4_
+  - [ ] 18.5 Implement worker node alerts
+    - Alert when node becomes unhealthy
+    - Alert when node is unreachable
+    - Alert when node resources are exhausted
+    - Send notifications to administrators
+    - _Requirements: 5.5_
+
+## Phase 7: Environment Variables and Secrets
+
+- [ ] 19. Implement environment variable management
+  - [ ] 19.1 Enhance environment variable encryption
+    - Encrypt all values with organization key
+    - Derive keys from master key + org ID
+    - Store encrypted values in database
+    - Never log or expose decrypted values
+    - _Requirements: 12.1, 12.2, 4.5_
+  - [ ] 19.2 Implement environment variable injection
+    - Inject user-defined variables into containers
+    - Inject system variables (PORT, DYNO, PS)
+    - Inject automatically on deployment
+    - Handle variable updates with redeployment
+    - _Requirements: 12.3, 12.4_
+  - [ ] 19.3 Add environment variable validation
+    - Validate key format [A-Z0-9_]+
+    - Prevent reserved system variable names
+    - Validate value length limits
+    - Sanitize values for shell injection
+    - _Requirements: 12.5_
+  - [ ] 19.4 Implement bulk environment variable operations
+    - Support setting multiple variables at once
+    - Support importing from .env file format
+    - Support exporting to .env file format
+    - Trigger single redeployment for bulk updates
+    - _Requirements: 12.3_
+
+## Phase 8: Infrastructure and Initialization
+
+- [ ] 20. Implement infrastructure auto-deployment
+  - [ ] 20.1 Enhance `scripts/init-paas.ts` initialization script
+    - Initialize Docker Swarm if not initialized
+    - Deploy infrastructure via docker-compose
+    - Wait for services to be healthy
+    - Create default settings in database
+    - _Requirements: 11.1, 11.5_
+  - [ ] 20.2 Configure Traefik for SSL
+    - Set up Let's Encrypt certificate resolver
+    - Configure ACME challenge
+    - Set admin email for certificates
+    - Enable automatic certificate renewal
+    - _Requirements: 11.2_
+  - [ ] 20.3 Configure Loki for log retention
+    - Read retention period from settings
+    - Update Loki configuration
+    - Restart Loki service if needed
+    - Verify retention is applied
+    - _Requirements: 11.3_
+  - [ ] 20.4 Configure Grafana datasources
+    - Add Loki as datasource
+    - Add Prometheus as datasource
+    - Configure default dashboards
+    - Set admin credentials
+    - _Requirements: 11.4_
+  - [ ] 20.5 Verify infrastructure health
+    - Check all services are running
+    - Check Loki is accepting logs
+    - Check Traefik is routing traffic
+    - Check Prometheus is scraping metrics
+    - _Requirements: 11.5_
+
+## Phase 9: User Management Integration
+
+- [ ] 21. Integrate PaaS with user management
+  - [ ] 21.1 Add PaaS statistics to user management UI
+    - Display application count per organization
+    - Display total PaaS costs per organization
+    - Display resource usage per organization
+    - Add PaaS section to organization detail view
+    - _Requirements: 16.1, 16.2, 16.4_
+  - [ ] 21.2 Implement organization deletion handling
+    - Prompt to delete or reassign PaaS applications
+    - Stop all applications before deletion
+    - Delete all application data
+    - Handle deletion errors gracefully
+    - _Requirements: 16.3_
+  - [ ] 21.3 Add PaaS suspension functionality
+    - Create endpoint to suspend all org applications
+    - Stop all running applications
+    - Update application statuses
+    - Prevent new deployments while suspended
+    - _Requirements: 16.5_
+  - [ ] 21.4 Add PaaS usage reports
+    - Show usage by organization
+    - Show usage by application
+    - Show usage over time
+    - Export usage reports to CSV
+    - _Requirements: 16.4_
+
+## Phase 10: Build Caching and Optimization
+
+- [ ] 22. Implement build caching
+  - [ ] 22.1 Implement cache storage in `BuilderService`
+    - Store buildpack cache after successful build
+    - Store cache in paas_build_cache table
+    - Support S3 and local storage for cache
+    - Compress cache before storage
+    - _Requirements: 17.1, 17.2_
+  - [ ] 22.2 Implement cache restoration
+    - Check for existing cache before build
+    - Download and extract cache
+    - Restore cache to build directory
+    - Log cache hit/miss
+    - _Requirements: 17.3_
+  - [ ] 22.3 Implement cache invalidation
+    - Invalidate on buildpack change
+    - Invalidate on stack version change
+    - Invalidate on manual request
+    - Clean up old cache entries
+    - _Requirements: 17.4_
+  - [ ] 22.4 Add cache management settings
+    - Add cache enabled/disabled setting
+    - Add cache size limit setting
+    - Add cache TTL setting
+    - Implement cache cleanup job
+    - _Requirements: 17.5_
+
+## Phase 11: Testing and Quality Assurance
+
+- [ ] 23. Write unit tests for services
+  - [ ] 23.1 Test BuilderService methods
+    - Test git clone with various URLs
+    - Test buildpack detection
+    - Test slug creation
+    - Test error handling
+    - _Requirements: 6.2, 6.3_
+  - [ ] 23.2 Test DeployerService methods
+    - Test Docker service creation
+    - Test service updates
+    - Test service deletion
+    - Test error handling
+    - _Requirements: 6.4_
+  - [ ] 23.3 Test PaasBillingService methods
+    - Test usage calculation
+    - Test wallet deduction
+    - Test application stopping on insufficient funds
+    - Test error handling
+    - _Requirements: 10.1, 10.2, 10.3, 10.4_
+  - [ ] 23.4 Test HealthCheckService methods
+    - Test health check configuration
+    - Test health check monitoring
+    - Test failure detection
+    - Test error handling
+    - _Requirements: 18.1, 18.2, 18.3_
+
+- [ ] 24. Write integration tests
+  - [ ] 24.1 Test complete deployment flow
+    - Test app creation
+    - Test git clone and build
+    - Test slug creation and storage
+    - Test Docker deployment
+    - Test application accessibility
+    - _Requirements: 6.1, 6.2, 6.3, 6.4_
+  - [ ] 24.2 Test billing integration
+    - Test hourly usage recording
+    - Test wallet deduction
+    - Test application stopping
+    - Test usage reports
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
+  - [ ] 24.3 Test log streaming
+    - Test log ingestion to Loki
+    - Test log retrieval
+    - Test log filtering
+    - Test SSE streaming
+    - _Requirements: 7.1, 7.2, 7.3_
+  - [ ] 24.4 Test worker queue processing
+    - Test build job processing
+    - Test deploy job processing
+    - Test billing job processing
+    - Test job failures and retries
+    - _Requirements: 20.1, 20.2, 20.3_
+
+- [ ] 25. Write end-to-end tests
+  - [ ] 25.1 Test user workflows
+    - Test creating and deploying an application
+    - Test scaling an application
+    - Test viewing logs
+    - Test adding environment variables
+    - Test rolling back a deployment
+    - _Requirements: 6.1, 6.5, 7.1, 12.3, 14.1_
+  - [ ] 25.2 Test admin workflows
+    - Test adding worker nodes
+    - Test configuring settings
+    - Test managing plans
+    - Test viewing usage reports
+    - Test suspending applications
+    - _Requirements: 5.1, 8.3, 9.1, 16.4, 16.5_
+
+## Phase 12: Documentation and Polish
+
+- [ ] 26. Update documentation
+  - [ ] 26.1 Update admin setup guide
+    - Document new features
+    - Update configuration instructions
+    - Add troubleshooting section
+    - Add architecture diagrams
+    - _Requirements: All_
+  - [ ] 26.2 Update user guide
+    - Document new UI features
+    - Add tutorials for common workflows
+    - Update API documentation
+    - Add FAQ section
+    - _Requirements: All_
+  - [ ] 26.3 Create developer documentation
+    - Document all services and interfaces
+    - Add code examples
+    - Document database schema
+    - Add contribution guidelines
+    - _Requirements: All_
+
+- [ ] 27. Performance optimization
+  - [ ] 27.1 Optimize database queries
+    - Add missing indexes
+    - Use prepared statements
+    - Implement query result caching
+    - Optimize JOIN operations
+    - _Requirements: 4.2_
+  - [ ] 27.2 Optimize build process
+    - Implement parallel buildpack operations
+    - Optimize slug compression
+    - Use local Docker registry
+    - Implement build caching
+    - _Requirements: 17.1, 17.2, 17.3_
+  - [ ] 27.3 Optimize deployment process
+    - Pre-pull images on worker nodes
+    - Implement rolling updates
+    - Optimize health check timing
+    - Cache DNS lookups
+    - _Requirements: 6.4, 18.1_
+
+- [ ] 28. Bug fixes and polish
+  - [ ] 28.1 Fix UI/UX issues
+    - Improve error messages
+    - Add loading states
+    - Improve responsive design
+    - Add keyboard shortcuts
+    - _Requirements: 2.1, 2.2, 2.3, 2.4_
+  - [ ] 28.2 Fix API issues
+    - Improve error responses
+    - Add request validation
+    - Add rate limiting
+    - Improve logging
+    - _Requirements: 1.4_
+  - [ ] 28.3 Fix deployment issues
+    - Handle edge cases
+    - Improve error recovery
+    - Add deployment timeouts
+    - Improve rollback reliability
+    - _Requirements: 6.2, 6.3, 6.4, 14.2_
