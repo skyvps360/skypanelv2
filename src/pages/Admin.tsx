@@ -54,6 +54,7 @@ import { PaaSUsageReports } from "@/components/admin/PaaSUsageReports";
 import { PaaSAllAppsAdmin } from "@/components/admin/PaaSAllAppsAdmin";
 import { PaaSWorkerManagement } from "@/components/admin/PaaSWorkerManagement";
 import { PaaSSettingsAdmin } from "@/components/admin/PaaSSettingsAdmin";
+import { PaaSMarketplaceAdmin } from "@/components/admin/PaaSMarketplaceAdmin";
 
 import { useTheme } from "@/contexts/ThemeContext";
 import { Badge } from "@/components/ui/badge";
@@ -149,7 +150,8 @@ type AdminSection =
   | "paas-overview"
   | "paas-apps"
   | "paas-workers"
-  | "paas-settings";
+  | "paas-settings"
+  | "paas-marketplace";
 
 const ADMIN_SECTIONS: AdminSection[] = [
   "dashboard",
@@ -171,6 +173,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "paas-apps",
   "paas-workers",
   "paas-settings",
+  "paas-marketplace",
 ];
 
 const DEFAULT_ADMIN_SECTION: AdminSection = "dashboard";
@@ -2321,6 +2324,7 @@ const Admin: React.FC = () => {
       case "paas-apps":
       case "paas-workers":
       case "paas-settings":
+      case "paas-marketplace":
         // PaaS sections handle their own data fetching
         break;
       default:
@@ -4002,6 +4006,10 @@ const Admin: React.FC = () => {
 
     <SectionPanel section="paas-settings" activeSection={activeTab}>
       <PaaSSettingsAdmin />
+    </SectionPanel>
+
+    <SectionPanel section="paas-marketplace" activeSection={activeTab}>
+      <PaaSMarketplaceAdmin />
     </SectionPanel>
 
     <SectionPanel section="stackscripts" activeSection={activeTab}>

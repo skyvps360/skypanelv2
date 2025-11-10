@@ -27,7 +27,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Activity,
-  Container,
+  Box,
   CreditCard,
   FileText,
   HelpCircle,
@@ -443,7 +443,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         requiresAlt: false,
       },
       {
-        icon: Container,
+        icon: Box,
         label: "PaaS Apps",
         href: "/paas",
         shortcut: isMac ? "⌘P" : "Ctrl+P",

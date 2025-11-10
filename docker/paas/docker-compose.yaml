@@ -6,13 +6,15 @@ version: '3.8'
 services:
   # Grafana Loki - Log aggregation
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:2.9.3
     command: -config.file=/etc/loki/local-config.yaml
     ports:
       - "3100:3100"
     volumes:
       - loki-data:/loki
-      - ./generated/loki-config.yaml:/etc/loki/local-config.yaml
+    configs:
+      - source: loki-config
+        target: /etc/loki/local-config.yaml
     networks:
       - paas-infrastructure
     restart: unless-stopped
@@ -20,16 +22,27 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
+          memory: 1024M
+      update_config:
+        order: start-first
+        failure_action: rollback
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Promtail - Log shipper for Docker logs
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:2.9.3
     command: -config.file=/etc/promtail/config.yml
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./promtail-config.yaml:/etc/promtail/config.yml
+    configs:
+      - source: promtail-config
+        target: /etc/promtail/config.yml
     networks:
       - paas-infrastructure
     restart: unless-stopped
@@ -38,18 +51,20 @@ services:
 
   # Grafana - Log visualization
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.2.3
     ports:
-      - "3001:3000"
+      - "3002:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:3001/
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:3002/
       - GF_SERVER_SERVE_FROM_SUB_PATH=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./generated/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    configs:
+      - source: grafana-datasources
+        target: /etc/grafana/provisioning/datasources/datasources.yaml
     networks:
       - paas-infrastructure
     restart: unless-stopped
@@ -89,12 +104,14 @@ services:
 
   # Prometheus - Metrics collection (optional)
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.48.1
     ports:
       - "9090:9090"
     volumes:
       - prometheus-data:/prometheus
-      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -135,3 +152,17 @@ networks:
   paas-public:
     driver: overlay
     attachable: true
+
+configs:
+  loki-config:
+    external: true
+    name: loki-config-${CONFIG_VERSION:-v1}
+  promtail-config:
+    external: true
+    name: promtail-config-${CONFIG_VERSION:-v1}
+  grafana-datasources:
+    external: true
+    name: grafana-datasources-${CONFIG_VERSION:-v1}
+  prometheus-config:
+    external: true
+    name: prometheus-config-${CONFIG_VERSION:-v1}

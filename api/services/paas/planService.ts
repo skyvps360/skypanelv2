@@ -150,11 +150,27 @@ export class PaasPlanService {
    */
   static formatPlanRow(row: any): any {
     const resolvedRow = { ...row };
+
+    // Convert all numeric fields from PostgreSQL DECIMAL strings to numbers
+    if (resolvedRow.price_per_hour !== undefined && resolvedRow.price_per_hour !== null) {
+      resolvedRow.price_per_hour = Number(resolvedRow.price_per_hour);
+    }
+    if (resolvedRow.price_per_month !== undefined && resolvedRow.price_per_month !== null) {
+      resolvedRow.price_per_month = Number(resolvedRow.price_per_month);
+    }
+    if (resolvedRow.hourly_rate !== undefined && resolvedRow.hourly_rate !== null) {
+      resolvedRow.hourly_rate = Number(resolvedRow.hourly_rate);
+    }
+    if (resolvedRow.cpu_cores !== undefined && resolvedRow.cpu_cores !== null) {
+      resolvedRow.cpu_cores = Number(resolvedRow.cpu_cores);
+    }
+
+    // Set default values for derived fields
     if (!resolvedRow.hourly_rate) {
       resolvedRow.hourly_rate = resolvedRow.price_per_hour;
     }
     if (!resolvedRow.price_per_month && resolvedRow.price_per_hour !== undefined) {
-      const pricing = this.calculatePricing(Number(resolvedRow.price_per_hour));
+      const pricing = this.calculatePricing(resolvedRow.price_per_hour);
       resolvedRow.price_per_month = pricing.price_per_month;
       resolvedRow.hourly_rate = pricing.hourly_rate;
     }

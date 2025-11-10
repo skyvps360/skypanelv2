@@ -1429,6 +1429,296 @@ router.get('/jobs/:id', param('id').isLength({ min: 1 }), async (req: Request, r
   }
 });
 
+/**
+ * GET /api/paas/marketplace/templates
+ * List all active marketplace templates
+ */
+router.get('/marketplace/templates', async (req: Request, res: Response) => {
+  try {
+    const category = req.query.category as string;
+    const featured = req.query.featured === 'true';
+    const search = req.query.search as string;
+
+    let whereClause = 'WHERE is_active = true';
+    const queryParams: any[] = [];
+    let paramIndex = 1;
+
+    if (category) {
+      whereClause += ` AND category = $${paramIndex}`;
+      queryParams.push(category);
+      paramIndex++;
+    }
+
+    if (featured) {
+      whereClause += ` AND is_featured = true`;
+    }
+
+    if (search) {
+      whereClause += ` AND (name ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
+      queryParams.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    const result = await pool.query(
+      `SELECT
+        id, name, slug, description, category, icon_url,
+        git_url, git_branch, buildpack, recommended_plan_slug,
+        min_cpu_cores, min_ram_mb, deploy_count, rating,
+        is_featured, created_at
+       FROM paas_marketplace_templates
+       ${whereClause}
+       ORDER BY is_featured DESC, deploy_count DESC, name ASC`,
+      queryParams
+    );
+
+    res.json({ templates: result.rows });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to list marketplace templates',
+      clientMessage: 'Failed to load templates',
+    });
+  }
+});
+
+/**
+ * GET /api/paas/marketplace/templates/:slug
+ * Get detailed information about a marketplace template
+ */
+router.get('/marketplace/templates/:slug', param('slug').trim(), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { slug } = req.params;
+
+    const result = await pool.query(
+      `SELECT * FROM paas_marketplace_templates WHERE slug = $1 AND is_active = true`,
+      [slug]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const template = result.rows[0];
+
+    // Get recommended plan details
+    if (template.recommended_plan_slug) {
+      const planResult = await pool.query(
+        'SELECT * FROM paas_plans WHERE slug = $1 AND is_active = true',
+        [template.recommended_plan_slug]
+      );
+      template.recommended_plan = planResult.rows[0] || null;
+    }
+
+    // Get required addons if any
+    if (template.required_addons && template.required_addons.length > 0) {
+      const addonsResult = await pool.query(
+        'SELECT * FROM paas_marketplace_addons WHERE slug = ANY($1::text[]) AND is_active = true',
+        [template.required_addons]
+      );
+      template.required_addons_details = addonsResult.rows;
+    }
+
+    res.json({ template });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to get marketplace template',
+      clientMessage: 'Failed to load template',
+    });
+  }
+});
+
+/**
+ * GET /api/paas/marketplace/addons
+ * List all active marketplace addons
+ */
+router.get('/marketplace/addons', async (req: Request, res: Response) => {
+  try {
+    const addonType = req.query.type as string;
+
+    let whereClause = 'WHERE is_active = true';
+    const queryParams: any[] = [];
+
+    if (addonType) {
+      whereClause += ' AND addon_type = $1';
+      queryParams.push(addonType);
+    }
+
+    const result = await pool.query(
+      `SELECT * FROM paas_marketplace_addons ${whereClause} ORDER BY addon_type, name`,
+      queryParams
+    );
+
+    res.json({ addons: result.rows });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to list marketplace addons',
+      clientMessage: 'Failed to load addons',
+    });
+  }
+});
+
+/**
+ * POST /api/paas/marketplace/deploy/:slug
+ * Deploy an application from a marketplace template
+ */
+router.post('/marketplace/deploy/:slug',
+  param('slug').trim(),
+  body('name').trim().isLength({ min: 1, max: 255 }),
+  body('custom_slug').optional().trim().matches(/^[a-z0-9-]+$/),
+  body('plan_id').isUUID(),
+  body('custom_env_vars').optional().isObject(),
+  body('selected_addons').optional().isArray(),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const orgId = (req as any).organizationId;
+      const { slug } = req.params;
+      const { name, custom_slug, plan_id, custom_env_vars, selected_addons } = req.body;
+
+      // Get template
+      const templateResult = await pool.query(
+        'SELECT * FROM paas_marketplace_templates WHERE slug = $1 AND is_active = true',
+        [slug]
+      );
+
+      if (templateResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+
+      const template = templateResult.rows[0];
+
+      // Generate app slug
+      const appSlug = custom_slug || name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+
+      // Check slug uniqueness
+      const existingSlug = await pool.query(
+        'SELECT id FROM paas_applications WHERE organization_id = $1 AND slug = $2',
+        [orgId, appSlug]
+      );
+
+      if (existingSlug.rows.length > 0) {
+        return res.status(400).json({ error: 'An application with this slug already exists' });
+      }
+
+      // Check plan
+      const planResult = await pool.query(
+        'SELECT * FROM paas_plans WHERE id = $1 AND is_active = true',
+        [plan_id]
+      );
+
+      if (planResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Plan not found' });
+      }
+
+      const plan = planResult.rows[0];
+
+      // Validate plan meets template minimum requirements
+      if (plan.cpu_cores < template.min_cpu_cores || plan.ram_mb < template.min_ram_mb) {
+        return res.status(400).json({
+          error: `Selected plan does not meet minimum requirements (${template.min_cpu_cores} CPU, ${template.min_ram_mb}MB RAM)`
+        });
+      }
+
+      // Create the application
+      const appResult = await pool.query(
+        `INSERT INTO paas_applications
+        (organization_id, name, slug, git_url, git_branch, buildpack, plan_id, status, replicas, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        RETURNING *`,
+        [
+          orgId,
+          name,
+          appSlug,
+          template.git_url,
+          template.git_branch || 'main',
+          template.buildpack,
+          plan_id,
+          'building',
+          1
+        ]
+      );
+
+      const app = appResult.rows[0];
+
+      // Merge default env vars with custom env vars
+      const envVars = { ...template.default_env_vars, ...custom_env_vars };
+
+      // Insert environment variables
+      for (const [key, value] of Object.entries(envVars)) {
+        await pool.query(
+          'INSERT INTO paas_environment_vars (application_id, key, value, created_at) VALUES ($1, $2, $3, NOW())',
+          [app.id, key, value]
+        );
+      }
+
+      // Create template deployment record
+      const deploymentTrackingResult = await pool.query(
+        `INSERT INTO paas_template_deployments
+        (application_id, template_id, deployed_by, custom_env_vars, selected_addons, deployment_status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+        RETURNING *`,
+        [app.id, template.id, userId, custom_env_vars || {}, selected_addons || [], 'deploying']
+      );
+
+      // Increment template deploy count
+      await pool.query(
+        'UPDATE paas_marketplace_templates SET deploy_count = deploy_count + 1 WHERE id = $1',
+        [template.id]
+      );
+
+      // Provision selected addons (async)
+      if (selected_addons && selected_addons.length > 0) {
+        for (const addonId of selected_addons) {
+          await pool.query(
+            `INSERT INTO paas_app_addons (application_id, addon_id, status, created_at, updated_at)
+            VALUES ($1, $2, $3, NOW(), NOW())`,
+            [app.id, addonId, 'provisioning']
+          );
+        }
+      }
+
+      await logActivity({
+        userId,
+        eventType: 'paas.marketplace.deploy',
+        entityType: 'paas_template',
+        entityId: template.id,
+        metadata: { templateSlug: slug, appId: app.id, appName: name },
+        message: `Deployed ${template.name} as ${name}`,
+      });
+
+      res.status(201).json({
+        app,
+        template_deployment: deploymentTrackingResult.rows[0]
+      });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to deploy from marketplace template',
+        clientMessage: 'Failed to deploy template',
+      });
+    }
+});
+
 export default router;
 
 async function triggerEnvRedeploy(appId: string): Promise<void> {

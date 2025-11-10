@@ -1,17 +1,20 @@
 /**
  * PaaS Create Application Page
  * Wizard for creating new PaaS applications
+ * Includes admin override controls for organization and plan selection
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Rocket, ArrowLeft } from 'lucide-react';
+import { Rocket, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -34,6 +37,11 @@ interface Plan {
   features?: Record<string, string | boolean>;
 }
 
+interface Organization {
+  id: string;
+  name: string;
+}
+
 const PaaSAppCreate: React.FC = () => {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -44,15 +52,25 @@ const PaaSAppCreate: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(true);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Admin override fields
+  const isAdmin = user?.role === 'admin';
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState('');
+  const [useCustomPricing, setUseCustomPricing] = useState(false);
+  const [customPricePerHour, setCustomPricePerHour] = useState('');
 
   const selectedPlan = plans.find((plan) => plan.id === planId);
 
   useEffect(() => {
     loadPlans();
-  }, []);
+    if (isAdmin) {
+      loadOrganizations();
+    }
+  }, [isAdmin]);
 
   useEffect(() => {
     const requestedPlan = searchParams.get('plan');
@@ -65,12 +83,22 @@ const PaaSAppCreate: React.FC = () => {
 
   const loadPlans = async () => {
     try {
-      const data = await apiClient.get('/paas/plans');
+      const endpoint = isAdmin ? '/admin/paas/plans' : '/paas/plans';
+      const data = await apiClient.get(endpoint);
       setPlans(data.plans || []);
     } catch (error) {
       toast.error('Failed to load plans');
     } finally {
       setLoadingPlans(false);
+    }
+  };
+
+  const loadOrganizations = async () => {
+    try {
+      const data = await apiClient.get('/admin/organizations');
+      setOrganizations(data.organizations || []);
+    } catch (error) {
+      console.error('Failed to load organizations:', error);
     }
   };
 
@@ -96,16 +124,37 @@ const PaaSAppCreate: React.FC = () => {
       return;
     }
 
+    if (isAdmin && selectedOrgId && !user?.organizationId && !selectedOrgId) {
+      toast.error('Please select an organization');
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await apiClient.post('/paas/apps', {
+      const payload: any = {
         name,
         slug,
         git_url: gitUrl || undefined,
         git_branch: gitBranch,
         buildpack: buildpack || undefined,
         plan_id: planId,
-      });
+      };
+
+      // Admin overrides
+      if (isAdmin) {
+        if (selectedOrgId) {
+          payload.organization_id = selectedOrgId;
+        }
+        if (useCustomPricing && customPricePerHour) {
+          payload.custom_price_per_hour = parseFloat(customPricePerHour);
+        }
+      }
+
+      const endpoint = isAdmin && (selectedOrgId || useCustomPricing)
+        ? '/admin/paas/apps/create'
+        : '/paas/apps';
+
+      const data = await apiClient.post(endpoint, payload);
 
       toast.success('Application created successfully!');
       navigate(`/paas/${data.app.id}`);
@@ -138,44 +187,84 @@ const PaaSAppCreate: React.FC = () => {
                 Deploy your application in minutes
               </CardDescription>
             </div>
-
-            {selectedPlan && (
-              <div className="rounded-lg border bg-muted/50 p-4 text-sm space-y-2">
-                <p className="font-semibold">{selectedPlan.name}</p>
-                <div className="grid gap-2 md:grid-cols-2">
-                  <p>
-                    <span className="text-muted-foreground">CPU/RAM:</span>{' '}
-                    {selectedPlan.cpu_cores} vCPU · {selectedPlan.ram_mb}MB
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground">Replicas:</span>{' '}
-                    Up to {selectedPlan.max_replicas}
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground">Disk:</span>{' '}
-                    {selectedPlan.disk_gb}GB SSD
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground">Pricing:</span>{' '}
-                    ${selectedPlan.price_per_hour.toFixed(2)}/hr · ${selectedPlan.price_per_month?.toFixed(2) ?? '—'}/mo
-                  </p>
-                </div>
-                {selectedPlan.features && (
-                  <div className="text-xs text-muted-foreground">
-                    Includes:{' '}
-                    {Object.keys(selectedPlan.features)
-                      .slice(0, 4)
-                      .map((feature) => feature.replace(/_/g, ' '))
-                      .join(', ')}
-                    {Object.keys(selectedPlan.features).length > 4 && ', …'}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
+
+          {selectedPlan && (
+            <div className="rounded-lg border bg-muted/50 p-4 text-sm space-y-2">
+              <p className="font-semibold">{selectedPlan.name}</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <p>
+                  <span className="text-muted-foreground">CPU/RAM:</span>{' '}
+                  {selectedPlan.cpu_cores} vCPU · {selectedPlan.ram_mb}MB
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Replicas:</span>{' '}
+                  Up to {selectedPlan.max_replicas}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Disk:</span>{' '}
+                  {selectedPlan.disk_gb}GB SSD
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Pricing:</span>{' '}
+                  {useCustomPricing && customPricePerHour ? (
+                    <span className="font-bold text-orange-500">
+                      ${parseFloat(customPricePerHour).toFixed(2)}/hr (Custom)
+                    </span>
+                  ) : (
+                    <>
+                      ${selectedPlan.price_per_hour.toFixed(2)}/hr · ${selectedPlan.price_per_month?.toFixed(2) ?? '—'}/mo
+                    </>
+                  )}
+                </p>
+              </div>
+              {selectedPlan.features && (
+                <div className="text-xs text-muted-foreground">
+                  Includes:{' '}
+                  {Object.keys(selectedPlan.features)
+                    .slice(0, 4)
+                    .map((feature) => feature.replace(/_/g, ' '))
+                    .join(', ')}
+                  {Object.keys(selectedPlan.features).length > 4 && ', …'}
+                </div>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Admin Override Section */}
+            {isAdmin && (
+              <Alert className="border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+                <ShieldAlert className="h-4 w-4 text-orange-600" />
+                <AlertDescription className="text-orange-800 dark:text-orange-300">
+                  <strong>Admin Mode:</strong> You have additional controls to create apps for any organization and set custom pricing.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Admin: Organization Selection */}
+            {isAdmin && (
+              <div className="space-y-2 border-l-4 border-orange-500 pl-4">
+                <Label htmlFor="organization">Organization (Admin Override)</Label>
+                <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select organization (or use your own)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  Leave empty to create in your own organization
+                </p>
+              </div>
+            )}
+
             {/* App Name */}
             <div className="space-y-2">
               <Label htmlFor="name">Application Name</Label>
@@ -260,7 +349,7 @@ const PaaSAppCreate: React.FC = () => {
                   {plans.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       {plan.name} - {plan.cpu_cores} CPU, {plan.ram_mb}MB RAM
-                      ({plan.price_per_hour}/hr ≈ ${plan.price_per_month?.toFixed(2)}/mo)
+                      (${plan.price_per_hour}/hr ≈ ${plan.price_per_month?.toFixed(2)}/mo)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -269,6 +358,40 @@ const PaaSAppCreate: React.FC = () => {
                 <p className="text-sm text-muted-foreground">Loading plans...</p>
               )}
             </div>
+
+            {/* Admin: Custom Pricing */}
+            {isAdmin && (
+              <div className="space-y-3 border-l-4 border-orange-500 pl-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="custom_pricing"
+                    checked={useCustomPricing}
+                    onCheckedChange={(checked) => setUseCustomPricing(checked as boolean)}
+                  />
+                  <Label htmlFor="custom_pricing" className="cursor-pointer">
+                    Use Custom Pricing (Admin Override)
+                  </Label>
+                </div>
+                {useCustomPricing && (
+                  <div className="space-y-2">
+                    <Label htmlFor="custom_price">Custom Price Per Hour ($)</Label>
+                    <Input
+                      id="custom_price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={customPricePerHour}
+                      onChange={(e) => setCustomPricePerHour(e.target.value)}
+                      placeholder="0.00"
+                      required={useCustomPricing}
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Override the plan's default pricing for this app
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Submit */}
             <div className="flex gap-3 pt-4">

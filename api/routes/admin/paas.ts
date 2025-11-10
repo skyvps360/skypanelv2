@@ -167,6 +167,39 @@ router.get('/overview', async (req: Request, res: Response) => {
  */
 router.get('/apps', async (req: Request, res: Response) => {
   try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = (page - 1) * limit;
+    const search = req.query.search as string || '';
+    const status = req.query.status as string || '';
+
+    let whereClause = '';
+    const queryParams: any[] = [];
+    let paramIndex = 1;
+
+    if (search) {
+      whereClause = `WHERE (a.name ILIKE $${paramIndex} OR o.name ILIKE $${paramIndex})`;
+      queryParams.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    if (status) {
+      whereClause += whereClause ? ' AND' : 'WHERE';
+      whereClause += ` a.status = $${paramIndex}`;
+      queryParams.push(status);
+      paramIndex++;
+    }
+
+    // Get total count
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM paas_applications a
+       JOIN organizations o ON a.organization_id = o.id
+       ${whereClause}`,
+      queryParams
+    );
+    const totalApps = parseInt(countResult.rows[0].count);
+
+    // Get paginated apps
     const result = await pool.query(
       `SELECT
         a.*,
@@ -177,11 +210,21 @@ router.get('/apps', async (req: Request, res: Response) => {
        FROM paas_applications a
        JOIN organizations o ON a.organization_id = o.id
        LEFT JOIN paas_plans p ON a.plan_id = p.id
+       ${whereClause}
        ORDER BY a.created_at DESC
-       LIMIT 100`
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...queryParams, limit, offset]
     );
 
-    res.json({ apps: result.rows });
+    res.json({
+      apps: result.rows,
+      pagination: {
+        page,
+        limit,
+        total: totalApps,
+        totalPages: Math.ceil(totalApps / limit)
+      }
+    });
   } catch (error: any) {
     handlePaasApiError({
       req,
@@ -333,6 +376,373 @@ router.post('/apps/:id/resume', param('id').isUUID(), async (req: Request, res: 
       clientMessage: 'Failed to resume application',
     });
   }
+});
+
+/**
+ * DELETE /api/admin/paas/apps/:id
+ * Delete an application (admin only)
+ */
+router.delete('/apps/:id', param('id').isUUID(), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const userId = (req as any).userId;
+    const appId = req.params.id;
+
+    // Get application details
+    const appResult = await pool.query(
+      'SELECT * FROM paas_applications WHERE id = $1',
+      [appId]
+    );
+
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const app = appResult.rows[0];
+
+    // Stop all containers
+    try {
+      await DeployerService.stopApplication(appId);
+    } catch (error) {
+      console.error('Failed to stop app during delete:', error);
+      // Continue with deletion even if stop fails
+    }
+
+    // Delete related records (cascade should handle this, but being explicit)
+    await pool.query('DELETE FROM paas_deployments WHERE application_id = $1', [appId]);
+    await pool.query('DELETE FROM paas_env_vars WHERE application_id = $1', [appId]);
+    await pool.query('DELETE FROM paas_resource_usage WHERE application_id = $1', [appId]);
+
+    // Delete the application
+    await pool.query('DELETE FROM paas_applications WHERE id = $1', [appId]);
+
+    await logAdminPaasActivity({
+      userId,
+      eventType: 'admin.paas.app.delete',
+      entityType: 'paas_app',
+      entityId: appId,
+      metadata: { appName: app.name, organizationId: app.organization_id },
+      message: `Deleted application ${app.name}`,
+    });
+
+    res.json({ message: 'Application deleted successfully' });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to delete PaaS application',
+      clientMessage: 'Failed to delete application',
+    });
+  }
+});
+
+/**
+ * PATCH /api/admin/paas/apps/:id/plan
+ * Reassign plan for an application
+ */
+router.patch('/apps/:id/plan',
+  param('id').isUUID(),
+  body('plan_id').isUUID(),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const appId = req.params.id;
+      const { plan_id } = req.body;
+
+      // Check if application exists
+      const appResult = await pool.query(
+        'SELECT * FROM paas_applications WHERE id = $1',
+        [appId]
+      );
+
+      if (appResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const app = appResult.rows[0];
+
+      // Check if plan exists
+      const planResult = await pool.query(
+        'SELECT * FROM paas_plans WHERE id = $1 AND is_active = true',
+        [plan_id]
+      );
+
+      if (planResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Plan not found or inactive' });
+      }
+
+      const newPlan = planResult.rows[0];
+      const oldPlanResult = await pool.query(
+        'SELECT name FROM paas_plans WHERE id = $1',
+        [app.plan_id]
+      );
+      const oldPlanName = oldPlanResult.rows[0]?.name || 'Unknown';
+
+      // Update the plan
+      await pool.query(
+        'UPDATE paas_applications SET plan_id = $1, updated_at = NOW() WHERE id = $2',
+        [plan_id, appId]
+      );
+
+      await logAdminPaasActivity({
+        userId,
+        eventType: 'admin.paas.app.plan_change',
+        entityType: 'paas_app',
+        entityId: appId,
+        metadata: {
+          appName: app.name,
+          oldPlan: oldPlanName,
+          newPlan: newPlan.name
+        },
+        message: `Changed plan for ${app.name} from ${oldPlanName} to ${newPlan.name}`,
+      });
+
+      res.json({
+        message: 'Plan updated successfully',
+        plan: newPlan
+      });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to update app plan',
+        clientMessage: 'Failed to update plan',
+      });
+    }
+});
+
+/**
+ * POST /api/admin/paas/apps/bulk-action
+ * Perform bulk actions on applications
+ */
+router.post('/apps/bulk-action',
+  body('app_ids').isArray({ min: 1 }),
+  body('action').isIn(['suspend', 'resume', 'delete']),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const { app_ids, action } = req.body;
+
+      const results = {
+        success: [] as string[],
+        failed: [] as { id: string; error: string }[]
+      };
+
+      for (const appId of app_ids) {
+        try {
+          if (action === 'suspend') {
+            await DeployerService.stopApplication(appId);
+            await pool.query(
+              'UPDATE paas_applications SET status = $1 WHERE id = $2',
+              ['suspended', appId]
+            );
+          } else if (action === 'resume') {
+            const appResult = await pool.query(
+              'SELECT * FROM paas_applications WHERE id = $1',
+              [appId]
+            );
+            if (appResult.rows.length > 0) {
+              const app = appResult.rows[0];
+              const deploymentResult = await pool.query(
+                'SELECT id FROM paas_deployments WHERE application_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1',
+                [appId, 'deployed']
+              );
+
+              if (deploymentResult.rows.length > 0) {
+                await DeployerService.deploy({
+                  deploymentId: deploymentResult.rows[0].id,
+                  replicas: app.replicas,
+                });
+                await pool.query(
+                  'UPDATE paas_applications SET status = $1 WHERE id = $2',
+                  ['running', appId]
+                );
+              }
+            }
+          } else if (action === 'delete') {
+            await DeployerService.stopApplication(appId);
+            await pool.query('DELETE FROM paas_deployments WHERE application_id = $1', [appId]);
+            await pool.query('DELETE FROM paas_env_vars WHERE application_id = $1', [appId]);
+            await pool.query('DELETE FROM paas_resource_usage WHERE application_id = $1', [appId]);
+            await pool.query('DELETE FROM paas_applications WHERE id = $1', [appId]);
+          }
+
+          results.success.push(appId);
+        } catch (error: any) {
+          results.failed.push({
+            id: appId,
+            error: error.message || 'Unknown error'
+          });
+        }
+      }
+
+      await logAdminPaasActivity({
+        userId,
+        eventType: `admin.paas.app.bulk_${action}`,
+        entityType: 'paas_app',
+        entityId: 'bulk',
+        metadata: {
+          action,
+          totalApps: app_ids.length,
+          successCount: results.success.length,
+          failedCount: results.failed.length
+        },
+        message: `Bulk ${action}: ${results.success.length} succeeded, ${results.failed.length} failed`,
+      });
+
+      res.json(results);
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to perform bulk action',
+        clientMessage: 'Bulk action failed',
+      });
+    }
+});
+
+/**
+ * POST /api/admin/paas/apps/create
+ * Create an application with admin overrides (organization selection, custom pricing)
+ */
+router.post('/apps/create',
+  body('name').trim().isLength({ min: 1, max: 255 }),
+  body('slug').trim().matches(/^[a-z0-9-]+$/),
+  body('plan_id').isUUID(),
+  body('organization_id').optional().isUUID(),
+  body('custom_price_per_hour').optional().isFloat({ min: 0 }),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const {
+        name,
+        slug,
+        git_url,
+        git_branch,
+        buildpack,
+        plan_id,
+        organization_id,
+        custom_price_per_hour
+      } = req.body;
+
+      // If organization_id is provided, use it; otherwise use admin's organization
+      let targetOrgId = organization_id;
+      if (!targetOrgId) {
+        const adminResult = await pool.query(
+          'SELECT organization_id FROM users WHERE id = $1',
+          [userId]
+        );
+        if (adminResult.rows.length === 0 || !adminResult.rows[0].organization_id) {
+          return res.status(400).json({ error: 'No organization specified and admin has no organization' });
+        }
+        targetOrgId = adminResult.rows[0].organization_id;
+      }
+
+      // Check if organization exists
+      const orgResult = await pool.query(
+        'SELECT id FROM organizations WHERE id = $1',
+        [targetOrgId]
+      );
+      if (orgResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Organization not found' });
+      }
+
+      // Check if plan exists
+      const planResult = await pool.query(
+        'SELECT * FROM paas_plans WHERE id = $1',
+        [plan_id]
+      );
+      if (planResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Plan not found' });
+      }
+
+      // Check if slug is unique within organization
+      const existingSlug = await pool.query(
+        'SELECT id FROM paas_applications WHERE organization_id = $1 AND slug = $2',
+        [targetOrgId, slug]
+      );
+      if (existingSlug.rows.length > 0) {
+        return res.status(400).json({ error: 'An application with this slug already exists in the organization' });
+      }
+
+      // Create the application
+      const appResult = await pool.query(
+        `INSERT INTO paas_applications
+        (organization_id, name, slug, git_url, git_branch, buildpack, plan_id, status, replicas, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        RETURNING *`,
+        [
+          targetOrgId,
+          name,
+          slug,
+          git_url || null,
+          git_branch || 'main',
+          buildpack || null,
+          plan_id,
+          'inactive',
+          1
+        ]
+      );
+
+      const app = appResult.rows[0];
+
+      // If custom pricing is specified, record it
+      if (custom_price_per_hour !== undefined) {
+        await pool.query(
+          `INSERT INTO paas_app_pricing_overrides
+          (application_id, custom_price_per_hour, created_by, created_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (application_id)
+          DO UPDATE SET custom_price_per_hour = $2, updated_at = NOW()`,
+          [app.id, custom_price_per_hour, userId]
+        );
+      }
+
+      await logAdminPaasActivity({
+        userId,
+        eventType: 'admin.paas.app.create',
+        entityType: 'paas_app',
+        entityId: app.id,
+        metadata: {
+          appName: name,
+          organizationId: targetOrgId,
+          customPricing: custom_price_per_hour || null
+        },
+        message: `Created application ${name} for organization ${targetOrgId}`,
+      });
+
+      res.status(201).json({ app });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to create PaaS application (admin)',
+        clientMessage: 'Failed to create application',
+      });
+    }
 });
 
 /**
@@ -914,6 +1324,433 @@ router.get('/usage/report/export', async (req: Request, res: Response) => {
       error,
       logMessage: 'Failed to export PaaS usage report',
       clientMessage: 'Failed to export usage report',
+    });
+  }
+});
+
+/**
+ * GET /api/admin/paas/marketplace/templates
+ * Get all marketplace templates (including inactive)
+ */
+router.get('/marketplace/templates', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM paas_marketplace_templates ORDER BY is_featured DESC, created_at DESC`
+    );
+    res.json({ templates: result.rows });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to list marketplace templates (admin)',
+      clientMessage: 'Failed to load templates',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/paas/marketplace/templates
+ * Create a new marketplace template
+ */
+router.post('/marketplace/templates',
+  body('name').trim().isLength({ min: 1, max: 255 }),
+  body('slug').trim().matches(/^[a-z0-9-]+$/),
+  body('category').trim().isLength({ min: 1 }),
+  body('git_url').isURL(),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const {
+        name,
+        slug,
+        description,
+        category,
+        icon_url,
+        git_url,
+        git_branch,
+        buildpack,
+        default_env_vars,
+        required_addons,
+        recommended_plan_slug,
+        min_cpu_cores,
+        min_ram_mb,
+        is_featured
+      } = req.body;
+
+      const result = await pool.query(
+        `INSERT INTO paas_marketplace_templates
+        (name, slug, description, category, icon_url, git_url, git_branch, buildpack,
+         default_env_vars, required_addons, recommended_plan_slug, min_cpu_cores, min_ram_mb,
+         is_featured, created_by, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+        RETURNING *`,
+        [
+          name,
+          slug,
+          description || null,
+          category,
+          icon_url || null,
+          git_url,
+          git_branch || 'main',
+          buildpack || null,
+          JSON.stringify(default_env_vars || {}),
+          JSON.stringify(required_addons || []),
+          recommended_plan_slug || null,
+          min_cpu_cores || 1,
+          min_ram_mb || 512,
+          is_featured || false,
+          userId
+        ]
+      );
+
+      await logAdminPaasActivity({
+        userId,
+        eventType: 'admin.paas.marketplace.template.create',
+        entityType: 'marketplace_template',
+        entityId: result.rows[0].id,
+        metadata: { name, slug },
+        message: `Created marketplace template: ${name}`,
+      });
+
+      res.status(201).json({ template: result.rows[0] });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to create marketplace template',
+        clientMessage: 'Failed to create template',
+      });
+    }
+});
+
+/**
+ * PATCH /api/admin/paas/marketplace/templates/:id
+ * Update a marketplace template
+ */
+router.patch('/marketplace/templates/:id',
+  param('id').isUUID(),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const { id } = req.params;
+      const updates = req.body;
+
+      const fields = [];
+      const values = [];
+      let paramIndex = 1;
+
+      const allowedFields = [
+        'name', 'description', 'category', 'icon_url', 'git_url', 'git_branch',
+        'buildpack', 'default_env_vars', 'required_addons', 'recommended_plan_slug',
+        'min_cpu_cores', 'min_ram_mb', 'is_active', 'is_featured'
+      ];
+
+      for (const field of allowedFields) {
+        if (updates[field] !== undefined) {
+          fields.push(`${field} = $${paramIndex}`);
+          values.push(
+            (field === 'default_env_vars' || field === 'required_addons')
+              ? JSON.stringify(updates[field])
+              : updates[field]
+          );
+          paramIndex++;
+        }
+      }
+
+      if (fields.length === 0) {
+        return res.status(400).json({ error: 'No valid fields to update' });
+      }
+
+      fields.push(`updated_at = NOW()`);
+      values.push(id);
+
+      const result = await pool.query(
+        `UPDATE paas_marketplace_templates SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+        values
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+
+      await logAdminPaasActivity({
+        userId,
+        eventType: 'admin.paas.marketplace.template.update',
+        entityType: 'marketplace_template',
+        entityId: id,
+        metadata: { templateName: result.rows[0].name },
+        message: `Updated marketplace template: ${result.rows[0].name}`,
+      });
+
+      res.json({ template: result.rows[0] });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to update marketplace template',
+        clientMessage: 'Failed to update template',
+      });
+    }
+});
+
+/**
+ * DELETE /api/admin/paas/marketplace/templates/:id
+ * Delete a marketplace template
+ */
+router.delete('/marketplace/templates/:id', param('id').isUUID(), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const userId = (req as any).userId;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM paas_marketplace_templates WHERE id = $1 RETURNING name',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    await logAdminPaasActivity({
+      userId,
+      eventType: 'admin.paas.marketplace.template.delete',
+      entityType: 'marketplace_template',
+      entityId: id,
+      metadata: { templateName: result.rows[0].name },
+      message: `Deleted marketplace template: ${result.rows[0].name}`,
+    });
+
+    res.json({ message: 'Template deleted successfully' });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to delete marketplace template',
+      clientMessage: 'Failed to delete template',
+    });
+  }
+});
+
+/**
+ * GET /api/admin/paas/marketplace/addons
+ * Get all marketplace addons (including inactive)
+ */
+router.get('/marketplace/addons', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM paas_marketplace_addons ORDER BY addon_type, name'
+    );
+    res.json({ addons: result.rows });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to list marketplace addons (admin)',
+      clientMessage: 'Failed to load addons',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/paas/marketplace/addons
+ * Create a new marketplace addon
+ */
+router.post('/marketplace/addons',
+  body('name').trim().isLength({ min: 1, max: 255 }),
+  body('slug').trim().matches(/^[a-z0-9-]+$/),
+  body('addon_type').trim().isLength({ min: 1 }),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const {
+        name,
+        slug,
+        description,
+        addon_type,
+        provider,
+        config_template,
+        default_env_vars,
+        price_per_hour
+      } = req.body;
+
+      const result = await pool.query(
+        `INSERT INTO paas_marketplace_addons
+        (name, slug, description, addon_type, provider, config_template, default_env_vars, price_per_hour, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        RETURNING *`,
+        [
+          name,
+          slug,
+          description || null,
+          addon_type,
+          provider || 'internal',
+          JSON.stringify(config_template || {}),
+          JSON.stringify(default_env_vars || {}),
+          price_per_hour || 0
+        ]
+      );
+
+      await logAdminPaasActivity({
+        userId,
+        eventType: 'admin.paas.marketplace.addon.create',
+        entityType: 'marketplace_addon',
+        entityId: result.rows[0].id,
+        metadata: { name, slug },
+        message: `Created marketplace addon: ${name}`,
+      });
+
+      res.status(201).json({ addon: result.rows[0] });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to create marketplace addon',
+        clientMessage: 'Failed to create addon',
+      });
+    }
+});
+
+/**
+ * PATCH /api/admin/paas/marketplace/addons/:id
+ * Update a marketplace addon
+ */
+router.patch('/marketplace/addons/:id',
+  param('id').isUUID(),
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = (req as any).userId;
+      const { id } = req.params;
+      const updates = req.body;
+
+      const fields = [];
+      const values = [];
+      let paramIndex = 1;
+
+      const allowedFields = [
+        'name', 'description', 'addon_type', 'provider', 'config_template',
+        'default_env_vars', 'price_per_hour', 'is_active'
+      ];
+
+      for (const field of allowedFields) {
+        if (updates[field] !== undefined) {
+          fields.push(`${field} = $${paramIndex}`);
+          values.push(
+            (field === 'config_template' || field === 'default_env_vars')
+              ? JSON.stringify(updates[field])
+              : updates[field]
+          );
+          paramIndex++;
+        }
+      }
+
+      if (fields.length === 0) {
+        return res.status(400).json({ error: 'No valid fields to update' });
+      }
+
+      fields.push(`updated_at = NOW()`);
+      values.push(id);
+
+      const result = await pool.query(
+        `UPDATE paas_marketplace_addons SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+        values
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Addon not found' });
+      }
+
+      await logAdminPaasActivity({
+        userId,
+        eventType: 'admin.paas.marketplace.addon.update',
+        entityType: 'marketplace_addon',
+        entityId: id,
+        metadata: { addonName: result.rows[0].name },
+        message: `Updated marketplace addon: ${result.rows[0].name}`,
+      });
+
+      res.json({ addon: result.rows[0] });
+    } catch (error: any) {
+      handlePaasApiError({
+        req,
+        res,
+        error,
+        logMessage: 'Failed to update marketplace addon',
+        clientMessage: 'Failed to update addon',
+      });
+    }
+});
+
+/**
+ * DELETE /api/admin/paas/marketplace/addons/:id
+ * Delete a marketplace addon
+ */
+router.delete('/marketplace/addons/:id', param('id').isUUID(), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const userId = (req as any).userId;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM paas_marketplace_addons WHERE id = $1 RETURNING name',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Addon not found' });
+    }
+
+    await logAdminPaasActivity({
+      userId,
+      eventType: 'admin.paas.marketplace.addon.delete',
+      entityType: 'marketplace_addon',
+      entityId: id,
+      metadata: { addonName: result.rows[0].name },
+      message: `Deleted marketplace addon: ${result.rows[0].name}`,
+    });
+
+    res.json({ message: 'Addon deleted successfully' });
+  } catch (error: any) {
+    handlePaasApiError({
+      req,
+      res,
+      error,
+      logMessage: 'Failed to delete marketplace addon',
+      clientMessage: 'Failed to delete addon',
     });
   }
 });

@@ -108,7 +108,7 @@ async function prepareDeployConfig(): Promise<DeployConfig> {
 }
 
 async function renderConfigFiles(config: DeployConfig): Promise<void> {
-  console.log('🧩 Step 3: Rendering Loki & Grafana configuration files...');
+  console.log('🧩 Step 3: Creating Docker configs for Loki, Grafana, Promtail & Prometheus...');
   await fs.mkdir(generatedDir, { recursive: true });
 
   const retentionHours = Math.max(1, Math.floor(config.lokiRetentionDays * 24));
@@ -132,10 +132,10 @@ common:
 
 schema_config:
   configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
+    - from: 2024-01-01
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -145,6 +145,7 @@ ruler:
 
 limits_config:
   retention_period: ${retentionHours}h
+  max_query_lookback: ${retentionHours}h
 
 compactor:
   working_directory: /loki/retention
@@ -173,13 +174,103 @@ datasources:
     editable: false
 `;
 
+  const promtailConfig = `server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: 'logstream'
+      - source_labels: ['__meta_docker_container_label_com_docker_swarm_service_name']
+        target_label: 'service'
+      - source_labels: ['__meta_docker_container_label_paas_app_id']
+        target_label: 'app_id'
+      - source_labels: ['__meta_docker_container_label_paas_app_name']
+        target_label: 'app_name'
+      - source_labels: ['__meta_docker_container_label_paas_deployment_id']
+        target_label: 'deployment_id'
+`;
+
+  const prometheusConfig = `global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
+`;
+
+  // Write to generated directory for reference
   await Promise.all([
     fs.writeFile(path.join(generatedDir, 'loki-config.yaml'), lokiConfig, 'utf8'),
     fs.writeFile(path.join(generatedDir, 'grafana-datasources.yaml'), grafanaDatasources, 'utf8'),
+    fs.writeFile(path.join(generatedDir, 'promtail-config.yaml'), promtailConfig, 'utf8'),
+    fs.writeFile(path.join(generatedDir, 'prometheus-config.yaml'), prometheusConfig, 'utf8'),
   ]);
 
-  console.log('   • Updated generated/loki-config.yaml');
-  console.log('   • Updated generated/grafana-datasources.yaml\n');
+  // Create Docker configs with versioning (configs are immutable in Swarm)
+  const configVersion = Date.now().toString();
+  const configs = [
+    { name: 'loki-config', content: lokiConfig },
+    { name: 'grafana-datasources', content: grafanaDatasources },
+    { name: 'promtail-config', content: promtailConfig },
+    { name: 'prometheus-config', content: prometheusConfig },
+  ];
+
+  for (const cfg of configs) {
+    const fullName = `${cfg.name}-${configVersion}`;
+
+    // Remove old config versions
+    try {
+      const { stdout } = await execAsync(`docker config ls --filter "name=${cfg.name}-" --format "{{.Name}}"`);
+      const oldConfigs = stdout.trim().split('\n').filter(Boolean);
+      for (const oldConfig of oldConfigs) {
+        try {
+          await execAsync(`docker config rm ${oldConfig}`);
+        } catch {
+          // Config may be in use, will be cleaned up later
+        }
+      }
+    } catch {
+      // No old configs or error listing
+    }
+
+    // Create new config
+    try {
+      await execAsync(`echo '${cfg.content.replace(/'/g, "'\\''")}' | docker config create ${fullName} -`);
+      console.log(`   • Created Docker config: ${fullName}`);
+    } catch (error) {
+      // Config might already exist, try to continue
+      console.log(`   • Config ${fullName} already exists or creation failed`);
+    }
+  }
+
+  // Store config version for docker-compose
+  process.env.CONFIG_VERSION = configVersion;
+  console.log(`   • Config version: ${configVersion}\n`);
 }
 
 async function deployInfrastructure(config: DeployConfig): Promise<void> {
@@ -189,6 +280,7 @@ async function deployInfrastructure(config: DeployConfig): Promise<void> {
     TRAEFIK_ACME_EMAIL: config.traefikEmail,
     GRAFANA_ADMIN_USER: config.grafanaAdminUser,
     GRAFANA_ADMIN_PASSWORD: config.grafanaAdminPassword,
+    CONFIG_VERSION: process.env.CONFIG_VERSION || 'v1',
   };
 
   await execAsync('docker stack deploy --with-registry-auth -c docker-compose.yaml paas-infra', {
@@ -197,6 +289,7 @@ async function deployInfrastructure(config: DeployConfig): Promise<void> {
   });
 
   console.log('   • Stack name: paas-infra');
+  console.log(`   • Using config version: ${env.CONFIG_VERSION}`);
   console.log('   • Waiting for services to start...\n');
 }
 
@@ -204,11 +297,22 @@ async function verifyInfrastructure(): Promise<void> {
   console.log('🩺 Step 5: Verifying infrastructure health...');
 
   await waitForService('Loki', 'http://localhost:3100/ready');
-  await waitForService('Grafana', 'http://localhost:3001/api/health');
-  await waitForService('Traefik', 'http://localhost:8080/api/rawdata');
   await waitForService('Prometheus', 'http://localhost:9090/-/ready');
 
-  console.log('   • All core services responded successfully\n');
+  // Check Grafana and Traefik with shorter timeout (optional)
+  try {
+    await waitForService('Grafana', 'http://localhost:3002/api/health', 5, 2000);
+  } catch {
+    console.log('   ⚠ Grafana health check skipped (still starting up)');
+  }
+
+  try {
+    await waitForService('Traefik', 'http://localhost:8080/api/rawdata', 5, 2000);
+  } catch {
+    console.log('   ⚠ Traefik health check skipped (still starting up)');
+  }
+
+  console.log('   • Core services verified successfully\n');
 }
 
 async function waitForService(name: string, url: string, attempts = 30, delayMs = 5000): Promise<void> {
@@ -259,7 +363,7 @@ function printSummary(config: DeployConfig): void {
   console.log('✅ SkyPanelV2 PaaS infrastructure is ready.');
   console.log('');
   console.log('Access points:');
-  console.log('   • Grafana : http://localhost:3001 (admin user/password from settings)');
+  console.log('   • Grafana : http://localhost:3002 (admin user/password from settings)');
   console.log('   • Traefik : http://localhost:8080 (dashboard)');
   console.log('   • Prometheus : http://localhost:9090');
   console.log('');

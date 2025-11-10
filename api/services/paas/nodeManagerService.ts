@@ -825,10 +825,10 @@ export class NodeManagerService {
             used_ram_mb = $5,
             last_heartbeat_at = NOW(),
             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
-              'hostname', $6,
-              'address', $7,
-              'availability', $8,
-              'containers', $9
+              'hostname', $6::text,
+              'address', $7::text,
+              'availability', $8::text,
+              'containers', $9::integer
             )
           WHERE id = $10`,
           [
@@ -837,10 +837,10 @@ export class NodeManagerService {
             metrics.usedCpu,
             metrics.ramTotalMb,
             metrics.usedRamMb,
-            metrics.hostname,
-            metrics.address,
-            metrics.availability,
-            metrics.containers,
+            metrics.hostname || '',
+            metrics.address || '',
+            metrics.availability || '',
+            metrics.containers || 0,
             node.id,
           ]
         );
@@ -849,7 +849,7 @@ export class NodeManagerService {
         await pool.query(
           `UPDATE paas_worker_nodes SET
             status = 'unreachable',
-            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('last_error', $1)
+            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('last_error', $1::text)
            WHERE id = $2`,
           [error?.message || 'Unknown error', node.id]
         );

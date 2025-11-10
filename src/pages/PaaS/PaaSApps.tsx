@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Rocket, Server, Activity, AlertCircle, ExternalLink } from 'lucide-react';
+import { Plus, Rocket, Server, Activity, AlertCircle, ExternalLink, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -121,6 +121,10 @@ const PaaSApps: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate('/paas/marketplace')}>
+            <Package className="w-4 h-4 mr-2" />
+            Marketplace
+          </Button>
           <Button variant="outline" onClick={() => navigate('/paas/plans')}>
             Compare Plans
           </Button>

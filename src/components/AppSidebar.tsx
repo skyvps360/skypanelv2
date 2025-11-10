@@ -158,8 +158,8 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             },
             {
               title: "Create App",
-              url: "/paas/create",
-              isActive: pathname.startsWith("/paas/create"),
+              url: "/paas/new",
+              isActive: pathname.startsWith("/paas/new"),
             },
           ],
         },
