@@ -6,7 +6,7 @@
 import { pool, PaasApplication, PaasDeployment } from '../../lib/database.js';
 import { PaasSettingsService } from './settingsService.js';
 import { exec } from 'child_process';
-import { promisify } from 'util';
+import type { ExecException } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createReadStream } from 'fs';
@@ -16,7 +16,19 @@ import { constants as zlibConstants } from 'zlib';
 import { GitService } from './gitService.js';
 import { BuildCacheService, BuildCacheConfig } from './buildCacheService.js';
 
-const execAsync = promisify(exec);
+const execAsync = (
+  command: string
+): Promise<{ stdout: string; stderr: string }> =>
+  new Promise((resolve, reject) => {
+    exec(command, (error: ExecException | null, stdout: string, stderr: string) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve({ stdout, stderr });
+    });
+  });
 
 export interface BuildOptions {
   applicationId: string;
@@ -113,7 +125,7 @@ export class BuilderService {
 
     try {
       // Build the application
-      const buildResult = await this.executeBuild(deployment.id, options);
+      const buildResult = await this.executeBuild(app, deployment.id, options);
 
       // Update deployment with success
       await pool.query(
@@ -160,6 +172,7 @@ export class BuilderService {
    * Execute the build process
    */
   private static async executeBuild(
+    app: PaasApplication,
     deploymentId: string,
     options: BuildOptions
   ): Promise<{ slugUrl: string; slugSize: number; buildpack: string }> {
