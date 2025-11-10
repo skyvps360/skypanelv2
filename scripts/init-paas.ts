@@ -24,6 +24,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dockerDir = path.join(__dirname, '../docker/paas');
 const generatedDir = path.join(dockerDir, 'generated');
+const parsedHealthAttempts = Number(process.env.PAAS_HEALTH_MAX_ATTEMPTS);
+const parsedHealthDelay = Number(process.env.PAAS_HEALTH_DELAY_MS);
+const HEALTH_MAX_ATTEMPTS =
+  Number.isFinite(parsedHealthAttempts) && parsedHealthAttempts > 0
+    ? parsedHealthAttempts
+    : 12;
+const HEALTH_DELAY_MS =
+  Number.isFinite(parsedHealthDelay) && parsedHealthDelay > 0
+    ? parsedHealthDelay
+    : 5000;
 
 interface DeployConfig {
   lokiRetentionDays: number;
@@ -315,13 +325,24 @@ async function verifyInfrastructure(): Promise<void> {
   console.log('   • Core services verified successfully\n');
 }
 
-async function waitForService(name: string, url: string, attempts = 30, delayMs = 5000): Promise<void> {
+async function waitForService(
+  name: string,
+  url: string,
+  attempts = HEALTH_MAX_ATTEMPTS,
+  delayMs = HEALTH_DELAY_MS
+): Promise<void> {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       await httpCheck(url);
+      console.log(`   • ${name} healthy (attempt ${attempt}/${attempts})`);
       return;
-    } catch {
-      // swallow and retry
+    } catch (error: any) {
+      const reason = error?.message || error || 'unknown error';
+      const retryMsg =
+        attempt < attempts ? ` - retrying in ${Math.round(delayMs / 1000)}s` : '';
+      console.log(
+        `   • ${name} not ready yet (attempt ${attempt}/${attempts}): ${reason}${retryMsg}`
+      );
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }

@@ -9,3 +9,4 @@ export { MemberAddModal } from './MemberAddModal';
 export { MemberEditModal } from './MemberEditModal';
 export { MemberRemoveDialog } from './MemberRemoveDialog';
 export { PaaSUsageReports } from './PaaSUsageReports';
+export { PaaSPlanManager } from './PaaSPlanManager';

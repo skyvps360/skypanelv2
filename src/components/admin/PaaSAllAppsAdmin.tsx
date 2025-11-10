@@ -3,10 +3,10 @@
  * View and manage all PaaS applications across all organizations
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Search, Ban, Play, Trash2, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Search, Ban, Play, Trash2, Edit, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { apiClient } from '@/lib/api';
+
+interface PaaSAllAppsAdminProps {
+  isActive?: boolean;
+}
 
 interface App {
   id: string;
@@ -36,7 +40,7 @@ interface Plan {
   price_per_hour: number;
 }
 
-export const PaaSAllAppsAdmin: React.FC = () => {
+export const PaaSAllAppsAdmin: React.FC<PaaSAllAppsAdminProps> = ({ isActive = false }) => {
   const [apps, setApps] = useState<App[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [search, setSearch] = useState('');
@@ -49,15 +53,13 @@ export const PaaSAllAppsAdmin: React.FC = () => {
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [selectedApp, setSelectedApp] = useState<App | null>(null);
   const [newPlanId, setNewPlanId] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadApps();
-    loadPlans();
-  }, [currentPage, search, statusFilter]);
-
-  const loadApps = async () => {
+  const loadApps = useCallback(async () => {
     try {
+      if (!isActive) return;
       setLoading(true);
+      setErrorMessage(null);
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: '50',
@@ -76,19 +78,37 @@ export const PaaSAllAppsAdmin: React.FC = () => {
       setTotalPages(data.pagination?.totalPages || 1);
       setTotalApps(data.pagination?.total || 0);
     } catch (error) {
-      toast.error('Failed to load applications');
+      const message = (error as Error)?.message || 'Failed to load applications';
+      setErrorMessage(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, isActive, search, statusFilter]);
 
-  const loadPlans = async () => {
+  const loadPlans = useCallback(async () => {
     try {
       const data = await apiClient.get('/admin/paas/plans');
       setPlans(data.plans || []);
     } catch (error) {
-      console.error('Failed to load plans');
+      console.error('Failed to load plans', error);
     }
+  }, []);
+
+  useEffect(() => {
+    void loadPlans();
+  }, [loadPlans]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    void loadApps();
+  }, [isActive, loadApps]);
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
   };
 
   const handleSuspend = async (appId: string) => {
@@ -96,7 +116,7 @@ export const PaaSAllAppsAdmin: React.FC = () => {
     try {
       await apiClient.post(`/admin/paas/apps/${appId}/suspend`, {});
       toast.success('Application suspended');
-      loadApps();
+      await loadApps();
     } catch (error: any) {
       toast.error(error.message || 'Failed to suspend');
     }
@@ -106,7 +126,7 @@ export const PaaSAllAppsAdmin: React.FC = () => {
     try {
       await apiClient.post(`/admin/paas/apps/${appId}/resume`, {});
       toast.success('Application resumed');
-      loadApps();
+      await loadApps();
     } catch (error: any) {
       toast.error(error.message || 'Failed to resume');
     }
@@ -117,7 +137,7 @@ export const PaaSAllAppsAdmin: React.FC = () => {
     try {
       await apiClient.delete(`/admin/paas/apps/${appId}`);
       toast.success('Application deleted');
-      loadApps();
+      await loadApps();
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete');
     }
@@ -144,7 +164,7 @@ export const PaaSAllAppsAdmin: React.FC = () => {
       }
 
       setSelectedApps(new Set());
-      loadApps();
+      await loadApps();
     } catch (error: any) {
       toast.error(error.message || `Failed to ${actionText} applications`);
     }
@@ -165,7 +185,7 @@ export const PaaSAllAppsAdmin: React.FC = () => {
       });
       toast.success('Plan updated successfully');
       setPlanDialogOpen(false);
-      loadApps();
+      await loadApps();
     } catch (error: any) {
       toast.error(error.message || 'Failed to update plan');
     }
@@ -207,7 +227,7 @@ export const PaaSAllAppsAdmin: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="All Statuses" />
             </SelectTrigger>
@@ -232,6 +252,16 @@ export const PaaSAllAppsAdmin: React.FC = () => {
               className="pl-9 w-64"
             />
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => void loadApps()}
+            disabled={loading}
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </Button>
         </div>
       </div>
 
@@ -262,7 +292,15 @@ export const PaaSAllAppsAdmin: React.FC = () => {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <p className="p-6">Loading...</p>
+            <p className="p-6">Loading applications...</p>
+          ) : errorMessage ? (
+            <div className="space-y-3 p-6 text-sm text-muted-foreground">
+              <p>{errorMessage}</p>
+              <Button size="sm" onClick={() => void loadApps()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try again
+              </Button>
+            </div>
           ) : apps.length === 0 ? (
             <p className="p-6 text-muted-foreground">No applications found</p>
           ) : (

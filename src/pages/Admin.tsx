@@ -7,18 +7,22 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   AlertTriangle,
+  AppWindow,
   ArrowRight,
+  BarChart3,
   Box,
   Calendar,
   CheckCircle,
   ClipboardList,
   Clock,
+  Cpu,
   DollarSign,
   Edit,
   FileCode,
   Globe,
   GripVertical,
   HelpCircle,
+  Layers,
   LifeBuoy,
   Palette,
   Plus,
@@ -28,6 +32,7 @@ import {
   ServerCog,
   Settings,
   Shield,
+  Store,
   Trash2,
   Users,
 } from "lucide-react";
@@ -52,6 +57,7 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { PaaSOverview } from "@/components/admin/PaaSOverview";
 import { PaaSUsageReports } from "@/components/admin/PaaSUsageReports";
 import { PaaSAllAppsAdmin } from "@/components/admin/PaaSAllAppsAdmin";
+import { PaaSPlanManager } from "@/components/admin/PaaSPlanManager";
 import { PaaSWorkerManagement } from "@/components/admin/PaaSWorkerManagement";
 import { PaaSSettingsAdmin } from "@/components/admin/PaaSSettingsAdmin";
 import { PaaSMarketplaceAdmin } from "@/components/admin/PaaSMarketplaceAdmin";
@@ -148,7 +154,9 @@ type AdminSection =
   | "platform"
   | "contact-management"
   | "paas-overview"
+  | "paas-usage"
   | "paas-apps"
+  | "paas-plans"
   | "paas-workers"
   | "paas-settings"
   | "paas-marketplace";
@@ -170,10 +178,71 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "platform",
   "contact-management",
   "paas-overview",
+  "paas-usage",
   "paas-apps",
+  "paas-plans",
   "paas-workers",
   "paas-settings",
   "paas-marketplace",
+];
+
+type PaasNavSection =
+  | "paas-overview"
+  | "paas-usage"
+  | "paas-apps"
+  | "paas-plans"
+  | "paas-workers"
+  | "paas-settings"
+  | "paas-marketplace";
+
+const PAAS_NAV_ITEMS: Array<{
+  id: PaasNavSection;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  {
+    id: "paas-overview",
+    label: "Overview",
+    description: "Platform KPIs & health",
+    icon: BarChart3,
+  },
+  {
+    id: "paas-usage",
+    label: "Usage",
+    description: "Billing exports & reports",
+    icon: ClipboardList,
+  },
+  {
+    id: "paas-apps",
+    label: "Applications",
+    description: "All customer deployments",
+    icon: AppWindow,
+  },
+  {
+    id: "paas-plans",
+    label: "Plans",
+    description: "Tiers & pricing controls",
+    icon: Layers,
+  },
+  {
+    id: "paas-workers",
+    label: "Workers",
+    description: "Node orchestration",
+    icon: Cpu,
+  },
+  {
+    id: "paas-settings",
+    label: "Settings",
+    description: "Runtime defaults",
+    icon: Settings,
+  },
+  {
+    id: "paas-marketplace",
+    label: "Marketplace",
+    description: "Templates & add-ons",
+    icon: Store,
+  },
 ];
 
 const DEFAULT_ADMIN_SECTION: AdminSection = "dashboard";
@@ -633,6 +702,7 @@ const Admin: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminSection>("dashboard");
   const isDashboardView = activeTab === "dashboard";
+  const isPaaSSection = activeTab.startsWith("paas-");
   const [, setLoading] = useState(false);
 
   // Tickets state
@@ -3988,6 +4058,43 @@ const Admin: React.FC = () => {
       </div>
     </SectionPanel>
 
+    {isPaaSSection ? (
+      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+        <div className="flex flex-wrap gap-3">
+          {PAAS_NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleTabChange(item.id)}
+                className={cn(
+                  "flex min-w-[11rem] flex-1 flex-col gap-1 rounded-xl border p-4 text-left transition",
+                  active
+                    ? "border-primary bg-background shadow-sm"
+                    : "border-transparent bg-primary/10 hover:border-primary/40"
+                )}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Icon
+                    className={cn(
+                      "h-4 w-4",
+                      active ? "text-primary" : "text-muted-foreground"
+                    )}
+                  />
+                  {item.label}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {item.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ) : null}
+
     <SectionPanel section="paas-overview" activeSection={activeTab}>
       <PaaSOverview />
     </SectionPanel>
@@ -3997,7 +4104,11 @@ const Admin: React.FC = () => {
     </SectionPanel>
 
     <SectionPanel section="paas-apps" activeSection={activeTab}>
-      <PaaSAllAppsAdmin />
+      <PaaSAllAppsAdmin isActive={activeTab === "paas-apps"} />
+    </SectionPanel>
+
+    <SectionPanel section="paas-plans" activeSection={activeTab}>
+      <PaaSPlanManager isActive={activeTab === "paas-plans"} />
     </SectionPanel>
 
     <SectionPanel section="paas-workers" activeSection={activeTab}>
