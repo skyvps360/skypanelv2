@@ -3,6 +3,10 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 const queryMock = vi.hoisted(() => vi.fn()) as Mock;
+const stopApplicationMock = vi.hoisted(() => vi.fn()) as Mock;
+const deployMock = vi.hoisted(() => vi.fn()) as Mock;
+const logActivityMock = vi.hoisted(() => vi.fn()) as Mock;
+const handlePaasApiErrorMock = vi.hoisted(() => vi.fn()) as Mock;
 
 vi.mock('../../middleware/auth.js', () => ({
   authenticateToken: (req: any, _res: express.Response, next: express.NextFunction) => {
@@ -19,6 +23,25 @@ vi.mock('../../lib/database.js', () => ({
   },
 }));
 
+vi.mock('../../services/paas/deployerService.js', () => ({
+  DeployerService: {
+    stopApplication: stopApplicationMock,
+    deploy: deployMock,
+  },
+}));
+
+vi.mock('../../services/activityLogger.js', () => ({
+  logActivity: logActivityMock,
+}));
+
+vi.mock('../../services/paas/nodeManagerService.js', () => ({
+  NodeManagerService: {},
+}));
+
+vi.mock('../../utils/paasApiError.js', () => ({
+  handlePaasApiError: handlePaasApiErrorMock,
+}));
+
 import adminPaasRouter from './paas.js';
 
 const createTestApp = () => {
@@ -31,6 +54,10 @@ const createTestApp = () => {
 describe('GET /api/admin/paas/overview', () => {
   beforeEach(() => {
     queryMock.mockReset();
+    stopApplicationMock.mockReset();
+    deployMock.mockReset();
+    logActivityMock.mockReset();
+    handlePaasApiErrorMock.mockReset();
   });
 
   it('returns zeroed stats when database has no rows', async () => {
@@ -72,5 +99,74 @@ describe('GET /api/admin/paas/overview', () => {
     expect(response.body.resource_usage.total_cpu).toBeCloseTo(4.5);
     expect(response.body.resource_usage.total_ram_mb).toBe(8192);
     expect(response.body.resource_usage.total_cost_today).toBeCloseTo(12.34);
+  });
+});
+
+describe('DELETE /api/admin/paas/apps/:id', () => {
+  const appId = '3af0f2d0-4ce7-4c7d-9b3a-27c5922a3e5d';
+
+  beforeEach(() => {
+    queryMock.mockReset();
+    stopApplicationMock.mockReset();
+    deployMock.mockReset();
+    logActivityMock.mockReset();
+    handlePaasApiErrorMock.mockReset();
+  });
+
+  it('removes environment variables before deleting the application', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: appId,
+            name: 'Test App',
+            organization_id: 'org-123',
+            status: 'running',
+          },
+        ],
+      })
+      .mockResolvedValue({ rows: [] });
+
+    stopApplicationMock.mockResolvedValue(undefined);
+    logActivityMock.mockResolvedValue(undefined);
+
+    const response = await request(createTestApp()).delete(`/api/admin/paas/apps/${appId}`);
+
+    expect(response.status).toBe(200);
+    expect(queryMock).toHaveBeenCalledWith(
+      'DELETE FROM paas_environment_vars WHERE application_id = $1',
+      [appId]
+    );
+  });
+});
+
+describe('POST /api/admin/paas/apps/bulk-action', () => {
+  beforeEach(() => {
+    queryMock.mockReset();
+    stopApplicationMock.mockReset();
+    deployMock.mockReset();
+    logActivityMock.mockReset();
+    handlePaasApiErrorMock.mockReset();
+  });
+
+  it('removes environment variables when bulk deleting applications', async () => {
+    const appId = 'b8258f33-a61a-4d6e-bf3f-4f6bb8a07321';
+
+    queryMock.mockResolvedValue({ rows: [] });
+    stopApplicationMock.mockResolvedValue(undefined);
+    logActivityMock.mockResolvedValue(undefined);
+
+    const response = await request(createTestApp())
+      .post('/api/admin/paas/apps/bulk-action')
+      .send({
+        app_ids: [appId],
+        action: 'delete',
+      });
+
+    expect(response.status).toBe(200);
+    expect(queryMock).toHaveBeenCalledWith(
+      'DELETE FROM paas_environment_vars WHERE application_id = $1',
+      [appId]
+    );
   });
 });

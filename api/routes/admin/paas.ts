@@ -414,7 +414,7 @@ router.delete('/apps/:id', param('id').isUUID(), async (req: Request, res: Respo
 
     // Delete related records (cascade should handle this, but being explicit)
     await pool.query('DELETE FROM paas_deployments WHERE application_id = $1', [appId]);
-    await pool.query('DELETE FROM paas_env_vars WHERE application_id = $1', [appId]);
+    await pool.query('DELETE FROM paas_environment_vars WHERE application_id = $1', [appId]);
     await pool.query('DELETE FROM paas_resource_usage WHERE application_id = $1', [appId]);
 
     // Delete the application
@@ -578,7 +578,7 @@ router.post('/apps/bulk-action',
           } else if (action === 'delete') {
             await DeployerService.stopApplication(appId);
             await pool.query('DELETE FROM paas_deployments WHERE application_id = $1', [appId]);
-            await pool.query('DELETE FROM paas_env_vars WHERE application_id = $1', [appId]);
+            await pool.query('DELETE FROM paas_environment_vars WHERE application_id = $1', [appId]);
             await pool.query('DELETE FROM paas_resource_usage WHERE application_id = $1', [appId]);
             await pool.query('DELETE FROM paas_applications WHERE id = $1', [appId]);
           }
