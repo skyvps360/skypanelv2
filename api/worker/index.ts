@@ -19,6 +19,8 @@ import { buildQueue, deployQueue, billingQueue, redisUrl } from './queues.js';
 
 console.log('PaaS worker starting...');
 console.log(`Redis URL: ${redisUrl}`);
+const buildConcurrency = Math.max(1, Number(process.env.PAAS_BUILD_CONCURRENCY || 2));
+console.log(`[Worker] Build queue concurrency: ${buildConcurrency}`);
 
 NodeManagerService.ensureLocalNodeRegistered().catch((error) => {
   console.warn(
@@ -30,7 +32,7 @@ NodeManagerService.ensureLocalNodeRegistered().catch((error) => {
 /**
  * Build Queue Processor
  */
-buildQueue.process(async (job) => {
+buildQueue.process(buildConcurrency, async (job) => {
   console.log(`[Build] Processing job ${job.id}`);
   job.progress(5);
 

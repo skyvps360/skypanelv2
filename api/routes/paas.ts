@@ -24,6 +24,17 @@ import { BuildCacheService } from '../services/paas/buildCacheService.js';
 
 const router = express.Router();
 
+const APP_QUERY = {
+  appOrganization: {
+    name: 'paas_app_get_org',
+    text: 'SELECT organization_id FROM paas_applications WHERE id = $1',
+  },
+  appIdForOrg: {
+    name: 'paas_app_id_for_org',
+    text: 'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
+  },
+};
+
 interface AppActivityPayload {
   userId: string;
   organizationId: string;
@@ -61,11 +72,22 @@ const ensureAppOrgActive = async (appId: string, orgId?: string) => {
     await ensureOrgActive(orgId);
     return;
   }
-  const app = await pool.query('SELECT organization_id FROM paas_applications WHERE id = $1', [appId]);
+  const app = await pool.query<{ organization_id: string }>({
+    ...APP_QUERY.appOrganization,
+    values: [appId],
+  });
   if (app.rows.length === 0) {
     throw new Error('Application not found');
   }
   await ensureOrgActive(app.rows[0].organization_id as unknown as string);
+};
+
+const appExistsForOrg = async (appId: string, orgId: string): Promise<boolean> => {
+  const result = await pool.query<{ id: string }>({
+    ...APP_QUERY.appIdForOrg,
+    values: [appId, orgId],
+  });
+  return result.rowCount > 0;
 };
 
 // Apply authentication middleware to all routes
@@ -468,12 +490,7 @@ router.get('/apps/:id/deployments', param('id').isUUID(), async (req: Request, r
     const appId = req.params.id;
 
     // Verify app belongs to org
-    const appCheck = await pool.query(
-      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-      [appId, orgId]
-    );
-
-    if (appCheck.rows.length === 0) {
+    if (!(await appExistsForOrg(appId, orgId))) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
@@ -528,12 +545,7 @@ router.post(
       const { version } = req.body;
 
       // Verify app belongs to org
-      const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -607,12 +619,7 @@ router.get(
       const { since, limit, search } = req.query;
 
       // Verify app belongs to org
-      const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -658,12 +665,7 @@ router.get(
       const appId = req.params.id;
 
       // Verify app belongs to org
-      const appCheck = await pool.query(
-        'SELECT id, status FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -726,12 +728,7 @@ router.get('/apps/:id/env', param('id').isUUID(), async (req: Request, res: Resp
     const appId = req.params.id;
 
     // Verify app belongs to org
-    const appCheck = await pool.query(
-      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-      [appId, orgId]
-    );
-
-    if (appCheck.rows.length === 0) {
+    if (!(await appExistsForOrg(appId, orgId))) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
@@ -768,12 +765,7 @@ router.put(
       const { vars } = req.body;
 
       // Verify app belongs to org
-      const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -823,12 +815,7 @@ router.post(
       const appId = req.params.id;
       const { content, format = 'env' } = req.body;
 
-      const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -872,12 +859,7 @@ router.get('/apps/:id/env/export', param('id').isUUID(), async (req: Request, re
     const orgId = (req as any).organizationId;
     const appId = req.params.id;
 
-    const appCheck = await pool.query(
-      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-      [appId, orgId]
-    );
-
-    if (appCheck.rows.length === 0) {
+    if (!(await appExistsForOrg(appId, orgId))) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
@@ -910,12 +892,7 @@ router.get('/apps/:id/domains', param('id').isUUID(), async (req: Request, res: 
     const orgId = (req as any).organizationId;
     const appId = req.params.id;
 
-    const appCheck = await pool.query('SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2', [
-      appId,
-      orgId,
-    ]);
-
-    if (appCheck.rows.length === 0) {
+    if (!(await appExistsForOrg(appId, orgId))) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
@@ -953,12 +930,7 @@ router.post(
       const appId = req.params.id;
       const { domain } = req.body;
 
-      const appCheck = await pool.query('SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2', [
-        appId,
-        orgId,
-      ]);
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -1125,12 +1097,7 @@ router.delete(
       const key = req.params.key;
 
       // Verify app belongs to org
-      const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -1182,12 +1149,7 @@ router.post(
       const { replicas } = req.body;
 
       // Verify app belongs to org
-      const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -1252,12 +1214,7 @@ router.post('/apps/:id/stop', param('id').isUUID(), async (req: Request, res: Re
     const appId = req.params.id;
 
     // Verify app belongs to org
-    const appCheck = await pool.query(
-      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-      [appId, orgId]
-    );
-
-    if (appCheck.rows.length === 0) {
+    if (!(await appExistsForOrg(appId, orgId))) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
@@ -1302,12 +1259,7 @@ router.post(
       const appId = req.params.id;
       const { replicas } = req.body;
 
-      const appCheck = await pool.query(
-        'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-        [appId, orgId]
-      );
-
-      if (appCheck.rows.length === 0) {
+      if (!(await appExistsForOrg(appId, orgId))) {
         return res.status(404).json({ error: 'Application not found' });
       }
 
@@ -1352,12 +1304,7 @@ router.post('/apps/:id/cache/clear', param('id').isUUID(), async (req: Request, 
     const userId = (req as any).userId;
     const appId = req.params.id;
 
-    const appCheck = await pool.query(
-      'SELECT id FROM paas_applications WHERE id = $1 AND organization_id = $2',
-      [appId, orgId]
-    );
-
-    if (appCheck.rows.length === 0) {
+    if (!(await appExistsForOrg(appId, orgId))) {
       return res.status(404).json({ error: 'Application not found' });
     }
 

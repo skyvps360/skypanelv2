@@ -269,6 +269,23 @@ export class NodeManagerService {
     }
   }
 
+  static async preloadImage(imageName: string): Promise<void> {
+    if (!imageName) {
+      return;
+    }
+
+    try {
+      await execAsync(`docker image inspect ${imageName}`);
+    } catch {
+      try {
+        await execAsync(`docker pull ${imageName}`);
+        console.log(`[NodeManager] Pre-pulled image ${imageName}`);
+      } catch (error: any) {
+        console.warn(`[NodeManager] Failed to pre-pull image ${imageName}:`, error?.message || error);
+      }
+    }
+  }
+
   /**
    * Auto-provision a worker node (install Docker, join Swarm)
    */

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
-import dns from 'dns/promises';
 import { pool, PaasDomain } from '../../lib/database.js';
+import { DnsCache } from './dnsCache.js';
 
 const TXT_PREFIX = '_paas-verify';
 
@@ -17,7 +17,7 @@ export class SSLService {
     const recordName = `${TXT_PREFIX}.${domain.domain}`;
 
     try {
-      const records = await dns.resolveTxt(recordName);
+      const records = await DnsCache.resolveTxt(recordName);
       const flattened = records.flat().map((entry) => entry.toString());
       return flattened.some((entry) => entry.includes(domain.dns_verification_token!));
     } catch {

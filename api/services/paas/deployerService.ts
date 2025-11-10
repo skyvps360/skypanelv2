@@ -5,7 +5,7 @@
 
 import { pool, PaasApplication, PaasDeployment } from '../../lib/database.js';
 import { PaasSettingsService } from './settingsService.js';
-import { exec } from 'child_process';
+import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -18,9 +18,11 @@ import crypto from 'crypto';
 import { HealthCheckService } from './healthCheckService.js';
 import { PaasEnvironmentService } from './environmentService.js';
 import { logActivity } from '../activityLogger.js';
+import { NodeManagerService } from './nodeManagerService.js';
 
 const execAsync = promisify(exec);
 const SLUG_CACHE_DIR = process.env.PAAS_SLUG_CACHE_DIR || path.join(os.tmpdir(), 'paas-slug-cache');
+const DOCKER_CMD_TIMEOUT_MS = Number(process.env.PAAS_DOCKER_CMD_TIMEOUT || 120_000);
 
 export interface DeployOptions {
   deploymentId: string;
@@ -268,9 +270,42 @@ CMD ["/start", "web"]
 
     // Build image
     const imageName = `paas/${app.slug}:${deployment.version}`;
-    await execAsync(`docker build -t ${imageName} ${runtimeDir}`);
+    await this.execDocker(`docker build -t ${imageName} ${runtimeDir}`);
 
-    return imageName;
+    const remoteImage = await this.pushImageToRegistry(imageName, app, deployment);
+    const finalImageName = remoteImage || imageName;
+    await NodeManagerService.preloadImage(finalImageName);
+    return finalImageName;
+  }
+
+  private static async pushImageToRegistry(
+    imageName: string,
+    app: PaasApplication,
+    deployment: PaasDeployment
+  ): Promise<string | null> {
+    const registry = await PaasSettingsService.getRegistryConfig();
+    if (!registry?.url) {
+      return null;
+    }
+
+    const remoteName = `${registry.url}/paas/${app.slug}:${deployment.version}`;
+    try {
+      if (registry.username && registry.password) {
+        await this.execDocker(
+          `docker login ${registry.url} -u ${registry.username} -p ${registry.password}`
+        );
+      }
+      await this.execDocker(`docker tag ${imageName} ${remoteName}`);
+      await this.execDocker(`docker push ${remoteName}`);
+      console.log(`[Deploy] Pushed image ${remoteName} to registry ${registry.url}`);
+      return remoteName;
+    } catch (error: any) {
+      console.warn(
+        `[Deploy] Failed to push image ${imageName} to registry ${registry.url}:`,
+        error?.message || error
+      );
+      return null;
+    }
   }
 
   /**
@@ -318,7 +353,7 @@ CMD ["/start", "web"]
     const healthArgs = HealthCheckService.buildDockerArgs(healthConfig);
 
     if (serviceExists) {
-      await execAsync(`docker service update --placement-pref-rm "spread=node.id" ${serviceName}`).catch(() => {});
+      await this.execDocker(`docker service update --placement-pref-rm "spread=node.id" ${serviceName}`).catch(() => {});
       // Update existing service
       const updateArgs = [
         'docker service update',
@@ -335,12 +370,15 @@ CMD ["/start", "web"]
         `--label "traefik.enable=true"`,
         `--label "traefik.http.routers.${app.slug}.rule=Host(\`${appUrl}\`)"`,
         `--label "traefik.http.services.${app.slug}.loadbalancer.server.port=5000"`,
+        `--update-parallelism ${Math.max(1, Math.min(replicas || 1, 2))}`,
+        '--update-order start-first',
         ...healthArgs,
         serviceName,
       ];
 
-      await execAsync(updateArgs.join(' '));
+      await this.execDocker(updateArgs.join(' '));
     } else {
+      const createUpdateParallelism = Math.max(1, Math.min(replicas || 1, 2));
       const createArgs = [
         'docker service create',
         `--name ${serviceName}`,
@@ -362,20 +400,21 @@ CMD ["/start", "web"]
         `--label "paas.deployment.id=${deployment.id}"`,
         '--restart-condition on-failure',
         '--restart-max-attempts 3',
-        '--update-parallelism 1',
+        `--update-parallelism ${createUpdateParallelism}`,
         '--update-delay 10s',
         '--update-failure-action rollback',
         '--update-monitor 10s',
         '--update-max-failure-ratio 0.2',
+        '--update-order start-first',
         ...healthArgs,
         imageName,
       ];
 
-      await execAsync(createArgs.join(' '));
+      await this.execDocker(createArgs.join(' '));
     }
 
     // Get service ID
-    const { stdout } = await execAsync(`docker service ps ${serviceName} --format "{{.ID}}" | head -1`);
+    const { stdout } = await this.execDocker(`docker service ps ${serviceName} --format "{{.ID}}" | head -1`);
     return stdout.trim();
   }
 
@@ -384,11 +423,11 @@ CMD ["/start", "web"]
    */
   private static async createOverlayNetwork(networkName: string): Promise<void> {
     try {
-      await execAsync(`docker network inspect ${networkName}`);
+      await this.execDocker(`docker network inspect ${networkName}`);
       // Network exists
     } catch (error) {
       // Network doesn't exist, create it
-      await execAsync(`docker network create --driver overlay --attachable ${networkName}`);
+      await this.execDocker(`docker network create --driver overlay --attachable ${networkName}`);
     }
   }
 
@@ -397,7 +436,7 @@ CMD ["/start", "web"]
    */
   private static async checkServiceExists(serviceName: string): Promise<boolean> {
     try {
-      await execAsync(`docker service inspect ${serviceName}`);
+      await this.execDocker(`docker service inspect ${serviceName}`);
       return true;
     } catch (error) {
       return false;
@@ -421,7 +460,7 @@ CMD ["/start", "web"]
 
     try {
       const previousReplicas = app.rows[0].replicas || 0;
-      await execAsync(`docker service scale ${serviceName}=0`);
+      await this.execDocker(`docker service scale ${serviceName}=0`);
       await pool.query(
         `UPDATE paas_applications
          SET status = $1,
@@ -458,10 +497,10 @@ CMD ["/start", "web"]
 
     try {
       // Remove service
-      await execAsync(`docker service rm ${serviceName}`).catch(() => {});
+      await this.execDocker(`docker service rm ${serviceName}`).catch(() => {});
 
       // Remove network
-      await execAsync(`docker network rm ${networkName}`).catch(() => {});
+      await this.execDocker(`docker network rm ${networkName}`).catch(() => {});
 
       // Update database
       await pool.query(
@@ -580,7 +619,7 @@ CMD ["/start", "web"]
     const serviceName = `paas-${app.slug}`;
 
     if (await this.checkServiceExists(serviceName)) {
-      await execAsync(`docker service scale ${serviceName}=${desiredReplicas}`);
+      await this.execDocker(`docker service scale ${serviceName}=${desiredReplicas}`);
       await pool.query(
         `UPDATE paas_applications
            SET status = 'running',
@@ -615,5 +654,16 @@ CMD ["/start", "web"]
     );
 
     return { replicas: desiredReplicas };
+  }
+
+  private static execDocker(command: string, options: ExecOptions = {}): Promise<{
+    stdout: string;
+    stderr: string;
+  }> {
+    return execAsync(command, {
+      timeout: DOCKER_CMD_TIMEOUT_MS,
+      maxBuffer: 10 * 1024 * 1024,
+      ...options,
+    });
   }
 }

@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { apiClient } from '@/lib/api';
 import { DeploymentsList } from '@/components/PaaS/DeploymentsList';
 import { LogViewer } from '@/components/PaaS/LogViewer';
@@ -81,13 +82,17 @@ const PaaSAppDetail: React.FC = () => {
   const { token } = useAuth();
   const navigate = useNavigate();
   const currentAppId = app?.id || id || '';
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadApp = useCallback(async () => {
     if (!id || !token) return;
     try {
       const data = await apiClient.get(`/paas/apps/${id}`);
       setApp(data.app);
+      setErrorMessage(null);
     } catch (error: any) {
+      const message = error?.response?.data?.error || error?.message || 'Failed to load application';
+      setErrorMessage(message);
       toast.error('Failed to load application');
       console.error(error);
     } finally {
@@ -132,6 +137,30 @@ const PaaSAppDetail: React.FC = () => {
     }, 10000);
     return () => clearInterval(interval);
   }, [loadApp, app]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!app) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && key === 'r') {
+        event.preventDefault();
+        loadApp();
+      }
+      if ((event.metaKey || event.ctrlKey) && key === 'l') {
+        event.preventDefault();
+        setActiveTab('logs');
+      }
+      if ((event.metaKey || event.ctrlKey) && key === 'd') {
+        event.preventDefault();
+        setActiveTab('deployments');
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [app, loadApp]);
 
   const handleDeploy = async () => {
     if (!app) return;
@@ -244,7 +273,14 @@ const PaaSAppDetail: React.FC = () => {
         Back to Applications
       </Button>
 
-      <div className="flex justify-between items-start mb-6">
+      {errorMessage && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Unable to refresh data</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
             {app.name}
@@ -255,14 +291,14 @@ const PaaSAppDetail: React.FC = () => {
           <p className="text-muted-foreground mt-1">{app.slug}</p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
           {app.status === 'running' ? (
             <>
               <Button variant="outline" size="sm" onClick={() => window.open(appUrl, '_blank')}>
                 <ExternalLink className="w-4 h-4 mr-2" />
                 Open App
               </Button>
-              <Button variant="outline" size="sm" onClick={handleStop}>
+              <Button variant="outline" size="sm" onClick={handleStop} disabled={deploying}>
                 <Square className="w-4 h-4 mr-2" />
                 Stop
               </Button>
@@ -337,36 +373,38 @@ const PaaSAppDetail: React.FC = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7 gap-2">
-          <TabsTrigger value="overview">
-            <Activity className="w-4 h-4 mr-2" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="deployments">
-            <Rocket className="w-4 h-4 mr-2" />
-            Deployments
-          </TabsTrigger>
-          <TabsTrigger value="logs">
-            <FileText className="w-4 h-4 mr-2" />
-            Logs
-          </TabsTrigger>
-          <TabsTrigger value="environment">
-            <Key className="w-4 h-4 mr-2" />
-            Environment
-          </TabsTrigger>
-          <TabsTrigger value="settings">
-            <Settings className="w-4 h-4 mr-2" />
-            Settings
-          </TabsTrigger>
-          <TabsTrigger value="domains">
-            <Globe className="w-4 h-4 mr-2" />
-            Domains
-          </TabsTrigger>
-          <TabsTrigger value="metrics">
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Metrics
-          </TabsTrigger>
-        </TabsList>
+        <div className="-mx-2 mb-4 overflow-x-auto pb-2">
+          <TabsList className="grid min-w-[640px] grid-cols-2 gap-2 md:min-w-0 md:grid-cols-7">
+            <TabsTrigger value="overview">
+              <Activity className="w-4 h-4 mr-2" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="deployments">
+              <Rocket className="w-4 h-4 mr-2" />
+              Deployments
+            </TabsTrigger>
+            <TabsTrigger value="logs">
+              <FileText className="w-4 h-4 mr-2" />
+              Logs
+            </TabsTrigger>
+            <TabsTrigger value="environment">
+              <Key className="w-4 h-4 mr-2" />
+              Environment
+            </TabsTrigger>
+            <TabsTrigger value="settings">
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
+            </TabsTrigger>
+            <TabsTrigger value="domains">
+              <Globe className="w-4 h-4 mr-2" />
+              Domains
+            </TabsTrigger>
+            <TabsTrigger value="metrics">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Metrics
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="overview" className="space-y-6">
           <Card>

@@ -40,6 +40,7 @@ const S3_VALIDATION_KEYS = new Set([
   's3_endpoint',
 ]);
 const PRESERVE_WHITESPACE_KEYS = new Set(['git_ssh_private_key', 'git_known_hosts']);
+const SETTINGS_CACHE_TTL_MS = Number(process.env.PAAS_SETTINGS_CACHE_TTL_MS || 30_000);
 
 const SETTING_DEFINITIONS: Record<string, SettingDefinition> = {
   storage_type: {
@@ -295,7 +296,68 @@ const SETTING_DEFINITIONS: Record<string, SettingDefinition> = {
   },
 };
 
+const PREPARED = {
+  selectByKey: {
+    name: 'paas_settings_select_by_key',
+    text: 'SELECT * FROM paas_settings WHERE key = $1',
+  },
+  deleteByKey: {
+    name: 'paas_settings_delete_by_key',
+    text: 'DELETE FROM paas_settings WHERE key = $1',
+  },
+  selectByCategory: {
+    name: 'paas_settings_select_by_category',
+    text: 'SELECT * FROM paas_settings WHERE category = $1',
+  },
+  selectAll: {
+    name: 'paas_settings_select_all',
+    text: 'SELECT * FROM paas_settings ORDER BY category ASC, key ASC',
+  },
+  upsertSetting: {
+    name: 'paas_settings_upsert',
+    text: `INSERT INTO paas_settings (key, value_encrypted, value_type, description, category, is_sensitive)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (key) DO UPDATE SET
+             value_encrypted = EXCLUDED.value_encrypted,
+             value_type = EXCLUDED.value_type,
+             description = EXCLUDED.description,
+             category = EXCLUDED.category,
+             is_sensitive = EXCLUDED.is_sensitive,
+             updated_at = NOW()`,
+  },
+};
+
 export class PaasSettingsService {
+  private static cache = new Map<string, { value: any; expiresAt: number }>();
+  private static cacheTtlMs = SETTINGS_CACHE_TTL_MS;
+
+  private static readCache(key: string): any | undefined {
+    const cached = this.cache.get(key);
+    if (!cached) {
+      return undefined;
+    }
+    if (cached.expiresAt < Date.now()) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return cached.value;
+  }
+
+  private static writeCache(key: string, value: any): void {
+    this.cache.set(key, {
+      value,
+      expiresAt: Date.now() + this.cacheTtlMs,
+    });
+  }
+
+  private static invalidateCache(key: string): void {
+    this.cache.delete(key);
+  }
+
+  private static invalidateAllCache(): void {
+    this.cache.clear();
+  }
+
   /**
    * Ensure all defaults exist in the database
    */
@@ -336,17 +398,26 @@ export class PaasSettingsService {
    * Get a setting value by key
    */
   static async get(key: string): Promise<string | number | boolean | object | null> {
-    const result = await pool.query<PaasSettings>(
-      'SELECT * FROM paas_settings WHERE key = $1',
-      [key]
-    );
-
-    if (result.rows.length === 0) {
-      const definition = SETTING_DEFINITIONS[key];
-      return definition?.defaultValue ?? null;
+    const cached = this.readCache(key);
+    if (cached !== undefined) {
+      return cached;
     }
 
-    return this.parseSettingRow(result.rows[0]);
+    const result = await pool.query<PaasSettings>({
+      ...PREPARED.selectByKey,
+      values: [key],
+    });
+
+    let value: string | number | boolean | object | null;
+    if (result.rows.length === 0) {
+      const definition = SETTING_DEFINITIONS[key];
+      value = definition?.defaultValue ?? null;
+    } else {
+      value = this.parseSettingRow(result.rows[0]);
+    }
+
+    this.writeCache(key, value);
+    return value;
   }
 
   /**
@@ -445,14 +516,16 @@ export class PaasSettingsService {
    * Get all settings in a category (parsed)
    */
   static async getByCategory(category: string): Promise<Record<string, any>> {
-    const result = await pool.query<PaasSettings>(
-      'SELECT * FROM paas_settings WHERE category = $1',
-      [category]
-    );
+    const result = await pool.query<PaasSettings>({
+      ...PREPARED.selectByCategory,
+      values: [category],
+    });
 
     const settings: Record<string, any> = {};
     for (const row of result.rows) {
-      settings[row.key] = this.parseSettingRow(row);
+      const parsed = this.parseSettingRow(row);
+      settings[row.key] = parsed;
+      this.writeCache(row.key, parsed);
     }
     return settings;
   }
@@ -461,23 +534,29 @@ export class PaasSettingsService {
    * Get all settings (raw rows for admin API)
    */
   static async getAll(includeSensitive: boolean = false): Promise<PaasSettings[]> {
-    const result = await pool.query<PaasSettings>(
-      'SELECT * FROM paas_settings ORDER BY category ASC, key ASC'
-    );
+    const result = await pool.query<PaasSettings>(PREPARED.selectAll);
 
     if (!includeSensitive) {
-      return result.rows.map((row) => ({
-        ...row,
-        value_encrypted: row.is_sensitive ? SENSITIVE_PLACEHOLDER : row.value_encrypted,
-      }));
+      return result.rows.map((row) => {
+        if (!row.is_sensitive) {
+          const parsed = this.parseSettingRow(row);
+          this.writeCache(row.key, parsed);
+        }
+        return {
+          ...row,
+          value_encrypted: row.is_sensitive ? SENSITIVE_PLACEHOLDER : row.value_encrypted,
+        };
+      });
     }
 
     return result.rows.map((row) => {
       if (row.is_sensitive && row.value_encrypted) {
         try {
+          const decrypted = decrypt(row.value_encrypted);
+          this.writeCache(row.key, this.parseSettingRow({ ...row, value_encrypted: decrypted }));
           return {
             ...row,
-            value_encrypted: decrypt(row.value_encrypted),
+            value_encrypted: decrypted,
           };
         } catch (error) {
           console.error(`Failed to decrypt sensitive setting ${row.key}:`, error);
@@ -495,7 +574,11 @@ export class PaasSettingsService {
    * Delete a setting
    */
   static async delete(key: string): Promise<void> {
-    await pool.query('DELETE FROM paas_settings WHERE key = $1', [key]);
+    await pool.query({
+      ...PREPARED.deleteByKey,
+      values: [key],
+    });
+    this.invalidateCache(key);
   }
 
   /**
@@ -543,6 +626,26 @@ export class PaasSettingsService {
       local: {
         path: ((await this.get('local_storage_path')) as string) || '/var/paas/storage',
       },
+    };
+  }
+
+  static async getRegistryConfig(): Promise<{
+    url: string;
+    username?: string;
+    password?: string;
+  } | null> {
+    const url = ((await this.get('registry_url')) as string | null)?.trim();
+    if (!url) {
+      return null;
+    }
+
+    const normalizedUrl = url.replace(/\/$/, '');
+    const username = (await this.get('registry_username')) as string | undefined;
+    const password = (await this.get('registry_password')) as string | undefined;
+    return {
+      url: normalizedUrl,
+      username: username || undefined,
+      password: password || undefined,
     };
   }
 
@@ -820,25 +923,19 @@ export class PaasSettingsService {
       }
     }
 
-    await pool.query(
-      `INSERT INTO paas_settings (key, value_encrypted, value_type, description, is_sensitive, category)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (key) DO UPDATE SET
-         value_encrypted = EXCLUDED.value_encrypted,
-         value_type = EXCLUDED.value_type,
-         description = EXCLUDED.description,
-         is_sensitive = EXCLUDED.is_sensitive,
-         category = EXCLUDED.category,
-         updated_at = NOW()`,
-      [
+    await pool.query({
+      ...PREPARED.upsertSetting,
+      values: [
         key,
         toStore,
         resolvedType,
         resolvedDescription,
-        isSensitive,
         resolvedCategory,
-      ]
-    );
+        isSensitive,
+      ],
+    });
+
+    this.invalidateCache(key);
   }
 
   /**

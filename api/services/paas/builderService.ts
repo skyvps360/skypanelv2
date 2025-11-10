@@ -12,6 +12,7 @@ import * as path from 'path';
 import { createReadStream } from 'fs';
 import * as tar from 'tar';
 import * as crypto from 'crypto';
+import { constants as zlibConstants } from 'zlib';
 import { GitService } from './gitService.js';
 import { BuildCacheService, BuildCacheConfig } from './buildCacheService.js';
 
@@ -352,6 +353,7 @@ export class BuilderService {
     await tar.create(
       {
         gzip: true,
+        gzipOptions: { level: zlibConstants.BEST_SPEED },
         file: slugPath,
         cwd: projectDir,
       },
