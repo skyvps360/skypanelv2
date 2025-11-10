@@ -153,9 +153,10 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 - Node.js 20+
 - npm 9+
 - PostgreSQL 12+
-- Redis 6+
+- Redis 6+ (required for PaaS Worker queue processing)
 
 - Optional: InfluxDB 2.x for metrics collection
+- Optional: Docker and Docker Compose for PaaS infrastructure deployment
 
 ## Getting Started
 
@@ -216,10 +217,16 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
    - **Backend**: Express API at `http://localhost:3001` with auto-restart via Nodemon
    - **Features**: SSE notifications, PayPal webhooks, SSH WebSocket bridge, API proxy
 
+   For full PaaS development (API + Server + Worker):
+   ```bash
+   npm run dev:all  # Runs all three components: Client, API, and Worker
+   ```
+
    For individual servers:
    ```bash
    npm run client:dev  # Frontend only
    npm run server:dev  # Backend only
+   npm run dev:worker  # PaaS Worker only
    ```
 
 5. **Seed admin access**
@@ -239,9 +246,12 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 ### Development
 - `npm run dev` – Start Vite + Nodemon concurrently for full-stack development.
+- `npm run dev:all` – Start all three components: Client, API, and Worker (for PaaS development).
 - `npm run dev-up` – Kill ports and start development servers (convenience script).
 - `npm run client:dev` – Run frontend only (Vite dev server on port 5173).
 - `npm run server:dev` – Run backend only (Nodemon on port 3001).
+- `npm run dev:worker` – Run PaaS worker only (background job processing).
+- `npm run worker` – Run PaaS worker in production mode.
 - `npm run kill-ports` – Free ports `3001` and `5173` before restarting dev servers.
 
 ### Building & Testing
@@ -265,6 +275,10 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 - `npm run db:fresh` – Reset database and apply all migrations.
 - `npm run seed:admin` – Create admin user via script.
 
+### PaaS Infrastructure
+- `npm run paas:init` – Initialize PaaS infrastructure with Docker Swarm integration.
+- Note: PaaS worker component must be running (`npm run dev:worker` or included via PM2) for PaaS deployments to function.
+
 ### Script Utilities
 
 #### Database & Migration Scripts
@@ -286,6 +300,7 @@ THIS IS NOT A RESELLER PANEL IN ANY SORTS
 
 ### Backend Architecture
 - **Server startup**: Express boots from `api/server.ts`, initializes SSH WebSocket bridge, and schedules hourly billing
+- **Worker component**: Background job processor in `api/worker/index.ts` handles PaaS build/deploy queues using Bull and Redis
 - **Database access**: Use `api/lib/database.ts` (`query`, `transaction`) for atomic operations, especially billing
 - **Enhanced organization management**: Complete REST API with CRUD operations featuring:
   - **Comprehensive member management**: Role assignments, ownership transfers, and member lifecycle management

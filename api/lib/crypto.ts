@@ -77,3 +77,7 @@ export function hasEncryptionKey(): boolean {
   const raw = config.SSH_CRED_SECRET || '';
   return raw.length >= 16; // heuristic
 }
+
+// Aliases for backward compatibility
+export const encrypt = encryptSecret;
+export const decrypt = decryptSecret;
