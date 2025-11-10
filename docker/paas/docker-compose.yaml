@@ -130,7 +130,8 @@ volumes:
 
 networks:
   paas-infrastructure:
-    driver: bridge
+    driver: overlay
+    attachable: true
   paas-public:
     driver: overlay
     attachable: true
