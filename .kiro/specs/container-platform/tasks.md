@@ -2,8 +2,8 @@
 
 ## Phase 1: Foundation & Infrastructure
 
-- [-] 1. Initial setup and configuration
-  - [-] 1.1 Update .env.example with container platform variables
+- [ ] 1. Initial setup and configuration
+  - [ ] 1.1 Update .env.example with container platform variables
     - Add DOCKER_SWARM_ADVERTISE_ADDR with description
     - Add DOCKER_REGISTRY_URL (optional)
     - Add NIX_CACHE_URL (optional)
