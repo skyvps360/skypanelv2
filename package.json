@@ -28,6 +28,7 @@
     "db:reset:confirm": "node scripts/reset-database.js --confirm",
     "db:fresh": "node scripts/reset-database.js --confirm && node scripts/run-migration.js",
     "paas:init": "tsx scripts/init-paas.ts",
+    "paas:grafana-password": "tsx scripts/get-grafana-password.ts",
     "worker": "tsx api/worker/index.ts",
     "dev:worker": "nodemon --exec tsx api/worker/index.ts"
   },

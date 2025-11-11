@@ -46,21 +46,27 @@ async function main(): Promise<void> {
   console.log('\n🚀 SkyPanelV2 PaaS Infrastructure Initialization\n');
 
   await PaasSettingsService.initializeDefaults();
-  await initializeSwarm();
+  const swarmDetails = await initializeSwarm();
 
   const config = await prepareDeployConfig();
   await renderConfigFiles(config);
   await deployInfrastructure(config);
   await verifyInfrastructure();
-  printSummary(config);
+  const summaryPath = await saveInitSummary(config, swarmDetails);
+  printSummary(config, summaryPath);
 }
 
-async function initializeSwarm(): Promise<void> {
+async function initializeSwarm(): Promise<{
+  managerIp: string;
+  workerToken: string;
+  managerToken: string;
+}> {
   console.log('🛠  Step 1: Ensuring Docker Swarm is initialized...');
   const swarmConfig = await NodeManagerService.initializeSwarm();
   console.log(`   • Manager IP    : ${swarmConfig.managerIp}`);
   console.log(`   • Worker Token  : ${swarmConfig.workerToken.substring(0, 12)}...`);
   console.log('');
+  return swarmConfig;
 }
 
 async function prepareDeployConfig(): Promise<DeployConfig> {
@@ -406,7 +412,44 @@ function httpCheck(urlStr: string, timeoutMs = 4000): Promise<void> {
   });
 }
 
-function printSummary(config: DeployConfig): void {
+async function saveInitSummary(
+  config: DeployConfig,
+  swarm: { managerIp: string; workerToken: string; managerToken: string }
+): Promise<string> {
+  const timestamp = new Date().toISOString();
+  const sanitizedTimestamp = timestamp.replace(/[:.]/g, '-');
+  const filename = `paas-init-summary-${sanitizedTimestamp}.txt`;
+  const filepath = path.join(generatedDir, filename);
+
+  const accessPoints = {
+    grafana: 'http://localhost:3002',
+    traefik: 'http://localhost:8080',
+    prometheus: 'http://localhost:9090',
+    loki: 'http://localhost:3100',
+  };
+
+  const summary = `SkyPanelV2 PaaS Initialization Summary\n` +
+    `Timestamp: ${timestamp}\n\n` +
+    `Swarm Manager IP : ${swarm.managerIp}\n` +
+    `Config Version   : ${process.env.CONFIG_VERSION || 'unknown'}\n` +
+    `Loki Retention   : ${config.lokiRetentionDays} days\n` +
+    `Traefik ACME     : ${config.traefikEmail}\n\n` +
+    `Access Points:\n` +
+    `  • Grafana    : ${accessPoints.grafana}\n` +
+    `  • Traefik    : ${accessPoints.traefik}\n` +
+    `  • Prometheus : ${accessPoints.prometheus}\n` +
+    `  • Loki       : ${accessPoints.loki}\n\n` +
+    `Grafana Credentials:\n` +
+    `  • Username : ${config.grafanaAdminUser}\n` +
+    `  • Password : ${config.grafanaAdminPassword}\n\n` +
+    `This file is generated automatically by scripts/init-paas.ts.`;
+
+  await fs.mkdir(generatedDir, { recursive: true });
+  await fs.writeFile(filepath, summary, 'utf8');
+  return filepath;
+}
+
+function printSummary(config: DeployConfig, summaryPath?: string): void {
   console.log('✅ SkyPanelV2 PaaS infrastructure is ready.');
   console.log('');
   console.log('Access points:');
@@ -419,6 +462,10 @@ function printSummary(config: DeployConfig): void {
   console.log(`   • grafana_admin_user     : ${config.grafanaAdminUser}`);
   console.log('   • grafana_admin_password : stored securely in paas_settings');
   console.log('');
+  if (summaryPath) {
+    console.log(`Summary saved to: ${summaryPath}`);
+    console.log('');
+  }
   console.log('You can rerun this script anytime to update infrastructure settings or redeploy the stack.\n');
 }
 
