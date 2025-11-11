@@ -69,16 +69,13 @@ interface PlatformStats {
     total: number;
     active: number;
   };
-  containers: {
-    total: number;
-  };
+  // containers removed
   support: {
     totalTickets: number;
     openTickets: number;
   };
   plans: {
     vpsPlans: number;
-    containerPlans: number;
   };
   regions: {
     total: number;
@@ -108,7 +105,7 @@ const milestones = [
   {
     year: "2023",
     title: "Founded to simplify infrastructure",
-    description: "Launched {BRAND_NAME} with a vision to bring managed containers and VPS into a single, cohesive control plane.",
+    description: "Launched {BRAND_NAME} with a vision to bring streamlined VPS management into a cohesive control plane.",
   },
   {
     year: "2024",
@@ -153,7 +150,7 @@ export default function AboutUs() {
         <div className="space-y-4">
           <h1 className="text-3xl font-semibold md:text-5xl">The infrastructure platform teams actually enjoy using</h1>
           <p className="mx-auto max-w-3xl text-base text-muted-foreground md:text-lg">
-            {BRAND_NAME} gives engineering, platform, and security teams a unified way to deploy containers, manage VPS fleets, and understand spend—without losing the human support that growing companies need.
+            {BRAND_NAME} gives engineering, platform, and security teams a unified way to manage VPS fleets and understand spend—without losing the human support that growing companies need.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -217,10 +214,7 @@ export default function AboutUs() {
                   <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.vps?.total)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Total VPS Deployed</p>
                 </div>
-                <div className="rounded-lg border border-border p-4 text-left">
-                  <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.containers?.total)}</div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Containers</p>
-                </div>
+                {/* Containers metric removed */}
                 <div className="rounded-lg border border-border p-4 text-left">
                   <div className="text-2xl font-semibold text-foreground">{formatStat(platformStats?.support?.totalTickets)}</div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Tickets Handled</p>

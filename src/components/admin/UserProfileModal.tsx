@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Mail, Shield, Calendar, Clock, Server, Box, Activity, AlertCircle } from 'lucide-react';
+import { User, Mail, Shield, Calendar, Clock, Server, Activity, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -297,19 +297,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       {user.activity_summary.vps_count}
                     </p>
                   </div>
-                  <div className={cn(
-                    "rounded-lg border border-border p-4 text-center",
-                    "transition-all duration-200 hover:border-primary/50 hover:bg-accent/30 hover:scale-105",
-                    "animate-in slide-in-from-bottom-2 duration-300 delay-700"
-                  )}>
-                    <div className="flex items-center justify-center gap-2 text-muted-foreground mb-2">
-                      <Box className="h-4 w-4" />
-                      <span className="text-sm">Containers</span>
-                    </div>
-                    <p className="text-2xl font-semibold text-foreground transition-colors duration-200">
-                      {user.activity_summary.container_count}
-                    </p>
-                  </div>
+                  {/* Containers summary removed */}
                   <div className={cn(
                     "rounded-lg border border-border p-4 text-center",
                     "transition-all duration-200 hover:border-primary/50 hover:bg-accent/30 hover:scale-105",

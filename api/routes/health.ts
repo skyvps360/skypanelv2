@@ -47,10 +47,7 @@ router.get("/status", async (req: Request, res: Response) => {
       FROM vps_instances
     `);
 
-    // Get container counts
-    const containerResult = await query(`
-      SELECT COUNT(*) as total FROM containers
-    `);
+    // Containers feature removed
 
     const vpsStats = vpsResult.rows[0] || {
       total: 0,
@@ -58,7 +55,6 @@ router.get("/status", async (req: Request, res: Response) => {
       stopped: 0,
       other: 0,
     };
-    const containerStats = containerResult.rows[0] || { total: 0 };
 
     res.status(200).json({
       success: true,
@@ -70,9 +66,7 @@ router.get("/status", async (req: Request, res: Response) => {
           stopped: parseInt(vpsStats.stopped) || 0,
           other: parseInt(vpsStats.other) || 0,
         },
-        containers: {
-          total: parseInt(containerStats.total) || 0,
-        },
+        // containers removed
       },
     });
   } catch (error) {

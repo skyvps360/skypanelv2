@@ -1431,7 +1431,7 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================
--- Container as a Service (CaaS) Schema - Easypanel Integration
+-- Container Schema
 -- ============================================================
 
 -- Container plans table
@@ -1520,7 +1520,7 @@ CREATE TABLE IF NOT EXISTS container_billing_cycles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Easypanel configuration table
+-- External container configuration table
 CREATE TABLE IF NOT EXISTS easypanel_config (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     api_url VARCHAR(500) NOT NULL,

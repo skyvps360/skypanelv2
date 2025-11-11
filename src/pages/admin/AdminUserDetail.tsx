@@ -31,7 +31,6 @@ import { Label } from '@/components/ui/label';
 import {
   UserProfileCard,
   UserVPSList,
-  UserContainerList,
   UserBillingInfo,
   UserEditModal
 } from '@/components/admin';
@@ -61,20 +60,7 @@ interface AdminUserDetailResponse {
     region_label: string | null;
     created_at: string;
   }>;
-  containerSubscription: {
-    id: string;
-    plan_id: string;
-    plan_name: string;
-    status: string;
-    created_at: string;
-  } | null;
-  containerProjects: Array<{
-    id: string;
-    project_name: string;
-    status: string;
-    service_count: number;
-    created_at: string;
-  }>;
+  // containers removed
   billing: {
     wallet_balance: number;
     monthly_spend: number;
@@ -215,7 +201,7 @@ const AdminUserDetail: React.FC = () => {
     );
   }
 
-  const { user, vpsInstances, containerSubscription, containerProjects, billing, activity } = data;
+  const { user, vpsInstances, billing, activity } = data;
 
   return (
     <div className="space-y-6">
@@ -271,12 +257,9 @@ const AdminUserDetail: React.FC = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="vps">VPS ({vpsInstances.length})</TabsTrigger>
-          <TabsTrigger value="containers">
-            Containers ({containerProjects.length})
-          </TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
         </TabsList>
 
@@ -288,14 +271,6 @@ const AdminUserDetail: React.FC = () => {
               <p className="text-3xl font-bold">{vpsInstances.length}</p>
               <p className="text-sm text-muted-foreground">
                 {vpsInstances.filter(v => v.status === 'running').length} running
-              </p>
-            </div>
-            
-            <div className="rounded-lg border bg-card p-6">
-              <h3 className="font-semibold mb-2">Container Projects</h3>
-              <p className="text-3xl font-bold">{containerProjects.length}</p>
-              <p className="text-sm text-muted-foreground">
-                {containerSubscription ? 'Active subscription' : 'No subscription'}
               </p>
             </div>
             
@@ -337,13 +312,6 @@ const AdminUserDetail: React.FC = () => {
           <UserVPSList vpsInstances={vpsInstances} />
         </TabsContent>
 
-        <TabsContent value="containers">
-          <UserContainerList
-            subscription={containerSubscription}
-            projects={containerProjects}
-          />
-        </TabsContent>
-
         <TabsContent value="billing">
           <UserBillingInfo billing={billing} />
         </TabsContent>
@@ -370,7 +338,7 @@ const AdminUserDetail: React.FC = () => {
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm">
                 <li>VPS instances ({vpsInstances.length})</li>
-                <li>Container projects ({containerProjects.length})</li>
+                {/* Container projects removed */}
                 <li>Billing records and wallet balance</li>
                 <li>Support tickets and activity logs</li>
               </ul>

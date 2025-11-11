@@ -12,7 +12,6 @@ import {
   ServerCog,
   Settings,
   Users,
-  Container,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,7 +45,8 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
   const currentHash = location.hash?.slice(1) ?? "";
   const isDashboardActive = pathname === "/dashboard";
   const isVpsActive = pathname.startsWith("/vps");
-  const isContainersActive = pathname.startsWith("/containers");
+  // Containers feature removed
+  const isContainersActive = false;
   const isActivityActive = pathname.startsWith("/activity");
   const isBillingActive = pathname.startsWith("/billing");
   const isSshKeysActive = pathname.startsWith("/ssh-keys");
@@ -66,21 +66,15 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             url: `/admin`,
             isActive: activeAnchor === "dashboard" || !currentHash,
           },
-          {
-            title: "Container Monitoring",
-            icon: Container,
-            url: `/admin#container-monitoring`,
-            isActive: activeAnchor === "container-monitoring",
-          },
+          // Container Monitoring removed
           {
             title: "Plan Management",
             icon: CreditCard,
             url: `/admin#vps-plans`,
-            isActive: ["vps-plans", "container-plans", "container-templates"].includes(activeAnchor),
+            isActive: ["vps-plans"].includes(activeAnchor),
             items: [
               { title: "VPS Plans", url: `/admin#vps-plans`, isActive: activeAnchor === "vps-plans" },
-              { title: "Container Plans", url: `/admin#container-plans`, isActive: activeAnchor === "container-plans" },
-              { title: "Container Templates", url: `/admin#container-templates`, isActive: activeAnchor === "container-templates" },
+              // Container plans and templates removed
             ],
           },
           {
@@ -117,13 +111,13 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
             title: "Platform Settings",
             icon: Settings,
             url: `/admin#platform`,
-            isActive: ["platform", "theme", "faq-management", "contact-management", "easypanel-config"].includes(activeAnchor),
+            isActive: ["platform", "theme", "faq-management", "contact-management"].includes(activeAnchor),
             items: [
               { title: "Theme", url: `/admin#theme`, isActive: activeAnchor === "theme" },
               { title: "FAQ Management", url: `/admin#faq-management`, isActive: activeAnchor === "faq-management" },
               { title: "Contact Management", url: `/admin#contact-management`, isActive: activeAnchor === "contact-management" },
               { title: "Rate Limiting", url: `/admin#rate-limiting`, isActive: activeAnchor === "rate-limiting" },
-              { title: "Easypanel Config", url: `/admin#easypanel-config`, isActive: activeAnchor === "easypanel-config" },
+              
             ],
           },
           {
@@ -148,18 +142,13 @@ export function AppSidebar({ onOpenCommand, ...props }: AppSidebarProps) {
           title: "Compute",
           url: "/vps",
           icon: Server,
-          isActive: isVpsActive || isContainersActive,
+          isActive: isVpsActive,
           items: [
             {
               title: "VPS",
               url: "/vps",
               isActive: isVpsActive,
-            },
-            {
-              title: "Containers",
-              url: "/containers",
-              isActive: isContainersActive,
-            },
+            }
           ],
         },
         {

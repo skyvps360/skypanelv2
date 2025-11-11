@@ -48,11 +48,7 @@ import MarketplaceManager from "@/components/admin/MarketplaceManager";
 import { AdminSupportView } from "@/components/admin/AdminSupportView";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 
-// Container admin components
-import ContainerPlansManagement from "./admin/ContainerPlansManagement";
-import ContainerTemplatesManagement from "./admin/ContainerTemplatesManagement";
-import ContainerMonitoring from "./admin/ContainerMonitoring";
-import EasypanelConfig from "./admin/EasypanelConfig";
+// Container admin components removed
 import { useTheme } from "@/contexts/ThemeContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -132,9 +128,6 @@ type AdminSection =
   | "dashboard"
   | "support"
   | "vps-plans"
-  | "container-plans"
-  | "container-templates"
-  | "container-monitoring"
   | "servers"
   | "providers"
   | "marketplace"
@@ -146,16 +139,12 @@ type AdminSection =
   | "rate-limiting"
   | "faq-management"
   | "platform"
-  | "easypanel-config"
   | "contact-management";
 
 const ADMIN_SECTIONS: AdminSection[] = [
   "dashboard",
   "support",
   "vps-plans",
-  "container-plans",
-  "container-templates",
-  "container-monitoring",
   "servers",
   "providers",
   "marketplace",
@@ -167,7 +156,6 @@ const ADMIN_SECTIONS: AdminSection[] = [
   "rate-limiting",
   "faq-management",
   "platform",
-  "easypanel-config",
   "contact-management",
 ];
 
@@ -5134,22 +5122,7 @@ const Admin: React.FC = () => {
           <RegionAccessManager token={token || ""} />
         </SectionPanel>
 
-        {/* Container Management Sections */}
-        <SectionPanel section="container-plans" activeSection={activeTab}>
-          <ContainerPlansManagement />
-        </SectionPanel>
-
-        <SectionPanel section="container-templates" activeSection={activeTab}>
-          <ContainerTemplatesManagement />
-        </SectionPanel>
-
-        <SectionPanel section="container-monitoring" activeSection={activeTab}>
-          <ContainerMonitoring />
-        </SectionPanel>
-
-        <SectionPanel section="easypanel-config" activeSection={activeTab}>
-          <EasypanelConfig />
-        </SectionPanel>
+        {/* Container management sections removed */}
       </div>
 
       <Dialog
@@ -5345,8 +5318,10 @@ const Admin: React.FC = () => {
         user={selectedUserForEdit}
         isOpen={userEditModalOpen}
         onClose={handleCloseUserEditModal}
-        onSave={handleSaveUserUpdate}
-        isSaving={savingUserUpdate}
+        onSuccess={() => {
+          fetchAdminUsers();
+          setUserEditModalOpen(false);
+        }}
       />
 
       {/* Admin Impersonation Confirmation Dialog */}

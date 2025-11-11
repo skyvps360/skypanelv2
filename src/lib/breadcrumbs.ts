@@ -18,8 +18,7 @@ const routeLabels: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/vps": "VPS",
   "/vps/:id": "VPS Details",
-  "/containers": "Containers",
-  "/containers/:id": "Container Details",
+  // Containers removed
   "/billing": "Billing",
   "/billing/invoice/:id": "Invoice",
   "/billing/transaction/:id": "Transaction",

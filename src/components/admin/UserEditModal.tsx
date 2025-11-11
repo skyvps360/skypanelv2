@@ -30,7 +30,7 @@ interface User {
 }
 
 interface UserEditModalProps {
-  user: User;
+  user: User | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -50,14 +50,28 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
 }) => {
   const { token } = useAuth();
   const [formData, setFormData] = useState({
-    name: user.name,
-    email: user.email,
-    role: user.role,
+    name: '',
+    email: '',
+    role: 'user',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  React.useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      });
+      setErrors({});
+    }
+  }, [user]);
+
   const updateUserMutation = useMutation({
     mutationFn: async (data: UpdateUserRequest) => {
+      if (!user) {
+        throw new Error('No user selected');
+      }
       const response = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PUT',
         headers: {
@@ -116,10 +130,15 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
     // Only send changed fields
     const updateData: UpdateUserRequest = {};
     
+    if (!user) {
+      toast.error('No user selected');
+      return;
+    }
+
     if (formData.name !== user.name) {
       updateData.name = formData.name.trim();
     }
-    
+
     if (formData.email !== user.email) {
       updateData.email = formData.email.trim();
     }
@@ -140,11 +159,13 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
 
   const handleClose = () => {
     if (!updateUserMutation.isPending) {
-      setFormData({
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      });
+      if (user) {
+        setFormData({
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        });
+      }
       setErrors({});
       onClose();
     }
@@ -160,10 +181,11 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input
+        {user ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -210,11 +232,11 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
             )}
           </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClose}
               disabled={updateUserMutation.isPending}
             >
               Cancel
@@ -231,9 +253,14 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({
               ) : (
                 'Save Changes'
               )}
-            </Button>
-          </DialogFooter>
-        </form>
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Select a user to edit their profile.
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

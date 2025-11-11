@@ -61,7 +61,7 @@ const NotificationDropdown: React.FC = () => {
   const markAsRead = async (notificationId: string) => {
     if (!token) return;
     try {
-      const response = await fetch(buildApiUrl(`/api/notifications/${notificationId}/read`), {
+      const response = await fetch(buildApiUrl(`/notifications/${notificationId}/read`), {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -86,7 +86,7 @@ const NotificationDropdown: React.FC = () => {
   const markAllAsRead = async () => {
     if (!token || unreadCount === 0) return;
     try {
-      const response = await fetch(buildApiUrl("/api/notifications/read-all"), {
+      const response = await fetch(buildApiUrl("/notifications/read-all"), {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -113,7 +113,7 @@ const NotificationDropdown: React.FC = () => {
     if (!token) return;
     try {
       setLoading(true);
-      const response = await fetch(buildApiUrl("/api/notifications/unread?limit=20"), {
+      const response = await fetch(buildApiUrl("/notifications/unread?limit=20"), {
         headers: { Authorization: `Bearer ${token}` },
       });
 

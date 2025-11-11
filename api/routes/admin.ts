@@ -3297,7 +3297,7 @@ router.post(
   }
 );
 
-// Get comprehensive user details including VPS, containers, and billing
+// Get comprehensive user details including VPS and billing
 router.get(
   "/users/:id/detail",
   authenticateToken,
@@ -3374,55 +3374,7 @@ router.get(
         [id]
       );
 
-      // Get user's container subscription and projects
-      let containerSubscription = null;
-      let containerProjects: any[] = [];
-
-      try {
-        const containerSubResult = await query(
-          `SELECT 
-            cs.id,
-            cs.plan_id,
-            cp.name as plan_name,
-            cs.status,
-            cs.created_at
-          FROM container_subscriptions cs
-          JOIN organizations org ON org.id = cs.organization_id
-          JOIN organization_members om ON om.organization_id = org.id
-          LEFT JOIN container_plans cp ON cp.id = cs.plan_id
-          WHERE om.user_id = $1
-          ORDER BY cs.created_at DESC
-          LIMIT 1`,
-          [id]
-        );
-
-        if (containerSubResult.rows.length > 0) {
-          containerSubscription = containerSubResult.rows[0];
-
-          // Get container projects for this user
-          const projectsResult = await query(
-            `SELECT 
-              cp.id,
-              cp.project_name,
-              cp.status,
-              cp.created_at,
-              COALESCE(
-                (SELECT COUNT(*) FROM container_services cs WHERE cs.project_id = cp.id),
-                0
-              ) as service_count
-            FROM container_projects cp
-            JOIN organizations org ON org.id = cp.organization_id
-            JOIN organization_members om ON om.organization_id = org.id
-            WHERE om.user_id = $1
-            ORDER BY cp.created_at DESC`,
-            [id]
-          );
-          containerProjects = projectsResult.rows;
-        }
-      } catch (containerErr: any) {
-        // Container tables might not exist, continue without container data
-        console.warn("Container data not available:", containerErr.message);
-      }
+      // Container feature removed
 
       // Get user's billing information
       let billing = {
@@ -3525,8 +3477,6 @@ router.get(
       const detailedUser = {
         user,
         vpsInstances: vpsResult.rows,
-        containerSubscription,
-        containerProjects,
         billing,
         activity
       };
