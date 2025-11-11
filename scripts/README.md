@@ -92,19 +92,7 @@ node scripts/check-admin-users.js
 node scripts/test-hourly-billing.js
 ```
 
-### Container Billing Management
 
-Process container billing cycles manually:
-
-```bash
-node scripts/process-container-billing.js
-```
-
-Test container billing automation:
-
-```bash
-node scripts/test-container-billing.js
-```
 
 ### Test SMTP Configuration
 

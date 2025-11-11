@@ -21,7 +21,6 @@ SkyPanelV2 is an open-source control plane for cloud service providers offering 
 - **Mention Of Brand Name**: Use of consistant brand name definable by `.env` secret.
 - **White Label**: Mentions of upstream providers can be hidden from clients.
 - **Providers**: offering the applicaiton admin to define the actual provider i.e linode/digitalocean names via the admin dashboard.
-- All prior container integrations have been removed as we pave the way for a new PaaS.
 - **DESIGN**: WHEN DEVELOPING AND SPEAKING ABOUT APPLICAITON SPEAK ABOUT APPLICATION IN A  customer-facing for your cloud hosting business.
  
 ## Architecture Snapshot
@@ -124,7 +123,7 @@ SkyPanelV2 is an open-source control plane for cloud service providers offering 
 
 ## PaaS Roadmap
 
-We’re preparing a new first-class PaaS experience to complement VPS. Previous container-based features have been removed to make room for the upcoming platform.
+We're preparing a new first-class PaaS experience to complement VPS.
 
 ## Useful npm Scripts
 
