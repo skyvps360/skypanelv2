@@ -58,6 +58,4 @@ coverage/
 build/
 
 # Miscellaneous
-.paas-concept-ideas
-.paas-concept-ideas/*
 .idea/
