@@ -33,7 +33,7 @@ const HEALTH_MAX_ATTEMPTS =
 const HEALTH_DELAY_MS =
   Number.isFinite(parsedHealthDelay) && parsedHealthDelay > 0
     ? parsedHealthDelay
-    : 5000;
+    : 15000;
 
 interface DeployConfig {
   lokiRetentionDays: number;
@@ -306,23 +306,49 @@ async function deployInfrastructure(config: DeployConfig): Promise<void> {
 async function verifyInfrastructure(): Promise<void> {
   console.log('🩺 Step 5: Verifying infrastructure health...');
 
-  await waitForService('Loki', 'http://localhost:3100/ready');
-  await waitForService('Prometheus', 'http://localhost:9090/-/ready');
+  // Try common host loopback variants in case IPv6 localhost isn't bound
+  await waitForServiceAny('Loki', ['http://localhost:3100/ready', 'http://127.0.0.1:3100/ready']);
+  await waitForServiceAny('Prometheus', ['http://localhost:9090/-/ready', 'http://127.0.0.1:9090/-/ready']);
 
   // Check Grafana and Traefik with shorter timeout (optional)
   try {
-    await waitForService('Grafana', 'http://localhost:3002/api/health', 5, 2000);
+    await waitForServiceAny('Grafana', ['http://localhost:3002/api/health', 'http://127.0.0.1:3002/api/health'], 5, 2000);
   } catch {
     console.log('   ⚠ Grafana health check skipped (still starting up)');
   }
 
   try {
-    await waitForService('Traefik', 'http://localhost:8080/api/rawdata', 5, 2000);
+    await waitForServiceAny('Traefik', ['http://localhost:8080/api/rawdata', 'http://127.0.0.1:8080/api/rawdata'], 5, 2000);
   } catch {
     console.log('   ⚠ Traefik health check skipped (still starting up)');
   }
 
   console.log('   • Core services verified successfully\n');
+}
+
+async function waitForServiceAny(
+  name: string,
+  urls: string[],
+  attempts = HEALTH_MAX_ATTEMPTS,
+  delayMs = HEALTH_DELAY_MS
+): Promise<void> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    for (const url of urls) {
+      try {
+        await httpCheck(url);
+        console.log(`   • ${name} healthy via ${url} (attempt ${attempt}/${attempts})`);
+        return;
+      } catch (error: any) {
+        lastError = error;
+      }
+    }
+    const reason = lastError?.message || lastError || 'unknown error';
+    const retryMsg = attempt < attempts ? ` - retrying in ${Math.round(delayMs / 1000)}s` : '';
+    console.log(`   • ${name} not ready yet (attempt ${attempt}/${attempts}): ${reason}${retryMsg}`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  throw new Error(`${name} did not become healthy via any endpoint: ${urls.join(', ')}`);
 }
 
 async function waitForService(
@@ -399,5 +425,51 @@ function printSummary(config: DeployConfig): void {
 main().catch((error) => {
   console.error('\n❌ Failed to initialize infrastructure:');
   console.error(error?.message || error);
-  process.exit(1);
+  // Best-effort diagnostics to help the operator understand what's wrong
+  runDiagnostics().finally(() => process.exit(1));
 });
+
+async function runDiagnostics(): Promise<void> {
+  try {
+    console.log('\n🔎 Diagnostic summary (docker)');
+    const { stdout: v } = await execAsync('docker version --format "{{.Server.Version}}"');
+    console.log(`   • Docker server version: ${v.trim()}`);
+  } catch {}
+
+  try {
+    const { stdout } = await execAsync('docker info --format "{{json .Swarm}}"');
+    console.log(`   • Swarm: ${stdout.trim()}`);
+  } catch {}
+
+  try {
+    const { stdout } = await execAsync('docker stack services paas-infra');
+    console.log('\n⚙️  Services in stack paas-infra');
+    console.log(stdout.trim());
+  } catch {}
+
+  try {
+    const { stdout } = await execAsync('docker service ps paas-infra_loki --no-trunc || true');
+    console.log('\n🧱 Service tasks: loki');
+    console.log(stdout.trim());
+  } catch {}
+
+  try {
+    const { stdout } = await execAsync('docker service ps paas-infra_prometheus --no-trunc || true');
+    console.log('\n📈 Service tasks: prometheus');
+    console.log(stdout.trim());
+  } catch {}
+
+  try {
+    const { stdout } = await execAsync('docker service logs --raw --timestamps --tail 50 paas-infra_loki || true');
+    console.log('\n📜 Recent logs: loki');
+    console.log(stdout.trim());
+  } catch {}
+
+  try {
+    const { stdout } = await execAsync(
+      "sh -c 'ss -ltnp 2>/dev/null | grep -E \":3100|:9090|:3002|:8080\"' || true"
+    );
+    console.log('\n🔌 Listening ports (host)');
+    console.log(stdout.trim() || '(none found)');
+  } catch {}
+}

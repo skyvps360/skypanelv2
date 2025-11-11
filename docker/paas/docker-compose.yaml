@@ -19,10 +19,6 @@ services:
       - paas-infrastructure
     restart: unless-stopped
     deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1024M
       update_config:
         order: start-first
         failure_action: rollback
