@@ -122,6 +122,7 @@ const SETTING_DEFINITIONS: Record<string, SettingDefinition> = {
         throw new Error('loki_retention_days must be greater than zero');
       }
     },
+  },
   traefik_acme_email: {
     key: 'traefik_acme_email',
     type: 'string',
@@ -147,7 +148,6 @@ const SETTING_DEFINITIONS: Record<string, SettingDefinition> = {
     category: 'monitoring',
     description: 'Grafana admin password used for the infrastructure dashboard',
     sensitive: true,
-  },
   },
   default_domain: {
     key: 'default_domain',

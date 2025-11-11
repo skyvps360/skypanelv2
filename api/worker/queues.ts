@@ -32,6 +32,7 @@ export interface BuildJobData {
 export interface DeployJobData {
   deploymentId: string;
   replicas?: number;
+  cachedSlugPath?: string;
 }
 
 export const buildQueue = new Queue<BuildJobData>('paas-build', queueOptions);

@@ -414,8 +414,10 @@ CMD ["/start", "web"]
     }
 
     // Get service ID
-    const { stdout } = await this.execDocker(`docker service ps ${serviceName} --format "{{.ID}}" | head -1`);
-    return stdout.trim();
+    const { stdout } = await this.execDocker(
+      `docker service ps ${serviceName} --format "{{.ID}}" | head -1`
+    );
+    return (typeof stdout === 'string' ? stdout : stdout.toString('utf8')).trim();
   }
 
   /**
@@ -656,14 +658,14 @@ CMD ["/start", "web"]
     return { replicas: desiredReplicas };
   }
 
-  private static execDocker(command: string, options: ExecOptions = {}): Promise<{
-    stdout: string;
-    stderr: string;
-  }> {
+  private static execDocker(
+    command: string,
+    options: ExecOptions = {}
+  ): Promise<{ stdout: string | Buffer; stderr: string | Buffer }> {
     return execAsync(command, {
       timeout: DOCKER_CMD_TIMEOUT_MS,
       maxBuffer: 10 * 1024 * 1024,
       ...options,
-    });
+    }) as unknown as Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
   }
 }

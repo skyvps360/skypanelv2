@@ -561,7 +561,6 @@ router.post(
         deploymentId: rollback.newDeployment.id,
         replicas: rollback.app.replicas,
         cachedSlugPath,
-        rollback: true,
       });
 
       await logPaasActivity({

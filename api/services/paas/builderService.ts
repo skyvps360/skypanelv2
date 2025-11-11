@@ -113,7 +113,7 @@ export class BuilderService {
 
     try {
       // Build the application
-      const buildResult = await this.executeBuild(deployment.id, options);
+      const buildResult = await this.executeBuild(deployment.id, options, app);
 
       // Update deployment with success
       await pool.query(
@@ -161,7 +161,8 @@ export class BuilderService {
    */
   private static async executeBuild(
     deploymentId: string,
-    options: BuildOptions
+    options: BuildOptions,
+    app: PaasApplication
   ): Promise<{ slugUrl: string; slugSize: number; buildpack: string }> {
     const buildId = crypto.randomUUID();
     const workDir = path.join(this.directories.build, buildId);
@@ -350,10 +351,10 @@ export class BuilderService {
    * Create compressed slug from built application
    */
   private static async createSlug(projectDir: string, slugPath: string): Promise<number> {
-    await tar.create(
+    await (tar.create as any)(
       {
         gzip: true,
-        gzipOptions: { level: zlibConstants.BEST_SPEED },
+        gzipOptions: { level: zlibConstants.Z_BEST_SPEED },
         file: slugPath,
         cwd: projectDir,
       },
