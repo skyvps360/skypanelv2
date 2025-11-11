@@ -9,6 +9,7 @@ import { pool } from '../../lib/database.js';
 import { PaasSettingsService } from '../../services/paas/settingsService.js';
 import { NodeManagerService } from '../../services/paas/nodeManagerService.js';
 import { DeployerService } from '../../services/paas/deployerService.js';
+import { SlugService } from '../../services/paas/slugService.js';
 import { logActivity } from '../../services/activityLogger.js';
 import { body, param, validationResult } from 'express-validator';
 import { handlePaasApiError } from '../../utils/paasApiError.js';
@@ -404,20 +405,22 @@ router.delete('/apps/:id', param('id').isUUID(), async (req: Request, res: Respo
 
     const app = appResult.rows[0];
 
-    // Stop all containers
+    // Remove runtime service/network and artifacts
     try {
-      await DeployerService.stopApplication(appId);
+      await DeployerService.delete(appId);
     } catch (error) {
-      console.error('Failed to stop app during delete:', error);
-      // Continue with deletion even if stop fails
+      console.error('Failed to remove Swarm service/network during delete:', error);
+      // Continue even if Docker removal fails — DB delete will still proceed
     }
 
-    // Delete related records (cascade should handle this, but being explicit)
-    await pool.query('DELETE FROM paas_deployments WHERE application_id = $1', [appId]);
-    await pool.query('DELETE FROM paas_env_vars WHERE application_id = $1', [appId]);
-    await pool.query('DELETE FROM paas_resource_usage WHERE application_id = $1', [appId]);
+    try {
+      await SlugService.deleteAppSlugs(appId);
+    } catch (error) {
+      console.warn('Failed to delete slug artifacts during delete:', error);
+      // Non-blocking
+    }
 
-    // Delete the application
+    // Delete the application (child tables use ON DELETE CASCADE)
     await pool.query('DELETE FROM paas_applications WHERE id = $1', [appId]);
 
     await logAdminPaasActivity({
@@ -1559,7 +1562,12 @@ router.get('/marketplace/addons', async (req: Request, res: Response) => {
     const result = await pool.query(
       'SELECT * FROM paas_marketplace_addons ORDER BY addon_type, name'
     );
-    res.json({ addons: result.rows });
+    // Ensure numeric fields are returned as numbers
+    const addons = result.rows.map((row: any) => ({
+      ...row,
+      price_per_hour: Number(row.price_per_hour),
+    }));
+    res.json({ addons });
   } catch (error: any) {
     handlePaasApiError({
       req,

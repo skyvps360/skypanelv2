@@ -53,7 +53,7 @@ const PaaSApps: React.FC = () => {
   const [apps, setApps] = useState<PaasApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [defaultDomain, setDefaultDomain] = useState('apps.example.com');
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
 
   // Load default domain from settings
@@ -128,6 +128,11 @@ const PaaSApps: React.FC = () => {
           <Button variant="outline" onClick={() => navigate('/paas/plans')}>
             Compare Plans
           </Button>
+          {user?.role === 'admin' && (
+            <Button variant="outline" onClick={() => navigate('/admin#paas-apps')}>
+              View All Apps (Admin)
+            </Button>
+          )}
           <Button onClick={() => navigate('/paas/new')}>
             <Plus className="w-4 h-4 mr-2" />
             New Application
@@ -147,6 +152,16 @@ const PaaSApps: React.FC = () => {
               <Plus className="w-4 h-4 mr-2" />
               Create Your First App
             </Button>
+            {user?.role === 'admin' && (
+              <div className="mt-4">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Nothing in your current organization? View cross-organization apps.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => navigate('/admin#paas-apps')}>
+                  View All Apps (Admin)
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : (

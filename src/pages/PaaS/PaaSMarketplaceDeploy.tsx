@@ -69,6 +69,7 @@ const PaaSMarketplaceDeploy: React.FC = () => {
   // Form state
   const [appName, setAppName] = useState('');
   const [customSlug, setCustomSlug] = useState('');
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [customEnvVars, setCustomEnvVars] = useState<Record<string, string>>({});
@@ -135,7 +136,7 @@ const PaaSMarketplaceDeploy: React.FC = () => {
 
   const handleNameChange = (value: string) => {
     setAppName(value);
-    if (!customSlug) {
+    if (!slugManuallyEdited) {
       setCustomSlug(generateSlug(value));
     }
   };
@@ -181,10 +182,10 @@ const PaaSMarketplaceDeploy: React.FC = () => {
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId);
   const totalPrice = selectedPlan
-    ? selectedPlan.price_per_hour +
+    ? Number(selectedPlan.price_per_hour) +
       selectedAddons.reduce((sum, addonId) => {
         const addon = addons.find((a) => a.id === addonId);
-        return sum + (addon?.price_per_hour || 0);
+        return sum + Number(addon?.price_per_hour || 0);
       }, 0)
     : 0;
 
@@ -259,7 +260,11 @@ const PaaSMarketplaceDeploy: React.FC = () => {
               <Input
                 id="custom_slug"
                 value={customSlug}
-                onChange={(e) => setCustomSlug(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCustomSlug(v);
+                  setSlugManuallyEdited(v.length > 0);
+                }}
                 placeholder="my-app"
                 pattern="[a-z0-9-]+"
                 required
@@ -294,7 +299,7 @@ const PaaSMarketplaceDeploy: React.FC = () => {
                   )
                   .map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} - {plan.cpu_cores} CPU, {plan.ram_mb}MB RAM (${plan.price_per_hour.toFixed(3)}/hr)
+                      {plan.name} - {plan.cpu_cores} CPU, {plan.ram_mb}MB RAM (${Number(plan.price_per_hour).toFixed(3)}/hr)
                       {plan.slug === template.recommended_plan_slug && ' ⭐ Recommended'}
                     </SelectItem>
                   ))}
@@ -337,7 +342,7 @@ const PaaSMarketplaceDeploy: React.FC = () => {
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline">{addon.addon_type}</Badge>
                         <span className="text-sm text-muted-foreground">
-                          ${addon.price_per_hour.toFixed(3)}/hr
+                          ${Number(addon.price_per_hour).toFixed(3)}/hr
                         </span>
                       </div>
                     </div>
@@ -380,14 +385,14 @@ const PaaSMarketplaceDeploy: React.FC = () => {
             <CardContent className="space-y-2">
               <div className="flex justify-between">
                 <span>{selectedPlan.name}</span>
-                <span>${selectedPlan.price_per_hour.toFixed(3)}/hr</span>
+                <span>${Number(selectedPlan.price_per_hour).toFixed(3)}/hr</span>
               </div>
               {selectedAddons.map((addonId) => {
                 const addon = addons.find((a) => a.id === addonId);
                 return addon ? (
                   <div key={addonId} className="flex justify-between text-sm">
                     <span>{addon.name}</span>
-                    <span>${addon.price_per_hour.toFixed(3)}/hr</span>
+                    <span>${Number(addon.price_per_hour).toFixed(3)}/hr</span>
                   </div>
                 ) : null;
               })}

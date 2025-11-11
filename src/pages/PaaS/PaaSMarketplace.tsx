@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Search, Star, Download, ArrowRight, Filter, Package } from 'lucide-react';
+import { Search, Star, Download, ArrowRight, ArrowLeft, Filter, Package } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,6 +113,13 @@ const PaaSMarketplace: React.FC = () => {
 
   return (
     <div className="container mx-auto py-8 px-4">
+      {/* Back Button */}
+      <div className="mb-4">
+        <Button variant="ghost" onClick={() => navigate('/paas')}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to PaaS
+        </Button>
+      </div>
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">

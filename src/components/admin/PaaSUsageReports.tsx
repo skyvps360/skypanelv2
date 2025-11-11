@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiClient } from '@/lib/api';
 import { Download } from 'lucide-react';
 
@@ -102,17 +103,18 @@ export const PaaSUsageReports: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-muted-foreground">Range</label>
-          <select
-            value={range}
-            onChange={(e) => setRange(e.target.value)}
-            className="rounded-md border px-3 py-2 text-sm"
-          >
-            {ranges.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+          <Select value={range} onValueChange={setRange}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Select range" />
+            </SelectTrigger>
+            <SelectContent>
+              {ranges.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

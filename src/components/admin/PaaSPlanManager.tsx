@@ -211,6 +211,15 @@ export const PaaSPlanManager: React.FC<PaaSPlanManagerProps> = ({
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
+  const stepLabels = [
+    "Basic",
+    "Resources",
+    "Pricing",
+    "Capabilities",
+    "Custom Flags",
+    "Notes",
+  ] as const;
+  const [stepIndex, setStepIndex] = useState(0);
 
   const loadPlans = useCallback(async () => {
     try {
@@ -237,6 +246,7 @@ export const PaaSPlanManager: React.FC<PaaSPlanManagerProps> = ({
   const resetForm = () => {
     setFormState(createEmptyPlanForm());
     setEditingPlanId(null);
+    setStepIndex(0);
   };
 
   const handleCloseDialog = () => {
@@ -247,6 +257,7 @@ export const PaaSPlanManager: React.FC<PaaSPlanManagerProps> = ({
   const handleCreatePlanClick = () => {
     resetForm();
     setDialogOpen(true);
+    setStepIndex(0);
   };
 
   const handleEditPlanClick = (plan: PaaSPlan) => {
@@ -267,6 +278,7 @@ export const PaaSPlanManager: React.FC<PaaSPlanManagerProps> = ({
       isActive: Boolean(plan.is_active),
     });
     setDialogOpen(true);
+    setStepIndex(0);
   };
 
   const handleToggleFeature = (key: KnownFeatureKey, value: boolean) => {
@@ -598,7 +610,7 @@ export const PaaSPlanManager: React.FC<PaaSPlanManagerProps> = ({
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : handleCloseDialog())}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl w-[95vw] sm:w-auto">
           <DialogHeader>
             <DialogTitle>
               {editingPlanId ? "Edit PaaS Plan" : "Create PaaS Plan"}
@@ -607,272 +619,294 @@ export const PaaSPlanManager: React.FC<PaaSPlanManagerProps> = ({
               Define compute capacity, pricing, and platform capabilities available to organizations.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="plan-name">Plan name</Label>
-                <Input
-                  id="plan-name"
-                  placeholder="Pro"
-                  value={formState.name}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setFormState((prev) => ({
-                      ...prev,
-                      name: value,
-                      slug: prev.slugManuallyEdited
-                        ? prev.slug
-                        : slugify(value),
-                    }));
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="plan-slug">Slug</Label>
-                <Input
-                  id="plan-slug"
-                  placeholder="pro"
-                  value={formState.slug}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      slug: slugify(event.target.value),
-                      slugManuallyEdited: true,
-                    }))
-                  }
-                />
-              </div>
+          <div className="space-y-4">
+            {/* Step nav */}
+            <div className="flex flex-wrap gap-2">
+              {stepLabels.map((label, idx) => (
+                <Badge
+                  key={label}
+                  variant={idx === stepIndex ? "default" : "outline"}
+                  className="cursor-pointer"
+                  onClick={() => setStepIndex(idx)}
+                >
+                  {idx + 1}. {label}
+                </Badge>
+              ))}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="plan-cpu">vCPU cores</Label>
-                <Input
-                  id="plan-cpu"
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  value={formState.cpuCores}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      cpuCores: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="plan-ram">RAM (MB)</Label>
-                <Input
-                  id="plan-ram"
-                  type="number"
-                  min="128"
-                  step="64"
-                  value={formState.ramMb}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      ramMb: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="plan-disk">Disk (GB)</Label>
-                <Input
-                  id="plan-disk"
-                  type="number"
-                  min="1"
-                  value={formState.diskGb}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      diskGb: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="plan-replicas">Max replicas</Label>
-                <Input
-                  id="plan-replicas"
-                  type="number"
-                  min="1"
-                  value={formState.maxReplicas}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      maxReplicas: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="plan-price">Price per hour (USD)</Label>
-              <Input
-                id="plan-price"
-                type="number"
-                min="0"
-                step="0.0001"
-                value={formState.pricePerHour}
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    pricePerHour: event.target.value,
-                  }))
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Monthly price is derived automatically using 730 hours.
-              </p>
-            </div>
-
-            <div className="rounded-lg border p-4">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">Capabilities</p>
-                    <p className="text-sm text-muted-foreground">
-                      Toggle built-in platform features for this tier.
-                    </p>
+            {/* Step content */}
+            <div className="max-h-[70vh] overflow-y-auto pr-1">
+              {stepIndex === 0 && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="plan-name">Plan name</Label>
+                    <Input
+                      id="plan-name"
+                      placeholder="Pro"
+                      value={formState.name}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setFormState((prev) => ({
+                          ...prev,
+                          name: value,
+                          slug: prev.slugManuallyEdited ? prev.slug : slugify(value),
+                        }));
+                      }}
+                    />
                   </div>
-                  {editingPlanId && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <span>Status</span>
-                      <Switch
-                        checked={formState.isActive}
-                        onCheckedChange={(value) =>
+                  <div className="space-y-2">
+                    <Label htmlFor="plan-slug">Slug</Label>
+                    <Input
+                      id="plan-slug"
+                      placeholder="pro"
+                      value={formState.slug}
+                      onChange={(event) =>
+                        setFormState((prev) => ({
+                          ...prev,
+                          slug: slugify(event.target.value),
+                          slugManuallyEdited: true,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              {stepIndex === 1 && (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="plan-cpu">vCPU cores</Label>
+                      <Input
+                        id="plan-cpu"
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={formState.cpuCores}
+                        onChange={(event) =>
                           setFormState((prev) => ({
                             ...prev,
-                            isActive: Boolean(value),
+                            cpuCores: event.target.value,
                           }))
                         }
                       />
                     </div>
-                  )}
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {KNOWN_FEATURES.map((feature) => (
-                    <div
-                      key={feature.key}
-                      className="flex items-start justify-between rounded-lg border p-3"
-                    >
-                      <div className="pr-4">
-                        <p className="font-medium text-sm">{feature.label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {feature.description}
-                        </p>
-                      </div>
-                      <Switch
-                        checked={formState.featureFlags[feature.key]}
-                        onCheckedChange={(value) =>
-                          handleToggleFeature(feature.key, Boolean(value))
+                    <div className="space-y-2">
+                      <Label htmlFor="plan-ram">RAM (MB)</Label>
+                      <Input
+                        id="plan-ram"
+                        type="number"
+                        min="128"
+                        step="64"
+                        value={formState.ramMb}
+                        onChange={(event) =>
+                          setFormState((prev) => ({
+                            ...prev,
+                            ramMb: event.target.value,
+                          }))
                         }
                       />
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="plan-disk">Disk (GB)</Label>
+                      <Input
+                        id="plan-disk"
+                        type="number"
+                        min="1"
+                        value={formState.diskGb}
+                        onChange={(event) =>
+                          setFormState((prev) => ({
+                            ...prev,
+                            diskGb: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="plan-replicas">Max replicas</Label>
+                      <Input
+                        id="plan-replicas"
+                        type="number"
+                        min="1"
+                        value={formState.maxReplicas}
+                        onChange={(event) =>
+                          setFormState((prev) => ({
+                            ...prev,
+                            maxReplicas: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Custom feature flags</Label>
+              {stepIndex === 2 && (
+                <div className="space-y-2">
+                  <Label htmlFor="plan-price">Price per hour (USD)</Label>
+                  <Input
+                    id="plan-price"
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={formState.pricePerHour}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        pricePerHour: event.target.value,
+                      }))
+                    }
+                  />
                   <p className="text-xs text-muted-foreground">
-                    Optional string/boolean fields exposed to the API (e.g. {"\"beta_access\""}).
+                    Monthly price is derived automatically using 730 hours.
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={handleAddCustomFeature}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add feature
-                </Button>
-              </div>
-              {formState.customFeatures.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No custom keys defined.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {formState.customFeatures.map((feature) => (
-                    <div
-                      key={feature.id}
-                      className="grid gap-3 md:grid-cols-[1fr,1fr,auto]"
-                    >
-                      <Input
-                        placeholder="feature_key"
-                        value={feature.key}
-                        onChange={(event) =>
-                          handleCustomFeatureChange(
-                            feature.id,
-                            "key",
-                            event.target.value
-                          )
-                        }
-                      />
-                      <Input
-                        placeholder="value"
-                        value={feature.value}
-                        onChange={(event) =>
-                          handleCustomFeatureChange(
-                            feature.id,
-                            "value",
-                            event.target.value
-                          )
-                        }
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveCustomFeature(feature.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              )}
+
+              {stepIndex === 3 && (
+                <div className="rounded-lg border p-4">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium">Capabilities</p>
+                        <p className="text-sm text-muted-foreground">
+                          Toggle built-in platform features for this tier.
+                        </p>
+                      </div>
+                      {editingPlanId && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span>Status</span>
+                          <Switch
+                            checked={formState.isActive}
+                            onCheckedChange={(value) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                isActive: Boolean(value),
+                              }))
+                            }
+                          />
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {KNOWN_FEATURES.map((feature) => (
+                        <div
+                          key={feature.key}
+                          className="flex items-start justify-between rounded-lg border p-3"
+                        >
+                          <div className="pr-4">
+                            <p className="font-medium text-sm">{feature.label}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {feature.description}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={formState.featureFlags[feature.key]}
+                            onCheckedChange={(value) =>
+                              handleToggleFeature(feature.key, Boolean(value))
+                            }
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {stepIndex === 4 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Custom feature flags</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Optional string/boolean fields exposed to the API (e.g. {"\"beta_access\""}).
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={handleAddCustomFeature}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add feature
+                    </Button>
+                  </div>
+                  {formState.customFeatures.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No custom keys defined.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {formState.customFeatures.map((feature) => (
+                        <div key={feature.id} className="grid gap-3 md:grid-cols-[1fr,1fr,auto]">
+                          <Input
+                            placeholder="feature_key"
+                            value={feature.key}
+                            onChange={(event) =>
+                              handleCustomFeatureChange(feature.id, "key", event.target.value)
+                            }
+                          />
+                          <Input
+                            placeholder="value"
+                            value={feature.value}
+                            onChange={(event) =>
+                              handleCustomFeatureChange(feature.id, "value", event.target.value)
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveCustomFeature(feature.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {stepIndex === 5 && (
+                <div className="space-y-2">
+                  <Label htmlFor="plan-notes">Internal notes (optional)</Label>
+                  <Textarea
+                    id="plan-notes"
+                    rows={3}
+                    value={formState.notes}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        notes: event.target.value,
+                      }))
+                    }
+                    placeholder="Describe intended workloads, scaling rules, or change history."
+                  />
                 </div>
               )}
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="plan-notes">Internal notes (optional)</Label>
-              <Textarea
-                id="plan-notes"
-                rows={3}
-                value={formState.notes}
-                onChange={(event) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    notes: event.target.value,
-                  }))
-                }
-                placeholder="Describe intended workloads, scaling rules, or change history."
-              />
-            </div>
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCloseDialog}
-            >
+            <Button type="button" variant="outline" onClick={handleCloseDialog}>
               Cancel
             </Button>
-            <Button onClick={handleSavePlan} disabled={saving}>
-              {saving ? "Saving..." : editingPlanId ? "Save changes" : "Create plan"}
-            </Button>
+            {stepIndex > 0 && (
+              <Button type="button" variant="ghost" onClick={() => setStepIndex((i) => Math.max(0, i - 1))}>
+                Back
+              </Button>
+            )}
+            {stepIndex < stepLabels.length - 1 ? (
+              <Button type="button" onClick={() => setStepIndex((i) => Math.min(stepLabels.length - 1, i + 1))}>
+                Next
+              </Button>
+            ) : (
+              <Button onClick={handleSavePlan} disabled={saving}>
+                {saving ? "Saving..." : editingPlanId ? "Save changes" : "Create plan"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

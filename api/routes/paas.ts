@@ -1557,8 +1557,13 @@ router.get('/marketplace/addons', async (req: Request, res: Response) => {
       `SELECT * FROM paas_marketplace_addons ${whereClause} ORDER BY addon_type, name`,
       queryParams
     );
+    // Ensure numeric fields are returned as numbers
+    const addons = result.rows.map((row: any) => ({
+      ...row,
+      price_per_hour: Number(row.price_per_hour),
+    }));
 
-    res.json({ addons: result.rows });
+    res.json({ addons });
   } catch (error: any) {
     handlePaasApiError({
       req,

@@ -49,12 +49,14 @@ const PaaSAppCreate: React.FC = () => {
   const [gitBranch, setGitBranch] = useState('main');
   const [buildpack, setBuildpack] = useState('');
   const [planId, setPlanId] = useState('');
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(true);
   const { token, user } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [showPlanPicker, setShowPlanPicker] = useState(false);
 
   // Admin override fields
   const isAdmin = user?.role === 'admin';
@@ -112,7 +114,7 @@ const PaaSAppCreate: React.FC = () => {
 
   const handleNameChange = (value: string) => {
     setName(value);
-    if (!slug) {
+    if (!slugManuallyEdited) {
       setSlug(generateSlug(value));
     }
   };
@@ -124,7 +126,8 @@ const PaaSAppCreate: React.FC = () => {
       return;
     }
 
-    if (isAdmin && selectedOrgId && !user?.organizationId && !selectedOrgId) {
+    // If admin has no default organization context, require selecting one
+    if (isAdmin && !user?.organizationId && !selectedOrgId) {
       toast.error('Please select an organization');
       return;
     }
@@ -157,7 +160,17 @@ const PaaSAppCreate: React.FC = () => {
       const data = await apiClient.post(endpoint, payload);
 
       toast.success('Application created successfully!');
-      navigate(`/paas/${data.app.id}`);
+      const appId = data?.app?.id;
+      const appOrgId = data?.app?.organization_id ?? data?.app?.organizationId;
+
+      // If the app was created under a different organization than the current user,
+      // route to the admin apps view rather than the org-scoped app detail.
+      if (isAdmin && appOrgId && user?.organizationId && appOrgId !== user.organizationId) {
+        toast.info('Opened in Admin → PaaS Apps (different organization)');
+        navigate('/admin#paas-apps');
+      } else {
+        navigate(`/paas/${appId}`);
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to create application');
     } finally {
@@ -213,7 +226,7 @@ const PaaSAppCreate: React.FC = () => {
                     </span>
                   ) : (
                     <>
-                      ${selectedPlan.price_per_hour.toFixed(2)}/hr · ${selectedPlan.price_per_month?.toFixed(2) ?? '—'}/mo
+                      ${Number(selectedPlan.price_per_hour).toFixed(2)}/hr · ${selectedPlan.price_per_month != null ? Number(selectedPlan.price_per_month).toFixed(2) : '—'}/mo
                     </>
                   )}
                 </p>
@@ -283,7 +296,11 @@ const PaaSAppCreate: React.FC = () => {
               <Input
                 id="slug"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSlug(v);
+                  setSlugManuallyEdited(v.length > 0);
+                }}
                 placeholder="my-awesome-app"
                 pattern="[a-z0-9-]+"
                 required
@@ -322,12 +339,15 @@ const PaaSAppCreate: React.FC = () => {
             {/* Buildpack */}
             <div className="space-y-2">
               <Label htmlFor="buildpack">Buildpack (Optional)</Label>
-              <Select value={buildpack} onValueChange={setBuildpack}>
+              <Select
+                value={buildpack || '__auto__'}
+                onValueChange={(v) => setBuildpack(v === '__auto__' ? '' : v)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Auto-detect" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Auto-detect</SelectItem>
+                  <SelectItem value="__auto__">Auto-detect</SelectItem>
                   <SelectItem value="heroku/nodejs">Node.js</SelectItem>
                   <SelectItem value="heroku/python">Python</SelectItem>
                   <SelectItem value="heroku/ruby">Ruby</SelectItem>
@@ -338,24 +358,38 @@ const PaaSAppCreate: React.FC = () => {
               </Select>
             </div>
 
-            {/* Plan Selection */}
+            {/* Plan Selection (hidden when preselected) */}
             <div className="space-y-2">
               <Label htmlFor="plan">Resource Plan</Label>
-              <Select value={planId} onValueChange={setPlanId} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {plans.map((plan) => (
-                    <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} - {plan.cpu_cores} CPU, {plan.ram_mb}MB RAM
-                      (${plan.price_per_hour}/hr ≈ ${plan.price_per_month?.toFixed(2)}/mo)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {loadingPlans && (
-                <p className="text-sm text-muted-foreground">Loading plans...</p>
+              {selectedPlan && !showPlanPicker ? (
+                <div className="flex items-center justify-between rounded-md border p-3 text-sm">
+                  <div>
+                    {selectedPlan.name} - {selectedPlan.cpu_cores} CPU, {selectedPlan.ram_mb}MB RAM
+                    ({`$${Number(selectedPlan.price_per_hour).toFixed(3)}/hr`} ≈ {selectedPlan.price_per_month != null ? `$${Number(selectedPlan.price_per_month).toFixed(2)}/mo` : '—'})
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowPlanPicker(true)}>
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Select value={planId} onValueChange={setPlanId} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a plan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {plans.map((plan) => (
+                        <SelectItem key={plan.id} value={plan.id}>
+                          {plan.name} - {plan.cpu_cores} CPU, {plan.ram_mb}MB RAM
+                          ({`$${Number(plan.price_per_hour).toFixed(3)}/hr`} ≈ {plan.price_per_month != null ? `$${Number(plan.price_per_month).toFixed(2)}/mo` : '—'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {loadingPlans && (
+                    <p className="text-sm text-muted-foreground">Loading plans...</p>
+                  )}
+                </>
               )}
             </div>
 

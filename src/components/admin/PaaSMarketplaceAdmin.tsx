@@ -358,7 +358,7 @@ export const PaaSMarketplaceAdmin: React.FC = () => {
                         <TableCell>
                           <Badge variant="outline">{addon.addon_type}</Badge>
                         </TableCell>
-                        <TableCell>${addon.price_per_hour.toFixed(3)}</TableCell>
+                        <TableCell>${Number(addon.price_per_hour).toFixed(3)}</TableCell>
                         <TableCell>
                           <Badge className={addon.is_active ? 'bg-green-500' : 'bg-gray-500'}>
                             {addon.is_active ? 'Active' : 'Inactive'}

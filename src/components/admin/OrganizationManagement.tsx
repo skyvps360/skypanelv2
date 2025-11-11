@@ -21,8 +21,11 @@ import {
   Cpu,
   PauseCircle,
   PlayCircle,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiClient } from '@/lib/api';
+import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,7 +54,7 @@ import { MemberAddModal } from './MemberAddModal';
 import { MemberEditModal } from './MemberEditModal';
 import { MemberRemoveDialog } from './MemberRemoveDialog';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+// Use shared API client with default base `/api`
 
 interface OrganizationMember {
   userId: string;
@@ -91,6 +94,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
   onUserAction,
 }) => {
   const { token } = useAuth();
+  const { startImpersonation, isStarting } = useImpersonation();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -115,21 +119,13 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
 
   const fetchOrganizations = useCallback(async () => {
     if (!token) return;
-    
+
     setLoading(true);
     setError('');
     try {
-      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch(`${API_BASE_URL}/admin/organizations`, {
-        headers: authHeader,
-      });
-      
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to load organizations');
-      }
-      
-      const data = await res.json();
+      const data = await apiClient.get<{ organizations: Organization[] }>(
+        '/admin/organizations'
+      );
       setOrganizations(data.organizations || []);
     } catch (error: any) {
       const errorMessage = error.message || 'Failed to load organizations';
@@ -220,23 +216,11 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
 
   const handleSuspendPaas = async (org: Organization) => {
     if (!token) return;
-    const reason = window.prompt('Enter a reason for suspending PaaS (optional)', org.paasSuspendReason || '') ?? '';
+    const reason =
+      window.prompt('Enter a reason for suspending PaaS (optional)', org.paasSuspendReason || '') ?? '';
     setOperationLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/organizations/${org.id}/paas/suspend`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ reason }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to suspend PaaS');
-      }
-
+      await apiClient.post(`/admin/organizations/${org.id}/paas/suspend`, { reason });
       toast.success(`Suspended PaaS for ${org.name}`);
       await fetchOrganizations();
     } catch (error: any) {
@@ -250,19 +234,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
     if (!token) return;
     setOperationLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/organizations/${org.id}/paas/resume`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to resume PaaS');
-      }
-
+      await apiClient.post(`/admin/organizations/${org.id}/paas/resume`);
       toast.success(`Resumed PaaS for ${org.name}`);
       await fetchOrganizations();
     } catch (error: any) {
@@ -574,12 +546,12 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                               <TableHead>User Role</TableHead>
                               <TableHead>Org Role</TableHead>
                               <TableHead>Joined</TableHead>
-                              <TableHead className="w-24">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {org.members.map((member) => (
-                              <TableRow key={`${org.id}-${member.userId}`}>
+                          <TableHead className="w-24">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {org.members.map((member) => (
+                          <TableRow key={`${org.id}-${member.userId}`}>
                                 <TableCell>
                                   <div>
                                     <p className="font-medium">{member.userName}</p>
@@ -621,11 +593,36 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                                     <Button
                                       size="sm"
                                       variant="ghost"
+                                      onClick={() => onUserAction?.(member.userId, 'view')}
+                                      title="Open user details"
+                                      disabled={loading || operationLoading}
+                                    >
+                                      <User className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
                                       onClick={() => handleEditMember(member, org.id)}
                                       title="Edit member role"
                                       disabled={loading || operationLoading}
                                     >
                                       <Edit className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={async () => {
+                                        try {
+                                          await startImpersonation(member.userId);
+                                        } catch (err: any) {
+                                          // Confirmation required for admin-to-admin impersonation is handled by context
+                                          toast.error(err?.message || 'Failed to impersonate user');
+                                        }
+                                      }}
+                                      title="Impersonate user"
+                                      disabled={loading || operationLoading || isStarting}
+                                    >
+                                      <Users className="h-3 w-3" />
                                     </Button>
                                     <Button
                                       size="sm"
