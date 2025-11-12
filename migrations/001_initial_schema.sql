@@ -187,7 +187,7 @@ BEGIN
     VALUES (
         uuid_generate_v4(),
         'admin@skypanelv2.com',
-        '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj/RK.s5uO9G',
+        '$2a$12$so5/YSi/1Tz66rTE.4Kvwepf3SqD4COJZDxjTuq65p42llLB04kv2',
         'System Administrator',
         'admin'
     ) ON CONFLICT (email) DO NOTHING

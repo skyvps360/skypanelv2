@@ -5,6 +5,9 @@
 import app from "./app.js";
 import { initSSHBridge } from "./services/sshBridge.js";
 import { BillingService } from "./services/billingService.js";
+import { ContainerBillingService } from "./services/containers/ContainerBillingService.js";
+import { config } from "./config/index.js";
+import { startQuotaRecalculationJob, stopQuotaRecalculationJob } from "./jobs/quotaRecalculation.js";
 
 /**
  * start server with port
@@ -18,13 +21,16 @@ const server = app.listen(PORT, () => {
 
   // Start hourly billing scheduler
   startBillingScheduler();
+
+  // Start quota recalculation job (every 30 seconds)
+  startQuotaRecalculationJob();
 });
 
 /**
  * Start the hourly billing scheduler
  */
 function startBillingScheduler() {
-  console.log("🕐 Starting hourly VPS billing scheduler...");
+  console.log("🕐 Starting hourly billing scheduler...");
 
   // Run billing immediately on startup (for any missed billing)
   setTimeout(async () => {
@@ -38,36 +44,55 @@ function startBillingScheduler() {
 }
 
 /**
- * Run hourly billing for all active VPS instances
+ * Run hourly billing for all active VPS instances and container services
  */
 async function runHourlyBilling(runType: "initial" | "scheduled") {
   try {
+    // Run VPS billing
     console.log(`🔄 Starting ${runType} hourly VPS billing process...`);
-    const result = await BillingService.runHourlyBilling();
+    const vpsResult = await BillingService.runHourlyBilling();
     console.log(
-      `✅ Billing completed: ${
-        result.billedInstances
-      } instances billed, $${result.totalAmount.toFixed(2)} total`
+      `✅ VPS Billing completed: ${
+        vpsResult.billedInstances
+      } instances billed, ${vpsResult.totalAmount.toFixed(2)} total`
     );
 
-    if (result.failedInstances.length > 0) {
+    if (vpsResult.failedInstances.length > 0) {
       console.warn(
-        `⚠️ ${result.failedInstances.length} instances failed billing:`,
-        result.errors
+        `⚠️ ${vpsResult.failedInstances.length} VPS instances failed billing:`,
+        vpsResult.errors
       );
+    }
+
+    // Run container billing if enabled
+    const containerBillingEnabled = config.CONTAINER_BILLING_ENABLED !== 'false';
+    if (containerBillingEnabled) {
+      console.log(`🔄 Starting ${runType} hourly container billing process...`);
+      const containerResult = await ContainerBillingService.runHourlyContainerBilling();
+      console.log(
+        `✅ Container Billing completed: ${
+          containerResult.billedServices
+        } services billed, ${containerResult.totalAmount.toFixed(2)} total`
+      );
+
+      if (containerResult.failedServices.length > 0) {
+        console.warn(
+          `⚠️ ${containerResult.failedServices.length} container services failed billing:`,
+          containerResult.errors
+        );
+      }
     }
   } catch (error) {
     console.error(`❌ Error in ${runType} billing:`, error);
   }
 }
 
-// Container billing removed
-
 /**
  * close server
  */
 process.on("SIGTERM", () => {
   console.log("SIGTERM signal received");
+  stopQuotaRecalculationJob();
   server.close(() => {
     console.log("Server closed");
     process.exit(0);
@@ -76,6 +101,7 @@ process.on("SIGTERM", () => {
 
 process.on("SIGINT", () => {
   console.log("SIGINT signal received");
+  stopQuotaRecalculationJob();
   server.close(() => {
     console.log("Server closed");
     process.exit(0);

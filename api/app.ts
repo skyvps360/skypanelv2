@@ -32,6 +32,8 @@ import faqRoutes from './routes/faq.js';
 import adminFaqRoutes from './routes/adminFaq.js';
 import sshKeysRoutes from './routes/sshKeys.js';
 import pricingRoutes from './routes/pricing.js';
+import containerRoutes from './routes/containers/index.js';
+import workersRoutes from './routes/workers.js';
 import { notificationService } from './services/notificationService.js';
 import { performStartupValidation, initializeConfigurationMonitoring } from './services/rateLimitConfigValidator.js';
 import { initializeMetricsCollection, startMetricsPersistence } from './services/rateLimitMetrics.js';
@@ -122,7 +124,8 @@ app.use('/api/admin/platform', adminPlatformRoutes);
 app.use('/api/faq', faqRoutes)
 app.use('/api/admin/faq', adminFaqRoutes)
 app.use('/api/ssh-keys', sshKeysRoutes)
-// Containers routes removed
+app.use('/api/containers', containerRoutes)
+app.use('/api/workers', workersRoutes)
 
 // Health check routes are now handled by the dedicated health router
 
