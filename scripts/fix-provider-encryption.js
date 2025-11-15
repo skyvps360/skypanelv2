@@ -48,7 +48,9 @@ async function fixProviderEncryption() {
       
       // In a real scenario, you'd prompt for input or read from env
       // For now, we'll show instructions
-      const envVar = provider.type === 'linode' ? 'LINODE_API_TOKEN' : 'DIGITALOCEAN_API_TOKEN';
+      const envVar = provider.type
+        ? `${provider.type.toUpperCase()}_API_TOKEN`
+        : 'LINODE_API_TOKEN';
       const token = process.env[envVar];
 
       if (!token) {

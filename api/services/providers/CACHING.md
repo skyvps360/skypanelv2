@@ -8,21 +8,14 @@ The provider resource caching system implements in-memory caching for frequently
 
 ### Plans (1 hour TTL)
 - Linode types/plans
-- DigitalOcean Droplet sizes
 - Cached per provider ID
 
 ### OS Images (1 hour TTL)
 - Linode images
-- DigitalOcean images
-- Cached per provider ID
-
-### Marketplace Apps (6 hours TTL)
-- DigitalOcean 1-Click applications
 - Cached per provider ID
 
 ### Regions (24 hours TTL)
 - Linode regions
-- DigitalOcean regions
 - Cached per provider ID
 
 ## Cache Invalidation
@@ -63,7 +56,6 @@ Caches are automatically invalidated when:
 
 ### Provider Service Integration
 - `LinodeProviderService` checks cache before API calls
-- `DigitalOceanProviderService` checks cache before API calls
 - Provider ID passed through `ProviderFactory` for cache keying
 
 ## Configuration
@@ -95,7 +87,6 @@ console.log(stats);
 // {
 //   plans: { size: 2, providers: ['uuid-1', 'uuid-2'] },
 //   images: { size: 2, providers: ['uuid-1', 'uuid-2'] },
-//   marketplace: { size: 1, providers: ['uuid-2'] },
 //   regions: { size: 2, providers: ['uuid-1', 'uuid-2'] }
 // }
 ```

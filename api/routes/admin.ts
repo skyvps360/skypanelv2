@@ -9,8 +9,6 @@ import { requireAdmin } from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { query } from "../lib/database.js";
 import { linodeService } from "../services/linodeService.js";
-import { digitalOceanService } from "../services/DigitalOceanService.js";
-import type { DigitalOceanDroplet } from "../services/DigitalOceanService.js";
 import { logActivity } from "../services/activityLogger.js";
 import {
   themeService,
@@ -27,9 +25,7 @@ import {
 import { encryptSecret } from "../lib/crypto.js";
 import { normalizeProviderToken, getProviderTokenByType } from "../lib/providerTokens.js";
 import {
-  DEFAULT_DIGITALOCEAN_ALLOWED_REGIONS,
   DEFAULT_LINODE_ALLOWED_REGIONS,
-  DIGITALOCEAN_REGION_COUNTRY_MAP,
   normalizeRegionList,
   parseStoredAllowedRegions,
 } from "../lib/providerRegions.js";
@@ -815,7 +811,7 @@ router.delete(
  * Optional backup fields:
  * - backup_price_monthly/hourly: Base backup cost from provider
  * - backup_upcharge_monthly/hourly: Admin markup on backup cost
- * - daily_backups_enabled: Allow daily backups (DigitalOcean only)
+ * - daily_backups_enabled: Allow daily backups
  * - weekly_backups_enabled: Allow weekly backups (default: true)
  * 
  * Validation:
@@ -953,7 +949,7 @@ router.post(
   requireAdmin,
   [
     body("name").isString().trim().notEmpty(),
-    body("type").isIn(["linode", "digitalocean", "aws", "gcp"]),
+    body("type").isIn(["linode", "aws", "gcp"]),
     body("apiKey").isString().trim().notEmpty(),
     body("active").optional().isBoolean(),
   ],
@@ -1131,12 +1127,12 @@ router.get(
       }
 
       const provider = providerResult.rows[0];
-      const providerType = provider.type as "linode" | "digitalocean";
+      const providerType = provider.type as "linode";
 
-      if (!["linode", "digitalocean"].includes(providerType)) {
+      if (providerType !== "linode") {
         return res
           .status(400)
-          .json({ error: "Region management is only supported for Linode and DigitalOcean" });
+          .json({ error: "Region management is only supported for Linode" });
       }
 
       let allowedRegions: string[] = [];
@@ -1172,42 +1168,17 @@ router.get(
         return res.status(503).json({ error: "Provider credentials not available" });
       }
 
-      let allRegions: Array<{
-        id: string;
-        label: string;
-        country: string;
-        capabilities: string[];
-        status: string;
-      }> = [];
-
-      if (providerType === "linode") {
-        const linodeRegions = await linodeService.getLinodeRegions();
-        allRegions = linodeRegions.map((region) => ({
-          id: region.id,
-          label: region.label,
-          country: region.country ?? "",
-          capabilities: Array.isArray(region.capabilities) ? region.capabilities : [],
-          status: region.status ?? "unknown",
-        }));
-      } else {
-        const digitalOceanRegions = await digitalOceanService.getDigitalOceanRegions(token);
-        allRegions = digitalOceanRegions.map((region) => ({
-          id: region.slug,
-          label: region.name,
-          country:
-            typeof region.slug === "string"
-              ? DIGITALOCEAN_REGION_COUNTRY_MAP[region.slug.toLowerCase()] ?? ""
-              : "",
-          capabilities: Array.isArray(region.features) ? region.features : [],
-          status: region.available ? "ok" : "unavailable",
-        }));
-      }
+      const linodeRegions = await linodeService.getLinodeRegions();
+      const allRegions = linodeRegions.map((region) => ({
+        id: region.id,
+        label: region.label,
+        country: region.country ?? "",
+        capabilities: Array.isArray(region.capabilities) ? region.capabilities : [],
+        status: region.status ?? "unknown",
+      }));
 
       const normalizedDefaultSet = new Set(
-        (providerType === "linode"
-          ? DEFAULT_LINODE_ALLOWED_REGIONS
-          : DEFAULT_DIGITALOCEAN_ALLOWED_REGIONS
-        ).map((slug) => slug.toLowerCase())
+        DEFAULT_LINODE_ALLOWED_REGIONS.map((slug) => slug.toLowerCase())
       );
 
       const effectiveAllowedSet =
@@ -1290,12 +1261,12 @@ router.put(
       }
 
       const provider = providerResult.rows[0];
-      const providerType = provider.type as "linode" | "digitalocean";
+      const providerType = provider.type as "linode";
 
-      if (!["linode", "digitalocean"].includes(providerType)) {
+      if (providerType !== "linode") {
         return res
           .status(400)
-          .json({ error: "Region management is only supported for Linode and DigitalOcean" });
+          .json({ error: "Region management is only supported for Linode" });
       }
 
       let requestedRegions: string[] = [];
@@ -1325,23 +1296,12 @@ router.put(
           return res.status(503).json({ error: "Provider credentials not available" });
         }
 
-        let validRegionSlugs: Set<string> = new Set();
-
-        if (providerType === "linode") {
-          const linodeRegions = await linodeService.getLinodeRegions();
-          validRegionSlugs = new Set(
-            linodeRegions
-              .map((region) => region.id?.toLowerCase())
-              .filter((value): value is string => Boolean(value))
-          );
-        } else {
-          const digitalOceanRegions = await digitalOceanService.getDigitalOceanRegions(token);
-          validRegionSlugs = new Set(
-            digitalOceanRegions
-              .map((region) => region.slug?.toLowerCase())
-              .filter((value): value is string => Boolean(value))
-          );
-        }
+        const linodeRegions = await linodeService.getLinodeRegions();
+        const validRegionSlugs = new Set(
+          linodeRegions
+            .map((region) => region.id?.toLowerCase())
+            .filter((value): value is string => Boolean(value))
+        );
 
         const invalidSelections = requestedRegions.filter((region) => !validRegionSlugs.has(region));
         if (invalidSelections.length > 0) {
@@ -1402,355 +1362,6 @@ router.put(
   }
 );
 
-// Fetch provider marketplace configuration
-router.get(
-  "/providers/:id/marketplace",
-  authenticateToken,
-  requireAdmin,
-  [param("id").isUUID()],
-  async (req: Request, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-      const providerResult = await query(
-        `SELECT id, name, type, api_key_encrypted, allowed_marketplace_apps
-           FROM service_providers
-          WHERE id = $1
-          LIMIT 1`,
-        [id]
-      );
-
-      if (providerResult.rows.length === 0) {
-        return res.status(404).json({ error: "Provider not found" });
-      }
-
-      const provider = providerResult.rows[0];
-      const providerType = provider.type as string;
-
-      if (providerType !== "digitalocean") {
-        return res
-          .status(400)
-          .json({ error: "Marketplace management is only supported for DigitalOcean" });
-      }
-
-      const token = await normalizeProviderToken(provider.id, provider.api_key_encrypted);
-      if (!token) {
-        return res.status(503).json({ error: "Provider credentials not available" });
-      }
-
-      let allowedSlugs: string[] = [];
-      const displayNameOverrides = await fetchMarketplaceDisplayNames(id);
-      try {
-        const overridesResult = await query(
-          "SELECT app_slug FROM provider_marketplace_overrides WHERE provider_id = $1",
-          [id]
-        );
-
-        if (overridesResult.rows.length > 0) {
-          allowedSlugs = normalizeMarketplaceSlugs(
-            overridesResult.rows
-              .map((row) => row.app_slug)
-              .filter((value): value is string => typeof value === "string")
-          );
-        }
-      } catch (overrideErr) {
-        if (!isMissingTableError(overrideErr)) {
-          throw overrideErr;
-        }
-      }
-
-      if (allowedSlugs.length === 0) {
-        allowedSlugs = parseStoredAllowedMarketplaceApps(
-          provider.allowed_marketplace_apps ?? null
-        );
-      }
-
-      const mode: "default" | "custom" = allowedSlugs.length > 0 ? "custom" : "default";
-
-      const apps = await digitalOceanService.get1ClickApps(token);
-
-      const allowedSet = new Set(
-        mode === "custom"
-          ? allowedSlugs
-          : apps
-              .map((app: any) =>
-                typeof app?.slug === "string" ? app.slug.trim().toLowerCase() : ""
-              )
-              .filter(Boolean)
-      );
-
-      const categories: Record<string, number> = {};
-
-      const appsPayload = apps.map((app: any) => {
-        const slug = typeof app?.slug === "string" ? app.slug.trim().toLowerCase() : "";
-        const category = typeof app?.category === "string" && app.category.trim().length > 0
-          ? app.category
-          : "Other";
-
-        categories[category] = (categories[category] || 0) + 1;
-
-        const overrideName = slug ? displayNameOverrides.get(slug) : undefined;
-        const displayName = overrideName && overrideName.length > 0 ? overrideName : app.name;
-
-        return {
-          ...app,
-          category,
-          slug: app.slug,
-          allowed: slug ? allowedSet.has(slug) : false,
-          display_name: displayName,
-          provider_name: app.name,
-        };
-      });
-
-      res.json({
-        provider: {
-          id: provider.id,
-          name: provider.name,
-          type: providerType,
-        },
-        mode,
-        allowedApps: allowedSlugs,
-        displayNameOverrides: Object.fromEntries(displayNameOverrides),
-        apps: appsPayload,
-        categories,
-        fetchedAt: new Date().toISOString(),
-      });
-    } catch (err: any) {
-      console.error("Admin provider marketplace fetch error:", err);
-      res
-        .status(500)
-        .json({ error: err.message || "Failed to fetch provider marketplace apps" });
-    }
-  }
-);
-
-// Update provider marketplace allowlist
-router.put(
-  "/providers/:id/marketplace",
-  authenticateToken,
-  requireAdmin,
-  [
-    param("id").isUUID(),
-    body("mode").optional().isString(),
-    body("apps").optional().isArray(),
-    body("renames").optional().isObject(),
-  ],
-  async (req: Request, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-      const modeRaw =
-        typeof req.body.mode === "string" ? req.body.mode.toLowerCase().trim() : "custom";
-      const mode: "default" | "custom" = modeRaw === "default" ? "default" : "custom";
-
-      const providerResult = await query(
-        `SELECT id, name, type, api_key_encrypted
-           FROM service_providers
-          WHERE id = $1
-          LIMIT 1`,
-        [id]
-      );
-
-      if (providerResult.rows.length === 0) {
-        return res.status(404).json({ error: "Provider not found" });
-      }
-
-      const provider = providerResult.rows[0];
-      const providerType = provider.type as string;
-
-      if (providerType !== "digitalocean") {
-        return res
-          .status(400)
-          .json({ error: "Marketplace management is only supported for DigitalOcean" });
-      }
-
-      let requestedApps: string[] = [];
-      const renameMap = new Map<string, string>();
-
-      const renamesPayload = req.body.renames;
-      if (renamesPayload && typeof renamesPayload === "object" && renamesPayload !== null) {
-        for (const [rawSlug, rawName] of Object.entries(renamesPayload)) {
-          const normalizedSlug = normalizeMarketplaceSlugValue(rawSlug);
-          if (!normalizedSlug || renameMap.has(normalizedSlug)) {
-            continue;
-          }
-
-          if (typeof rawName !== "string") {
-            continue;
-          }
-
-          const trimmedName = rawName.trim();
-          if (!trimmedName) {
-            continue;
-          }
-
-          if (trimmedName.length > MAX_MARKETPLACE_DISPLAY_NAME_LENGTH) {
-            return res.status(400).json({
-              error: `Display name for slug "${rawSlug}" exceeds ${MAX_MARKETPLACE_DISPLAY_NAME_LENGTH} characters`,
-            });
-          }
-
-          renameMap.set(normalizedSlug, trimmedName);
-        }
-      }
-
-      if (mode === "custom") {
-        if (!Array.isArray(req.body.apps)) {
-          return res
-            .status(400)
-            .json({ error: "apps must be an array when mode is custom" });
-        }
-
-        requestedApps = normalizeMarketplaceSlugs(
-          req.body.apps.filter((value: unknown): value is string => typeof value === "string")
-        );
-
-        if (requestedApps.length === 0) {
-          return res
-            .status(400)
-            .json({ error: "Select at least one marketplace app or switch to default mode" });
-        }
-      }
-
-      const token = await normalizeProviderToken(provider.id, provider.api_key_encrypted);
-      if (!token) {
-        return res.status(503).json({ error: "Provider credentials not available" });
-      }
-
-      const apps = await digitalOceanService.get1ClickApps(token);
-      const validSlugs = new Set(
-        apps
-          .map((app: any) =>
-            typeof app?.slug === "string" ? app.slug.trim().toLowerCase() : ""
-          )
-          .filter(Boolean)
-      );
-
-      const invalidSelections = requestedApps.filter((slug) => !validSlugs.has(slug));
-      if (invalidSelections.length > 0) {
-        return res.status(400).json({
-          error: "One or more selected marketplace apps are not available",
-          invalidApps: invalidSelections,
-        });
-      }
-
-      const invalidRenameTargets: string[] = [];
-      for (const slug of renameMap.keys()) {
-        if (!validSlugs.has(slug)) {
-          invalidRenameTargets.push(slug);
-        }
-      }
-
-      if (invalidRenameTargets.length > 0) {
-        return res.status(400).json({
-          error: "One or more display name overrides target unavailable marketplace apps",
-          invalidApps: invalidRenameTargets,
-        });
-      }
-
-      if (mode === "custom" && requestedApps.length > 0) {
-        for (const slug of Array.from(renameMap.keys())) {
-          if (!requestedApps.includes(slug)) {
-            renameMap.delete(slug);
-          }
-        }
-      }
-
-      const payloadJson =
-        mode === "custom" ? JSON.stringify(requestedApps) : JSON.stringify([]);
-
-      await query("BEGIN");
-      try {
-        await query(
-          "DELETE FROM provider_marketplace_overrides WHERE provider_id = $1",
-          [id]
-        );
-
-        if (mode === "custom") {
-          for (const slug of requestedApps) {
-            await query(
-              `INSERT INTO provider_marketplace_overrides (provider_id, app_slug)
-               VALUES ($1, $2)
-               ON CONFLICT (provider_id, app_slug)
-               DO UPDATE SET updated_at = NOW()`,
-              [id, slug]
-            );
-          }
-        }
-
-        await query(
-          "UPDATE service_providers SET allowed_marketplace_apps = $2::jsonb, updated_at = NOW() WHERE id = $1",
-          [id, payloadJson]
-        );
-
-        await replaceMarketplaceDisplayNames(id, renameMap);
-
-        await query("COMMIT");
-      } catch (txnErr) {
-        await query("ROLLBACK");
-        throw txnErr;
-      }
-
-      ProviderResourceCache.invalidateResource(id, "marketplace");
-
-      res.json({
-        success: true,
-        mode,
-        allowedApps: requestedApps,
-        message:
-          mode === "custom"
-            ? `Configured ${requestedApps.length} marketplace app${requestedApps.length === 1 ? "" : "s"}`
-            : "Reverted to provider defaults",
-        displayNameOverrides: Object.fromEntries(renameMap),
-      });
-    } catch (err: any) {
-      console.error("Admin provider marketplace update error:", err);
-      res
-        .status(500)
-        .json({ error: err.message || "Failed to update provider marketplace apps" });
-    }
-  }
-);
-
-// Delete a provider
-router.delete(
-  "/providers/:id",
-  authenticateToken,
-  requireAdmin,
-  [param("id").isUUID()],
-  async (req: Request, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res
-          .status(400)
-          .json({ error: "Invalid input", details: errors.array() });
-      }
-
-      const { id } = req.params;
-
-      // Invalidate cache before deleting provider
-      ProviderResourceCache.invalidateProvider(id);
-
-      await query("DELETE FROM service_providers WHERE id = $1", [id]);
-      res.status(204).send();
-    } catch (err: any) {
-      console.error("Admin provider delete error:", err);
-      res
-        .status(500)
-        .json({ error: err.message || "Failed to delete provider" });
-    }
-  }
-);
-
 // Validate provider credentials
 router.post(
   "/providers/:id/validate",
@@ -1797,13 +1408,6 @@ router.post(
         if (provider.type === "linode") {
           // Test Linode API
           const testResult = await linodeService.testConnection(apiToken);
-          validationStatus = testResult.success ? "valid" : "invalid";
-          validationMessage = testResult.message || "";
-        } else if (provider.type === "digitalocean") {
-          // Test DigitalOcean API
-          const testResult = await digitalOceanService.testConnection(
-            apiToken
-          );
           validationStatus = testResult.success ? "valid" : "invalid";
           validationMessage = testResult.message || "";
         } else {
@@ -2075,47 +1679,6 @@ router.get(
         );
       }
 
-      const digitalOceanProviderCache = new Map<
-        string,
-        { token: string | null; droplets: Map<number, DigitalOceanDroplet> }
-      >();
-
-      const digitalOceanProviderIds = providerIds.filter((providerId): providerId is string => {
-        if (typeof providerId !== "string") return false;
-        const provider = providerSecrets.get(providerId);
-        return provider?.type === "digitalocean" && Boolean(provider.token);
-      });
-
-      for (const providerId of digitalOceanProviderIds) {
-        const provider = providerSecrets.get(providerId);
-        if (!provider?.token) {
-          continue;
-        }
-
-        try {
-          const droplets = await digitalOceanService.listDigitalOceanDroplets(provider.token);
-          const dropletMap = new Map<number, DigitalOceanDroplet>();
-          droplets.forEach((droplet) => {
-            if (Number.isFinite(droplet.id)) {
-              dropletMap.set(droplet.id, droplet);
-            }
-          });
-          digitalOceanProviderCache.set(providerId, {
-            token: provider.token,
-            droplets: dropletMap,
-          });
-        } catch (err) {
-          console.warn(
-            `Admin servers: failed to list DigitalOcean droplets for provider ${providerId}`,
-            err
-          );
-          digitalOceanProviderCache.set(providerId, {
-            token: provider.token,
-            droplets: new Map(),
-          });
-        }
-      }
-
       let regionLabelMap: Record<string, string> = {};
       const requiresLinodeRegions = rows.some((row) => {
         const providerType = row.provider_type ?? providerSecrets.get(row.provider_id ?? "")?.type;
@@ -2206,28 +1769,8 @@ router.get(
                 );
               }
             }
-          } else if (providerType === "digitalocean" && resolvedProviderId) {
-            const cacheEntry = digitalOceanProviderCache.get(resolvedProviderId);
-            const instanceId = Number(row.provider_instance_id);
-            let droplet: DigitalOceanDroplet | undefined =
-              Number.isFinite(instanceId) ? cacheEntry?.droplets.get(instanceId) : undefined;
+          }
 
-            if (!droplet && cacheEntry?.token && Number.isFinite(instanceId)) {
-              try {
-                droplet = await digitalOceanService.getDigitalOceanDroplet(
-                  cacheEntry.token,
-                  instanceId
-                );
-                if (droplet) {
-                  cacheEntry.droplets.set(instanceId, droplet);
-                }
-              } catch (detailErr) {
-                console.warn(
-                  `Admin servers: unable to fetch DigitalOcean droplet ${row.provider_instance_id}`,
-                  detailErr
-                );
-              }
-            }
 
             if (droplet) {
               const normalizeStatus = (value: string | null | undefined): string => {
@@ -2801,115 +2344,8 @@ router.get(
   }
 );
 
-// DigitalOcean API endpoints (parallel to Linode endpoints above)
-// Get DigitalOcean sizes (droplet plans)
-router.get(
-  "/digitalocean/sizes",
-  authenticateToken,
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    try {
-      const providerToken = await getProviderTokenByType("digitalocean");
-
-      if (!providerToken) {
-        return res.status(400).json({
-          error: "DigitalOcean provider not found or not active",
-          details: "Please configure DigitalOcean provider in /admin#providers",
-        });
-      }
-
-      const sizes = await digitalOceanService.getDigitalOceanSizes(
-        providerToken.token
-      );
-      
-      // DigitalOcean backup pricing:
-      // - Weekly backups: 20% of droplet cost (4 weeks retention)
-      // - Daily backups: 30% of droplet cost (7 days retention)
-      // We default to weekly (20%) as it's the most common choice
-      const sizesWithBackupPricing = sizes.map((size: any) => ({
-        ...size,
-        backup_price_monthly: size.price_monthly * 0.20, // 20% for weekly backups (default)
-        backup_price_hourly: size.price_hourly * 0.20,
-        // Note: Admins can manually adjust to 30% for daily backups if needed
-      }));
-      
-      res.json({ sizes: sizesWithBackupPricing });
-    } catch (err: any) {
-      console.error("Error fetching DigitalOcean sizes:", err);
-      res.status(500).json({
-        error: err.message || "Failed to fetch DigitalOcean sizes",
-        details:
-          "Check that your DigitalOcean API token is valid in /admin#providers",
-      });
-    }
-  }
-);
-
-// Get DigitalOcean regions
-router.get(
-  "/digitalocean/regions",
-  authenticateToken,
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    try {
-      const providerToken = await getProviderTokenByType("digitalocean");
-
-      if (!providerToken) {
-        return res.status(400).json({
-          error: "DigitalOcean provider not found or not active",
-          details: "Please configure DigitalOcean provider in /admin#providers",
-        });
-      }
-
-      const regions = await digitalOceanService.getDigitalOceanRegions(
-        providerToken.token
-      );
-      res.json({ regions });
-    } catch (err: any) {
-      console.error("Error fetching DigitalOcean regions:", err);
-      res.status(500).json({
-        error: err.message || "Failed to fetch DigitalOcean regions",
-        details:
-          "Check that your DigitalOcean API token is valid in /admin#providers",
-      });
-    }
-  }
-);
-
-// Get DigitalOcean images
-router.get(
-  "/digitalocean/images",
-  authenticateToken,
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    try {
-      const providerToken = await getProviderTokenByType("digitalocean");
-
-      if (!providerToken) {
-        return res.status(400).json({
-          error: "DigitalOcean provider not found or not active",
-          details: "Please configure DigitalOcean provider in /admin#providers",
-        });
-      }
- 
-      const type = req.query.type as "distribution" | "application" | undefined;
-      const images = await digitalOceanService.getDigitalOceanImages(
-        providerToken.token,
-        type
-      );
-      res.json({ images });
-    } catch (err: any) {
-      console.error("Error fetching DigitalOcean images:", err);
-      res.status(500).json({
-        error: err.message || "Failed to fetch DigitalOcean images",
-        details:
-          "Check that your DigitalOcean API token is valid in /admin#providers",
-      });
-    }
-  }
-);
-
 // StackScript Configs: List all configs
+
 router.get(
   "/stackscripts/configs",
   authenticateToken,

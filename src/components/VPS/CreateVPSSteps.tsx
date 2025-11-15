@@ -13,11 +13,6 @@ import LazyDeploymentSelection from "@/components/VPS/LazyDeploymentSelection";
 import LazyStackScriptConfig from "@/components/VPS/LazyStackScriptConfig";
 import LinodeConfiguration from "@/components/VPS/LinodeConfiguration";
 
-// DigitalOcean components
-import DigitalOceanMarketplace from "@/components/VPS/DigitalOceanMarketplace";
-import DigitalOceanOSSelection from "@/components/VPS/DigitalOceanOSSelection";
-import DigitalOceanConfiguration from "@/components/VPS/DigitalOceanConfiguration";
-
 interface CreateVPSStepsProps {
   step: number;
   providerType: ProviderType;
@@ -81,92 +76,33 @@ export const CreateVPSSteps: React.FC<CreateVPSStepsProps> = ({
 }) => {
   // Step 2: Deployment/Marketplace selection
   if (step === 2) {
-    if (providerType === "digitalocean") {
-      return (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-2">
-              Marketplace Apps
-            </label>
-            <p className="text-sm text-muted-foreground mb-4">
-              Optionally deploy a marketplace application.
-            </p>
-            <DigitalOceanMarketplace
-              token={token}
-              selectedApp={formData.appSlug || null}
-              region={formData.region}
-              onSelect={(appSlug: string | null, appData: any) => {
-                // When a marketplace app is selected, automatically set the image field
-                // When "None" is selected (appSlug is null), clear the image field
-                const updates: any = {
-                  appSlug,
-                  appData,
-                };
-
-                // Set image to the marketplace app's image slug if available
-                if (appSlug && appData?.image_slug) {
-                  updates.image = appData.image_slug;
-                } else if (!appSlug) {
-                  // Clear image when "None" is selected
-                  updates.image = null;
-                }
-
-                onFormChange(updates);
-              }}
-            />
-          </div>
-        </div>
-      );
-    } else {
-      // Linode: StackScripts
-      return (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-2">
-              1-Click Deployments (Optional)
-            </label>
-            <LazyDeploymentSelection
-              stackScripts={linodeStackScripts}
-              selectedStackScript={selectedStackScript}
-              onStackScriptSelect={onStackScriptSelect}
-            />
-          </div>
-
-          <LazyStackScriptConfig
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-2">
+            1-Click Deployments (Optional)
+          </label>
+          <LazyDeploymentSelection
+            stackScripts={linodeStackScripts}
             selectedStackScript={selectedStackScript}
-            stackscriptData={stackscriptData}
-            onStackScriptDataChange={onStackScriptDataChange}
-            allowedImagesDisplay={allowedImagesDisplay}
+            onStackScriptSelect={onStackScriptSelect}
           />
         </div>
-      );
-    }
+
+        <LazyStackScriptConfig
+          selectedStackScript={selectedStackScript}
+          stackscriptData={stackscriptData}
+          onStackScriptDataChange={onStackScriptDataChange}
+          allowedImagesDisplay={allowedImagesDisplay}
+        />
+      </div>
+    );
   }
 
   // Step 3: OS selection
   if (step === 3) {
-    if (providerType === "digitalocean") {
-      return (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-2">
-              Operating System
-            </label>
-            <DigitalOceanOSSelection
-              token={token}
-              selectedImage={formData.image || null}
-              onSelect={(imageSlug: string) => {
-                onFormChange({ image: imageSlug });
-              }}
-              compatibleWith={formData.appSlug ? [formData.appSlug] : undefined}
-            />
-          </div>
-        </div>
-      );
-    } else {
-      // Linode: OS selection with tabs
-      return (
-        <div className="space-y-4">
+    return (
+      <div className="space-y-4">
           <div className="flex items-center space-x-2">
             <button
               type="button"
@@ -196,49 +132,35 @@ export const CreateVPSSteps: React.FC<CreateVPSStepsProps> = ({
             </button>
           </div>
 
-          {osTab === "templates" ? (
-            <LazyOSSelection
-              osGroups={effectiveOsGroups}
-              selectedOSGroup={selectedOSGroup}
-              selectedOSVersion={selectedOSVersion}
-              onOSGroupSelect={onOSGroupSelect}
-              onOSVersionSelect={onOSVersionSelect}
-              onImageSelect={(imageId) => onFormChange({ image: imageId })}
-            />
-          ) : (
-            <div className="p-4 border border-dashed border rounded-lg text-sm text-muted-foreground">
-              ISO install support coming soon. Use Templates for now.
-            </div>
-          )}
-        </div>
-      );
-    }
+        {osTab === "templates" ? (
+          <LazyOSSelection
+            osGroups={effectiveOsGroups}
+            selectedOSGroup={selectedOSGroup}
+            selectedOSVersion={selectedOSVersion}
+            onOSGroupSelect={onOSGroupSelect}
+            onOSVersionSelect={onOSVersionSelect}
+            onImageSelect={(imageId) => onFormChange({ image: imageId })}
+          />
+        ) : (
+          <div className="p-4 border border-dashed border rounded-lg text-sm text-muted-foreground">
+            ISO install support coming soon. Use Templates for now.
+          </div>
+        )}
+      </div>
+    );
   }
 
   // Step 4: Configuration/Finalization
   if (step === 4) {
-    if (providerType === "digitalocean") {
-      return (
-        <div className="space-y-4">
-          <DigitalOceanConfiguration
-            token={token}
-            formData={formData}
-            onChange={onFormChange}
-          />
-        </div>
-      );
-    } else {
-      // Linode: Configuration with SSH keys
-      return (
-        <div className="space-y-4">
-          <LinodeConfiguration
-            token={token}
-            formData={formData}
-            onChange={onFormChange}
-          />
-        </div>
-      );
-    }
+    return (
+      <div className="space-y-4">
+        <LinodeConfiguration
+          token={token}
+          formData={formData}
+          onChange={onFormChange}
+        />
+      </div>
+    );
   }
 
   return null;
