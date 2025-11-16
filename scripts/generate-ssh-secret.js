@@ -50,7 +50,7 @@ try {
   console.log('\n📝 Next steps:');
   console.log('   1. Restart your dev server');
   console.log('   2. Go to /admin#providers');
-  console.log('   3. Re-save your Linode and DigitalOcean API tokens');
+  console.log('   3. Re-save your Linode API token');
   console.log('   4. SSH keys will now sync to providers!');
 
 } catch (error) {

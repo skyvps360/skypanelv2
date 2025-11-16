@@ -227,7 +227,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS service_providers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
-  type VARCHAR(50) NOT NULL CHECK (type IN ('linode','digitalocean','aws','gcp')),
+  type VARCHAR(50) NOT NULL CHECK (type IN ('linode')),
   api_key_encrypted TEXT NOT NULL,
   configuration JSONB NOT NULL DEFAULT '{}',
   active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -887,7 +887,7 @@ INSERT INTO faq_items (category_id, question, answer, display_order, is_active)
 SELECT
     id,
     'What data centers do you use?',
-    'We partner with leading infrastructure providers including Linode/Akamai, DigitalOcean, and ReliableSite. Servers are available in multiple regions worldwide including North America, Europe, and Asia.',
+    'We partner with leading infrastructure providers including Linode/Akamai and ReliableSite. Servers are available in multiple regions worldwide including North America, Europe, and Asia.',
     0,
     TRUE
 FROM faq_categories WHERE name = 'Technical'
@@ -1074,7 +1074,6 @@ INSERT INTO platform_settings (key, value) VALUES
 )
 ON CONFLICT (key) DO NOTHING;
 
--- Migration 014: DigitalOcean provider support
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -1089,7 +1088,7 @@ ALTER TABLE service_providers DROP CONSTRAINT IF EXISTS service_providers_type_c
 
 ALTER TABLE service_providers
   ADD CONSTRAINT service_providers_type_check
-  CHECK (type IN ('linode', 'digitalocean', 'aws', 'gcp'));
+  CHECK (type IN ('linode'));
 
 CREATE TABLE IF NOT EXISTS provider_metadata (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1129,14 +1128,10 @@ BEGIN
 END $$;
 
 COMMENT ON TABLE provider_metadata IS 'Stores provider-specific metadata and configuration';
-COMMENT ON COLUMN service_providers.type IS 'Provider type: linode, digitalocean, aws, gcp';
+COMMENT ON COLUMN service_providers.type IS 'Provider type: linode';
 COMMENT ON COLUMN vps_instances.provider_type IS 'Cached provider type for quick filtering';
 
 INSERT INTO service_providers (name, type, api_key_encrypted, configuration, active)
-SELECT 'DigitalOcean', 'digitalocean', '', '{}', false
-WHERE NOT EXISTS (
-  SELECT 1 FROM service_providers WHERE type = 'digitalocean'
-);
 
 -- Migration 015: Activity log system events
 ALTER TABLE activity_logs ALTER COLUMN user_id DROP NOT NULL;
@@ -1216,7 +1211,6 @@ CREATE TABLE IF NOT EXISTS user_ssh_keys (
   public_key TEXT NOT NULL,
   fingerprint VARCHAR(255) NOT NULL,
   linode_key_id VARCHAR(50),
-  digitalocean_key_id INTEGER,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   CONSTRAINT unique_user_fingerprint UNIQUE(user_id, fingerprint)
@@ -1225,13 +1219,12 @@ CREATE TABLE IF NOT EXISTS user_ssh_keys (
 CREATE INDEX idx_user_ssh_keys_user_id ON user_ssh_keys(user_id);
 CREATE INDEX idx_user_ssh_keys_fingerprint ON user_ssh_keys(fingerprint);
 
-COMMENT ON TABLE user_ssh_keys IS 'Stores SSH keys per user with provider-specific IDs for Linode and DigitalOcean';
+COMMENT ON TABLE user_ssh_keys IS 'Stores SSH keys per user with provider-specific IDs for Linode.';
 COMMENT ON COLUMN user_ssh_keys.user_id IS 'Foreign key to users table';
 COMMENT ON COLUMN user_ssh_keys.name IS 'User-friendly name for the SSH key';
 COMMENT ON COLUMN user_ssh_keys.public_key IS 'The SSH public key content';
 COMMENT ON COLUMN user_ssh_keys.fingerprint IS 'SSH key fingerprint for uniqueness validation';
 COMMENT ON COLUMN user_ssh_keys.linode_key_id IS 'Linode provider key ID (nullable if sync fails)';
-COMMENT ON COLUMN user_ssh_keys.digitalocean_key_id IS 'DigitalOcean provider key ID (nullable if sync fails)';
 COMMENT ON COLUMN user_ssh_keys.created_at IS 'Timestamp when the key was created';
 COMMENT ON COLUMN user_ssh_keys.updated_at IS 'Timestamp when the key was last updated';
 
@@ -1254,7 +1247,7 @@ ALTER TABLE vps_instances
 ADD COLUMN IF NOT EXISTS backup_frequency VARCHAR(20) DEFAULT 'weekly'
   CHECK (backup_frequency IN ('daily', 'weekly', 'none'));
 
-COMMENT ON COLUMN vps_plans.daily_backups_enabled IS 'Whether daily backups are available for this plan (DigitalOcean only)';
+COMMENT ON COLUMN vps_plans.daily_backups_enabled IS 'Whether daily backups are available for this plan';
 COMMENT ON COLUMN vps_plans.weekly_backups_enabled IS 'Whether weekly backups are available for this plan';
 COMMENT ON COLUMN vps_plans.backup_upcharge_monthly IS 'Admin markup on backup pricing (monthly, USD)';
 COMMENT ON COLUMN vps_plans.backup_upcharge_hourly IS 'Admin markup on backup pricing (hourly, USD)';
@@ -1297,13 +1290,6 @@ SET allowed_regions = '[
 ]'::jsonb
 WHERE type = 'linode' AND allowed_regions = '[]'::jsonb;
 
-UPDATE service_providers
-SET allowed_regions = '[
-  "nyc1", "nyc3", "ams3", "sfo3", "sgp1", "lon1",
-  "fra1", "tor1", "blr1", "syd1"
-]'::jsonb
-WHERE type = 'digitalocean' AND allowed_regions = '[]'::jsonb;
-
 CREATE INDEX IF NOT EXISTS idx_service_providers_allowed_regions
 ON service_providers USING GIN (allowed_regions);
 
@@ -1339,7 +1325,7 @@ SELECT
 FROM service_providers sp
 CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(sp.allowed_regions, '[]'::jsonb)) AS region_value
 WHERE jsonb_array_length(COALESCE(sp.allowed_regions, '[]'::jsonb)) > 0
-  AND sp.type IN ('linode', 'digitalocean')
+  AND sp.type IN ('linode')
 ON CONFLICT DO NOTHING;
 
 COMMENT ON TABLE provider_region_overrides IS 'Stores admin-defined region allowlists per infrastructure provider.';
@@ -1374,7 +1360,7 @@ BEGIN
 END $$;
 
 COMMENT ON TABLE provider_marketplace_overrides IS 'Stores admin-defined allowlist of provider marketplace applications.';
-COMMENT ON COLUMN provider_marketplace_overrides.app_slug IS 'DigitalOcean marketplace slug (normalized to lowercase).';
+COMMENT ON COLUMN provider_marketplace_overrides.app_slug IS 'Marketplace app slug (normalized to lowercase).';
 
 -- Migration 024: Marketplace app labels
 CREATE TABLE IF NOT EXISTS provider_marketplace_labels (
@@ -1429,4 +1415,3 @@ CREATE TRIGGER update_user_rate_limit_overrides_updated_at
 BEFORE UPDATE ON user_rate_limit_overrides
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
-

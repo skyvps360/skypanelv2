@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS paas_marketplace_addons (
   slug VARCHAR(255) NOT NULL UNIQUE,
   description TEXT,
   addon_type VARCHAR(100) NOT NULL, -- 'database', 'cache', 'storage', 'monitoring', etc.
-  provider VARCHAR(100), -- 'internal', 'aws', 'digitalocean', etc.
+  provider VARCHAR(100), -- 'internal', 'aws', etc.
   config_template JSONB DEFAULT '{}', -- Template configuration for the addon
   default_env_vars JSONB DEFAULT '{}', -- Environment variables to inject into apps
   price_per_hour DECIMAL(10,4) DEFAULT 0.00,

@@ -25,7 +25,7 @@ interface RegionAccessManagerProps {
 interface ProviderSummary {
   id: string;
   name: string;
-  type: "linode" | "digitalocean" | string;
+  type: "linode" | string;
   active: boolean;
 }
 
@@ -44,7 +44,7 @@ interface ProviderRegionsResponse {
   provider: {
     id: string;
     name: string;
-    type: "linode" | "digitalocean";
+    type: "linode";
   };
   mode: "default" | "custom";
   allowedRegions: string[];
@@ -60,7 +60,7 @@ interface ProviderRegionsResponse {
   }>;
 }
 
-const SUPPORTED_PROVIDER_TYPES = new Set(["linode", "digitalocean"]);
+const SUPPORTED_PROVIDER_TYPES = new Set(["linode"]);
 
 type RegionMode = "default" | "custom";
 

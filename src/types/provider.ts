@@ -3,7 +3,7 @@
  * Type definitions for multi-provider VPS support
  */
 
-export type ProviderType = 'linode' | 'digitalocean' | 'aws' | 'gcp';
+export type ProviderType = 'linode';
 
 export interface Provider {
   id: string;
@@ -29,11 +29,6 @@ export interface ProviderPlan {
   backup_price?: {
     hourly: number;
     monthly: number;
-    // DigitalOcean-specific: separate pricing for daily vs weekly
-    hourly_weekly?: number;
-    monthly_weekly?: number;
-    hourly_daily?: number;
-    monthly_daily?: number;
   };
   regions: string[];
 }

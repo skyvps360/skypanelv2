@@ -1,7 +1,7 @@
 import { query } from "./database.js";
 import { encryptSecret, decryptSecret } from "./crypto.js";
 
-export type ProviderType = "linode" | "digitalocean";
+export type ProviderType = "linode";
 
 /**
  * Normalizes a provider token by decrypting the stored value and re-encrypting

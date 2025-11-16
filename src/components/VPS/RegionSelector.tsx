@@ -6,10 +6,8 @@
 import React, { useState, useEffect } from "react";
 import { MapPin, Globe, CheckCircle2 } from "lucide-react";
 import type { ProviderRegion } from "@/types/vps";
-import type { ProviderType } from "@/types/provider";
 
 interface RegionSelectorProps {
-  providerType: ProviderType;
   providerId: string;
   selectedRegion: string;
   onSelect: (regionId: string) => void;
@@ -18,7 +16,6 @@ interface RegionSelectorProps {
 }
 
 export const RegionSelector: React.FC<RegionSelectorProps> = ({
-  providerType,
   providerId,
   selectedRegion,
   onSelect,
@@ -31,7 +28,7 @@ export const RegionSelector: React.FC<RegionSelectorProps> = ({
 
   useEffect(() => {
     const fetchRegions = async () => {
-      if (!providerId || !providerType) {
+      if (!providerId) {
         setRegions([]);
         setLoading(false);
         return;
@@ -41,13 +38,7 @@ export const RegionSelector: React.FC<RegionSelectorProps> = ({
       setError(null);
 
       try {
-        // Fetch regions from the provider
-        const endpoint =
-          providerType === "digitalocean"
-            ? `/api/vps/providers/${providerId}/regions`
-            : `/api/vps/providers/${providerId}/regions`;
-
-        const res = await fetch(endpoint, {
+        const res = await fetch(`/api/vps/providers/${providerId}/regions`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -68,7 +59,7 @@ export const RegionSelector: React.FC<RegionSelectorProps> = ({
     };
 
     fetchRegions();
-  }, [providerId, providerType, token]);
+  }, [providerId, token]);
 
   if (loading) {
     return (

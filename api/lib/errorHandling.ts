@@ -232,7 +232,7 @@ export function extractProviderErrorMessage(error: any, provider: string): strin
  */
 export function handleProviderError(
   error: any,
-  provider: 'linode' | 'digitalocean',
+  provider: 'linode',
   operation: string
 ): StructuredError {
   logError(`${provider} ${operation}`, error);

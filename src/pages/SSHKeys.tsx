@@ -24,7 +24,6 @@ interface UserSSHKey {
   public_key: string;
   fingerprint: string;
   linode_key_id?: string;
-  digitalocean_key_id?: number;
   created_at: string;
   updated_at: string;
 }
@@ -152,9 +151,8 @@ const SSHKeys: React.FC = () => {
   };
 
   const getProviderStatus = (key: UserSSHKey) => {
-    const providers: Array<'linode' | 'digitalocean'> = [];
+    const providers: Array<'linode'> = [];
     if (key.linode_key_id) providers.push('linode');
-    if (key.digitalocean_key_id) providers.push('digitalocean');
     return providers;
   };
 

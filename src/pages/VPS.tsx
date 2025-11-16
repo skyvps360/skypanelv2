@@ -308,7 +308,7 @@ const VPS: React.FC = () => {
 
   const normalizeProviderType = useCallback((value: unknown): ProviderType => {
     const raw = typeof value === "string" ? value.toLowerCase() : "";
-    if (raw === "linode" || raw === "digitalocean" || raw === "aws" || raw === "gcp") {
+    if (raw === "linode") {
       return raw as ProviderType;
     }
     return "linode";
@@ -359,7 +359,7 @@ const VPS: React.FC = () => {
         return;
       }
 
-      const supportedTypes = new Set<ProviderType>(["linode", "digitalocean"]);
+      const supportedTypes = new Set<ProviderType>(["linode"]);
       const aggregate = new Map<
         string,
         {
@@ -917,26 +917,15 @@ const VPS: React.FC = () => {
     return () => clearInterval(interval);
   }, [instances, loadInstances]);
 
-  // Calculate active steps based on provider and marketplace selection
+  // Calculate active steps for the Linode workflow
   useEffect(() => {
-    const hasMarketplaceApp = Boolean(
-      createForm.provider_type === "digitalocean" &&
-        (createForm.appSlug || (selectedStackScript as any)?.isMarketplace)
-    );
-
     const steps = getActiveSteps({
       providerType: createForm.provider_type,
-      hasMarketplaceApp,
       formData: createForm,
     });
 
     setActiveSteps(steps);
-  }, [
-    createForm.provider_type,
-    createForm.appSlug,
-    selectedStackScript,
-    createForm,
-  ]);
+  }, [createForm.provider_type, createForm]);
 
   // Load images and stack scripts when create modal opens
   useEffect(() => {
@@ -1410,15 +1399,8 @@ const VPS: React.FC = () => {
         }
       }
 
-      // Build request body supporting Marketplace apps
-      const isMarketplace = Boolean(
-        (selectedStackScript as any)?.isMarketplace
-      );
-      
-      // For DigitalOcean marketplace apps, use the app slug as the image parameter
-      const imageToUse = isMarketplace && createForm.provider_type === 'digitalocean' && (selectedStackScript as any)?.appSlug
-        ? (selectedStackScript as any).appSlug
-        : createForm.image;
+      const isMarketplace = Boolean((selectedStackScript as any)?.isMarketplace);
+      const imageToUse = createForm.image;
       
       const body: any = {
         provider_id: createForm.provider_id,
@@ -1434,7 +1416,6 @@ const VPS: React.FC = () => {
         privateIP: createForm.privateIP,
       };
       
-      // For Linode marketplace apps, still use appSlug field
       if (isMarketplace && createForm.provider_type === 'linode') {
         body.appSlug = (selectedStackScript as any)?.appSlug;
         body.appData = stackscriptData;
@@ -1660,19 +1641,13 @@ const VPS: React.FC = () => {
             <ProviderSelector
               value={createForm.provider_id}
               onChange={(providerId: string, providerType: ProviderType) => {
-                // Clear marketplace app selection when switching away from DigitalOcean
+                // Reset plan and region when provider changes
                 const updates: Partial<CreateVPSForm> = {
                   provider_id: providerId,
                   provider_type: providerType,
                   type: "", // Reset plan selection when provider changes
                   region: "", // Reset region when provider changes
                 };
-
-                // Clear marketplace app when switching away from DigitalOcean
-                if (providerType !== "digitalocean") {
-                  updates.appSlug = undefined;
-                  updates.appData = undefined;
-                }
 
                 setCreateForm(updates);
 
@@ -1784,16 +1759,10 @@ const VPS: React.FC = () => {
     },
     {
       id: "deployments",
-      title:
-        getStepInfo(2)?.title ||
-        (createForm.provider_type === "digitalocean"
-          ? "Marketplace Apps"
-          : "1-Click Deployments"),
+      title: getStepInfo(2)?.title || "1-Click Deployments",
       description:
         getStepInfo(2)?.description ||
-        (createForm.provider_type === "digitalocean"
-          ? "Optionally deploy a pre-configured application."
-          : "Optionally provision with a StackScript or continue without one."),
+        "Optionally provision with a StackScript or continue without one.",
       content: (
         <CreateVPSSteps
           step={2}

@@ -12,9 +12,9 @@
 /**
  * Supported cloud provider types
  * 
- * @typedef {('linode'|'digitalocean'|'aws'|'gcp')} ProviderType
+ * @typedef {('linode')} ProviderType
  */
-export type ProviderType = 'linode' | 'digitalocean' | 'aws' | 'gcp';
+export type ProviderType = 'linode';
 
 /**
  * Common normalized instance representation
@@ -153,11 +153,8 @@ export interface ProviderRegion {
  * @property {string[]} [tags] - Tags for organization
  * @property {number} [stackscriptId] - Linode StackScript ID
  * @property {Record<string, any>} [stackscriptData] - StackScript user-defined fields
- * @property {string} [appSlug] - DigitalOcean marketplace app slug
+ * @property {string} [appSlug] - Marketplace application slug
  * @property {Record<string, any>} [appData] - Marketplace app configuration
- * @property {boolean} [monitoring] - Enable monitoring agent (DigitalOcean)
- * @property {boolean} [ipv6] - Enable IPv6 (DigitalOcean)
- * @property {string} [vpc_uuid] - VPC UUID for private networking (DigitalOcean)
  */
 export interface CreateInstanceParams {
   label: string;
@@ -174,9 +171,6 @@ export interface CreateInstanceParams {
   stackscriptData?: Record<string, any>;
   appSlug?: string;
   appData?: Record<string, any>;
-  monitoring?: boolean;
-  ipv6?: boolean;
-  vpc_uuid?: string;
 }
 
 /**
@@ -214,7 +208,7 @@ export interface IProviderService {
    * 
    * @returns {ProviderType} The provider type identifier
    * @example
-   * const type = provider.getProviderType(); // 'digitalocean'
+   * const type = provider.getProviderType(); // 'linode'
    */
   getProviderType(): ProviderType;
 

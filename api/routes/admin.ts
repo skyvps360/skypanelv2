@@ -9,8 +9,6 @@ import { requireAdmin } from "../middleware/auth.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { query } from "../lib/database.js";
 import { linodeService } from "../services/linodeService.js";
-import { digitalOceanService } from "../services/DigitalOceanService.js";
-import type { DigitalOceanDroplet } from "../services/DigitalOceanService.js";
 import { logActivity } from "../services/activityLogger.js";
 import {
   themeService,
@@ -27,9 +25,7 @@ import {
 import { encryptSecret } from "../lib/crypto.js";
 import { normalizeProviderToken, getProviderTokenByType } from "../lib/providerTokens.js";
 import {
-  DEFAULT_DIGITALOCEAN_ALLOWED_REGIONS,
   DEFAULT_LINODE_ALLOWED_REGIONS,
-  DIGITALOCEAN_REGION_COUNTRY_MAP,
   normalizeRegionList,
   parseStoredAllowedRegions,
 } from "../lib/providerRegions.js";
@@ -815,7 +811,7 @@ router.delete(
  * Optional backup fields:
  * - backup_price_monthly/hourly: Base backup cost from provider
  * - backup_upcharge_monthly/hourly: Admin markup on backup cost
- * - daily_backups_enabled: Allow daily backups (DigitalOcean only)
+ * - daily_backups_enabled: Allow daily backups
  * - weekly_backups_enabled: Allow weekly backups (default: true)
  * 
  * Validation:
@@ -953,7 +949,7 @@ router.post(
   requireAdmin,
   [
     body("name").isString().trim().notEmpty(),
-    body("type").isIn(["linode", "digitalocean", "aws", "gcp"]),
+    body("type").isIn(["linode"]),
     body("apiKey").isString().trim().notEmpty(),
     body("active").optional().isBoolean(),
   ],
@@ -1131,12 +1127,12 @@ router.get(
       }
 
       const provider = providerResult.rows[0];
-      const providerType = provider.type as "linode" | "digitalocean";
+      const providerType = provider.type as "linode";
 
-      if (!["linode", "digitalocean"].includes(providerType)) {
+      if (providerType !== "linode") {
         return res
           .status(400)
-          .json({ error: "Region management is only supported for Linode and DigitalOcean" });
+          .json({ error: "Region management is only supported for Linode" });
       }
 
       let allowedRegions: string[] = [];
@@ -1167,47 +1163,17 @@ router.get(
 
       const mode: "default" | "custom" = allowedRegions.length > 0 ? "custom" : "default";
 
-      const token = await normalizeProviderToken(provider.id, provider.api_key_encrypted);
-      if (!token) {
-        return res.status(503).json({ error: "Provider credentials not available" });
-      }
-
-      let allRegions: Array<{
-        id: string;
-        label: string;
-        country: string;
-        capabilities: string[];
-        status: string;
-      }> = [];
-
-      if (providerType === "linode") {
-        const linodeRegions = await linodeService.getLinodeRegions();
-        allRegions = linodeRegions.map((region) => ({
-          id: region.id,
-          label: region.label,
-          country: region.country ?? "",
-          capabilities: Array.isArray(region.capabilities) ? region.capabilities : [],
-          status: region.status ?? "unknown",
-        }));
-      } else {
-        const digitalOceanRegions = await digitalOceanService.getDigitalOceanRegions(token);
-        allRegions = digitalOceanRegions.map((region) => ({
-          id: region.slug,
-          label: region.name,
-          country:
-            typeof region.slug === "string"
-              ? DIGITALOCEAN_REGION_COUNTRY_MAP[region.slug.toLowerCase()] ?? ""
-              : "",
-          capabilities: Array.isArray(region.features) ? region.features : [],
-          status: region.available ? "ok" : "unavailable",
-        }));
-      }
+      const linodeRegions = await linodeService.getLinodeRegions();
+      const allRegions = linodeRegions.map((region) => ({
+        id: region.id,
+        label: region.label,
+        country: region.country ?? "",
+        capabilities: Array.isArray(region.capabilities) ? region.capabilities : [],
+        status: region.status ?? "unknown",
+      }));
 
       const normalizedDefaultSet = new Set(
-        (providerType === "linode"
-          ? DEFAULT_LINODE_ALLOWED_REGIONS
-          : DEFAULT_DIGITALOCEAN_ALLOWED_REGIONS
-        ).map((slug) => slug.toLowerCase())
+        DEFAULT_LINODE_ALLOWED_REGIONS.map((slug) => slug.toLowerCase())
       );
 
       const effectiveAllowedSet =
@@ -1290,12 +1256,12 @@ router.put(
       }
 
       const provider = providerResult.rows[0];
-      const providerType = provider.type as "linode" | "digitalocean";
+      const providerType = provider.type as "linode";
 
-      if (!["linode", "digitalocean"].includes(providerType)) {
+      if (providerType !== "linode") {
         return res
           .status(400)
-          .json({ error: "Region management is only supported for Linode and DigitalOcean" });
+          .json({ error: "Region management is only supported for Linode" });
       }
 
       let requestedRegions: string[] = [];
@@ -1327,21 +1293,12 @@ router.put(
 
         let validRegionSlugs: Set<string> = new Set();
 
-        if (providerType === "linode") {
-          const linodeRegions = await linodeService.getLinodeRegions();
-          validRegionSlugs = new Set(
-            linodeRegions
-              .map((region) => region.id?.toLowerCase())
-              .filter((value): value is string => Boolean(value))
-          );
-        } else {
-          const digitalOceanRegions = await digitalOceanService.getDigitalOceanRegions(token);
-          validRegionSlugs = new Set(
-            digitalOceanRegions
-              .map((region) => region.slug?.toLowerCase())
-              .filter((value): value is string => Boolean(value))
-          );
-        }
+        const linodeRegions = await linodeService.getLinodeRegions();
+        validRegionSlugs = new Set(
+          linodeRegions
+            .map((region) => region.id?.toLowerCase())
+            .filter((value): value is string => Boolean(value))
+        );
 
         const invalidSelections = requestedRegions.filter((region) => !validRegionSlugs.has(region));
         if (invalidSelections.length > 0) {
@@ -1431,10 +1388,10 @@ router.get(
       const provider = providerResult.rows[0];
       const providerType = provider.type as string;
 
-      if (providerType !== "digitalocean") {
+      if (providerType !== "linode") {
         return res
           .status(400)
-          .json({ error: "Marketplace management is only supported for DigitalOcean" });
+          .json({ error: "Marketplace management is only supported for Linode" });
       }
 
       const token = await normalizeProviderToken(provider.id, provider.api_key_encrypted);
@@ -1471,7 +1428,7 @@ router.get(
 
       const mode: "default" | "custom" = allowedSlugs.length > 0 ? "custom" : "default";
 
-      const apps = await digitalOceanService.get1ClickApps(token);
+      const apps = await linodeService.listMarketplaceApps();
 
       const allowedSet = new Set(
         mode === "custom"
@@ -1566,10 +1523,10 @@ router.put(
       const provider = providerResult.rows[0];
       const providerType = provider.type as string;
 
-      if (providerType !== "digitalocean") {
+      if (providerType !== "linode") {
         return res
           .status(400)
-          .json({ error: "Marketplace management is only supported for DigitalOcean" });
+          .json({ error: "Marketplace management is only supported for Linode" });
       }
 
       let requestedApps: string[] = [];
@@ -1620,12 +1577,7 @@ router.put(
         }
       }
 
-      const token = await normalizeProviderToken(provider.id, provider.api_key_encrypted);
-      if (!token) {
-        return res.status(503).json({ error: "Provider credentials not available" });
-      }
-
-      const apps = await digitalOceanService.get1ClickApps(token);
+      const apps = await linodeService.listMarketplaceApps();
       const validSlugs = new Set(
         apps
           .map((app: any) =>
@@ -1795,15 +1747,7 @@ router.post(
       try {
         // Test API connectivity based on provider type
         if (provider.type === "linode") {
-          // Test Linode API
           const testResult = await linodeService.testConnection(apiToken);
-          validationStatus = testResult.success ? "valid" : "invalid";
-          validationMessage = testResult.message || "";
-        } else if (provider.type === "digitalocean") {
-          // Test DigitalOcean API
-          const testResult = await digitalOceanService.testConnection(
-            apiToken
-          );
           validationStatus = testResult.success ? "valid" : "invalid";
           validationMessage = testResult.message || "";
         } else {
@@ -2075,47 +2019,6 @@ router.get(
         );
       }
 
-      const digitalOceanProviderCache = new Map<
-        string,
-        { token: string | null; droplets: Map<number, DigitalOceanDroplet> }
-      >();
-
-      const digitalOceanProviderIds = providerIds.filter((providerId): providerId is string => {
-        if (typeof providerId !== "string") return false;
-        const provider = providerSecrets.get(providerId);
-        return provider?.type === "digitalocean" && Boolean(provider.token);
-      });
-
-      for (const providerId of digitalOceanProviderIds) {
-        const provider = providerSecrets.get(providerId);
-        if (!provider?.token) {
-          continue;
-        }
-
-        try {
-          const droplets = await digitalOceanService.listDigitalOceanDroplets(provider.token);
-          const dropletMap = new Map<number, DigitalOceanDroplet>();
-          droplets.forEach((droplet) => {
-            if (Number.isFinite(droplet.id)) {
-              dropletMap.set(droplet.id, droplet);
-            }
-          });
-          digitalOceanProviderCache.set(providerId, {
-            token: provider.token,
-            droplets: dropletMap,
-          });
-        } catch (err) {
-          console.warn(
-            `Admin servers: failed to list DigitalOcean droplets for provider ${providerId}`,
-            err
-          );
-          digitalOceanProviderCache.set(providerId, {
-            token: provider.token,
-            droplets: new Map(),
-          });
-        }
-      }
-
       let regionLabelMap: Record<string, string> = {};
       const requiresLinodeRegions = rows.some((row) => {
         const providerType = row.provider_type ?? providerSecrets.get(row.provider_id ?? "")?.type;
@@ -2205,99 +2108,6 @@ router.get(
                   detailErr
                 );
               }
-            }
-          } else if (providerType === "digitalocean" && resolvedProviderId) {
-            const cacheEntry = digitalOceanProviderCache.get(resolvedProviderId);
-            const instanceId = Number(row.provider_instance_id);
-            let droplet: DigitalOceanDroplet | undefined =
-              Number.isFinite(instanceId) ? cacheEntry?.droplets.get(instanceId) : undefined;
-
-            if (!droplet && cacheEntry?.token && Number.isFinite(instanceId)) {
-              try {
-                droplet = await digitalOceanService.getDigitalOceanDroplet(
-                  cacheEntry.token,
-                  instanceId
-                );
-                if (droplet) {
-                  cacheEntry.droplets.set(instanceId, droplet);
-                }
-              } catch (detailErr) {
-                console.warn(
-                  `Admin servers: unable to fetch DigitalOcean droplet ${row.provider_instance_id}`,
-                  detailErr
-                );
-              }
-            }
-
-            if (droplet) {
-              const normalizeStatus = (value: string | null | undefined): string => {
-                if (!value) return "unknown";
-                switch (value.toLowerCase()) {
-                  case "active":
-                    return "running";
-                  case "off":
-                    return "stopped";
-                  case "new":
-                    return "provisioning";
-                  case "archive":
-                    return "archived";
-                  case "locked":
-                    return "locked";
-                  default:
-                    return value.toLowerCase();
-                }
-              };
-
-              const allIpv4 = Array.isArray(droplet.networks?.v4)
-                ? droplet.networks.v4
-                    .map((net) => (net?.ip_address ? String(net.ip_address) : null))
-                    .filter((ip): ip is string => Boolean(ip))
-                : [];
-
-              const allIpv6 = Array.isArray(droplet.networks?.v6)
-                ? droplet.networks.v6
-                    .map((net) => (net?.ip_address ? String(net.ip_address) : null))
-                    .filter((ip): ip is string => Boolean(ip))
-                : [];
-
-              const publicIpv4Entry = Array.isArray(droplet.networks?.v4)
-                ? droplet.networks.v4.find(
-                    (net) => net?.type === "public" && net.ip_address
-                  )
-                : undefined;
-              const publicIpv6Entry = Array.isArray(droplet.networks?.v6)
-                ? droplet.networks.v6.find(
-                    (net) => net?.type === "public" && net.ip_address
-                  )
-                : undefined;
-
-              const normalizedStatus = normalizeStatus(droplet.status);
-              const publicIpv4 = publicIpv4Entry?.ip_address ?? allIpv4[0] ?? null;
-              const publicIpv6 = publicIpv6Entry?.ip_address ?? allIpv6[0] ?? null;
-
-              if (normalizedStatus !== status || publicIpv4 !== ipAddress) {
-                await query(
-                  "UPDATE vps_instances SET status = $1, ip_address = $2, updated_at = NOW() WHERE id = $3",
-                  [normalizedStatus, publicIpv4, row.id]
-                );
-                status = normalizedStatus;
-                ipAddress = publicIpv4;
-              }
-
-              configuration.image =
-                configuration.image ||
-                droplet.image?.slug ||
-                droplet.image?.name ||
-                null;
-              configuration.region = configuration.region || droplet.region?.slug || null;
-              configuration.type = configuration.type || droplet.size_slug || null;
-              if (publicIpv6 && !configuration.ipv6) {
-                configuration.ipv6 = publicIpv6;
-              }
-
-              networks.ipv4 = Array.from(new Set(allIpv4));
-              networks.ipv6 = Array.from(new Set(allIpv6));
-              regionLabel = droplet.region?.name || regionLabel;
             }
           }
 
@@ -2796,114 +2606,6 @@ router.get(
         error: err.message || "Failed to fetch StackScripts",
         details:
           "Make sure upstream provider API token is configured in environment variables",
-      });
-    }
-  }
-);
-
-// DigitalOcean API endpoints (parallel to Linode endpoints above)
-// Get DigitalOcean sizes (droplet plans)
-router.get(
-  "/digitalocean/sizes",
-  authenticateToken,
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    try {
-      const providerToken = await getProviderTokenByType("digitalocean");
-
-      if (!providerToken) {
-        return res.status(400).json({
-          error: "DigitalOcean provider not found or not active",
-          details: "Please configure DigitalOcean provider in /admin#providers",
-        });
-      }
-
-      const sizes = await digitalOceanService.getDigitalOceanSizes(
-        providerToken.token
-      );
-      
-      // DigitalOcean backup pricing:
-      // - Weekly backups: 20% of droplet cost (4 weeks retention)
-      // - Daily backups: 30% of droplet cost (7 days retention)
-      // We default to weekly (20%) as it's the most common choice
-      const sizesWithBackupPricing = sizes.map((size: any) => ({
-        ...size,
-        backup_price_monthly: size.price_monthly * 0.20, // 20% for weekly backups (default)
-        backup_price_hourly: size.price_hourly * 0.20,
-        // Note: Admins can manually adjust to 30% for daily backups if needed
-      }));
-      
-      res.json({ sizes: sizesWithBackupPricing });
-    } catch (err: any) {
-      console.error("Error fetching DigitalOcean sizes:", err);
-      res.status(500).json({
-        error: err.message || "Failed to fetch DigitalOcean sizes",
-        details:
-          "Check that your DigitalOcean API token is valid in /admin#providers",
-      });
-    }
-  }
-);
-
-// Get DigitalOcean regions
-router.get(
-  "/digitalocean/regions",
-  authenticateToken,
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    try {
-      const providerToken = await getProviderTokenByType("digitalocean");
-
-      if (!providerToken) {
-        return res.status(400).json({
-          error: "DigitalOcean provider not found or not active",
-          details: "Please configure DigitalOcean provider in /admin#providers",
-        });
-      }
-
-      const regions = await digitalOceanService.getDigitalOceanRegions(
-        providerToken.token
-      );
-      res.json({ regions });
-    } catch (err: any) {
-      console.error("Error fetching DigitalOcean regions:", err);
-      res.status(500).json({
-        error: err.message || "Failed to fetch DigitalOcean regions",
-        details:
-          "Check that your DigitalOcean API token is valid in /admin#providers",
-      });
-    }
-  }
-);
-
-// Get DigitalOcean images
-router.get(
-  "/digitalocean/images",
-  authenticateToken,
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    try {
-      const providerToken = await getProviderTokenByType("digitalocean");
-
-      if (!providerToken) {
-        return res.status(400).json({
-          error: "DigitalOcean provider not found or not active",
-          details: "Please configure DigitalOcean provider in /admin#providers",
-        });
-      }
- 
-      const type = req.query.type as "distribution" | "application" | undefined;
-      const images = await digitalOceanService.getDigitalOceanImages(
-        providerToken.token,
-        type
-      );
-      res.json({ images });
-    } catch (err: any) {
-      console.error("Error fetching DigitalOcean images:", err);
-      res.status(500).json({
-        error: err.message || "Failed to fetch DigitalOcean images",
-        details:
-          "Check that your DigitalOcean API token is valid in /admin#providers",
       });
     }
   }

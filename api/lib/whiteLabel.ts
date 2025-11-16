@@ -5,7 +5,7 @@
  */
 
 export interface ProviderResult {
-  provider: 'linode' | 'digitalocean';
+  provider: 'linode';
   success: boolean;
   error?: string;
   providerId?: string | number;

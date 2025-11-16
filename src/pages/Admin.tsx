@@ -51,7 +51,7 @@ import { ContactCategoryManager } from "@/components/admin/ContactCategoryManage
 import { ContactMethodManager } from "@/components/admin/ContactMethodManager";
 import PlatformAvailabilityManager from "@/components/admin/PlatformAvailabilityManager";
 import { RegionAccessManager } from "@/components/admin/RegionAccessManager";
-import MarketplaceManager from "@/components/admin/MarketplaceManager";
+import { MarketplaceManager } from "@/components/admin/MarketplaceManager";
 import { AdminSupportView } from "@/components/admin/AdminSupportView";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { PaaSOverview } from "@/components/admin/PaaSOverview";
@@ -358,7 +358,7 @@ interface SupportTicket {
   messages: TicketMessage[];
 }
 
-type ProviderType = "linode" | "digitalocean" | "aws" | "gcp";
+type ProviderType = "linode";
 
 interface Provider {
   id: string;
@@ -762,7 +762,7 @@ const Admin: React.FC = () => {
   const [showAddProvider, setShowAddProvider] = useState(false);
   const [newProvider, setNewProvider] = useState<ProviderFormState>({
     name: "",
-    type: "",
+    type: "linode",
     apiKey: "",
     active: true,
   });
@@ -961,36 +961,12 @@ const Admin: React.FC = () => {
   }, [providers]);
 
   const _allowedLinodeRegions = useMemo(() => {
-    // If admin hasn't configured allowed regions, fall back to all regions from API
-    // Check if selected provider is DigitalOcean or Linode to apply appropriate filtering
-    const selectedProvider = providers.find(
-      (p) => p.id === newVPSPlan.selectedProviderId
-    );
-
-    if (selectedProvider?.type === "digitalocean") {
-      // For DigitalOcean, check its configuration for allowed regions
-      const doAllowedRegions =
-        selectedProvider.configuration &&
-          Array.isArray(selectedProvider.configuration.allowed_regions)
-          ? (selectedProvider.configuration.allowed_regions as string[])
-          : [];
-
-      if (doAllowedRegions.length === 0) return linodeRegions; // Show all if not configured
-      const set = new Set(doAllowedRegions);
-      return linodeRegions.filter((r) => set.has(r.id));
-    } else {
-      // For Linode or other providers, use original logic
-      if (!allowedRegionIds || allowedRegionIds.length === 0)
-        return linodeRegions;
-      const set = new Set(allowedRegionIds);
-      return linodeRegions.filter((r) => set.has(r.id));
+    if (!allowedRegionIds || allowedRegionIds.length === 0) {
+      return linodeRegions;
     }
-  }, [
-    linodeRegions,
-    allowedRegionIds,
-    providers,
-    newVPSPlan.selectedProviderId,
-  ]);
+    const set = new Set(allowedRegionIds);
+    return linodeRegions.filter((r) => set.has(r.id));
+  }, [linodeRegions, allowedRegionIds]);
 
   // Filter plan types by category
   const filteredPlanTypes = useMemo(() => {
@@ -1518,16 +1494,6 @@ const Admin: React.FC = () => {
     }
   };
 
-  // Type class mapping configuration for provider-specific classifications
-  // Maps DigitalOcean description values to standardized type classes
-  const DIGITALOCEAN_TYPE_CLASS_MAP: Record<string, string> = {
-    basic: "standard",
-    "general purpose": "standard",
-    "cpu-optimized": "cpu",
-    "memory-optimized": "memory",
-    "storage-optimized": "storage",
-  };
-
   const fetchLinodeTypes = async () => {
     if (!token) return;
     try {
@@ -1545,53 +1511,6 @@ const Admin: React.FC = () => {
     }
   };
 
-  const fetchDigitalOceanSizes = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/admin/digitalocean/sizes`, {
-        headers: authHeader,
-      });
-      const data = await res.json();
-      if (!res.ok)
-        throw new Error(data.error || "Failed to load DigitalOcean sizes");
-      // Map DigitalOcean sizes to LinodeType format for consistent UI
-      const mappedSizes: LinodeType[] = (data.sizes || []).map((size: any) => {
-        // Extract description and normalize it
-        const description = (size.description || "").toLowerCase().trim();
-
-        // Map to type class using the mapping table
-        const typeClass =
-          DIGITALOCEAN_TYPE_CLASS_MAP[description] || "standard";
-
-        // Log warning if unmapped
-        if (!DIGITALOCEAN_TYPE_CLASS_MAP[description] && description) {
-          console.warn(
-            `Unmapped DigitalOcean description: "${size.description}"`
-          );
-        }
-
-        return {
-          id: size.slug,
-          label: size.description || size.slug,
-          disk: size.disk * 1024, // Convert GB to MB
-          memory: size.memory,
-          vcpus: size.vcpus,
-          transfer: size.transfer * 1024, // Convert TB to GB
-          price: {
-            hourly: size.price_hourly,
-            monthly: size.price_monthly,
-          },
-          backup_price_monthly: size.backup_price_monthly || 0,
-          backup_price_hourly: size.backup_price_hourly || 0,
-          type_class: typeClass,
-        };
-      });
-      setLinodeTypes(mappedSizes);
-    } catch (e: any) {
-      toast.error(e.message);
-    }
-  };
-
   const fetchLinodeRegions = async () => {
     if (!token) return;
     try {
@@ -1604,31 +1523,6 @@ const Admin: React.FC = () => {
           data.error || "Failed to load upstream provider regions"
         );
       setLinodeRegions(data.regions);
-    } catch (e: any) {
-      toast.error(e.message);
-    }
-  };
-
-  const _fetchDigitalOceanRegions = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/admin/digitalocean/regions`, {
-        headers: authHeader,
-      });
-      const data = await res.json();
-      if (!res.ok)
-        throw new Error(data.error || "Failed to load DigitalOcean regions");
-      // Map DigitalOcean regions to LinodeRegion format
-      const mappedRegions: LinodeRegion[] = (data.regions || [])
-        .filter((r: any) => r.available)
-        .map((region: any) => ({
-          id: region.slug,
-          label: region.name,
-          country: region.slug.split("-")[0] || "unknown",
-          capabilities: region.features || [],
-          status: region.available ? "ok" : "unavailable",
-        }));
-      setLinodeRegions(mappedRegions);
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -1747,17 +1641,6 @@ const Admin: React.FC = () => {
     const planBeingEdited = plans.find(p => p.id === editPlanId);
     const planProvider = planBeingEdited ? providers.find(p => p.id === planBeingEdited.provider_id) : null;
     
-    // Validate backup frequency for DigitalOcean
-    if (planProvider?.type === 'digitalocean') {
-      const weeklyEnabled = editPlan.weekly_backups_enabled ?? planBeingEdited?.weekly_backups_enabled ?? true;
-      const dailyEnabled = editPlan.daily_backups_enabled ?? planBeingEdited?.daily_backups_enabled ?? false;
-      
-      if (!weeklyEnabled && !dailyEnabled) {
-        toast.error("Please select at least one backup frequency option");
-        return;
-      }
-    }
-    
     try {
       const res = await fetch(`${API_BASE_URL}/admin/plans/${editPlanId}`, {
         method: "PUT",
@@ -1815,14 +1698,6 @@ const Admin: React.FC = () => {
       return;
     }
 
-    // Validate backup frequency for DigitalOcean
-    if (selectedProvider.type === 'digitalocean') {
-      if (!newVPSPlan.dailyBackupsEnabled && !newVPSPlan.weeklyBackupsEnabled) {
-        toast.error("Please select at least one backup frequency option");
-        return;
-      }
-    }
-
     try {
       const res = await fetch(`${API_BASE_URL}/admin/plans`, {
         method: "POST",
@@ -1840,8 +1715,8 @@ const Admin: React.FC = () => {
           backup_price_hourly: parseFloat(String(newVPSPlan.backupPriceHourly)) || selectedType.backup_price_hourly || 0,
           backup_upcharge_monthly: parseFloat(String(newVPSPlan.backupUpchargeMonthly)) || 0,
           backup_upcharge_hourly: parseFloat(String(newVPSPlan.backupUpchargeHourly)) || 0,
-          daily_backups_enabled: selectedProvider.type === 'digitalocean' ? newVPSPlan.dailyBackupsEnabled : false,
-          weekly_backups_enabled: selectedProvider.type === 'digitalocean' ? newVPSPlan.weeklyBackupsEnabled : true,
+          daily_backups_enabled: newVPSPlan.dailyBackupsEnabled,
+          weekly_backups_enabled: newVPSPlan.weeklyBackupsEnabled,
           specifications: {
             vcpus: selectedType.vcpus,
             memory: selectedType.memory,
@@ -1898,7 +1773,7 @@ const Admin: React.FC = () => {
       setProviders((prev) => [data.provider, ...prev]);
       setNewProvider({
         name: "",
-        type: "",
+        type: "linode",
         apiKey: "",
         active: true,
       });
@@ -3184,7 +3059,7 @@ const Admin: React.FC = () => {
                                         )}
                                       </TableCell>
                                       <TableCell>
-                                        {isEditing && planProvider?.type === 'digitalocean' ? (
+                                        {isEditing ? (
                                           <div className="space-y-2">
                                             <div className="flex items-center space-x-2">
                                               <Checkbox
@@ -3226,27 +3101,19 @@ const Admin: React.FC = () => {
                                             </div>
                                           </div>
                                         ) : (
-                                          <div className="text-sm">
-                                            {planProvider?.type === 'digitalocean' ? (
-                                              <div className="flex flex-col gap-1">
-                                                {plan.weekly_backups_enabled && (
-                                                  <Badge variant="outline" className="w-fit text-xs">
-                                                    Weekly
-                                                  </Badge>
-                                                )}
-                                                {plan.daily_backups_enabled && (
-                                                  <Badge variant="outline" className="w-fit text-xs">
-                                                    Daily
-                                                  </Badge>
-                                                )}
-                                                {!plan.weekly_backups_enabled && !plan.daily_backups_enabled && (
-                                                  <span className="text-xs text-muted-foreground">None</span>
-                                                )}
-                                              </div>
-                                            ) : (
-                                              <span className="text-xs text-muted-foreground">
-                                                Weekly (default)
-                                              </span>
+                                          <div className="text-sm flex flex-col gap-1">
+                                            {plan.weekly_backups_enabled && (
+                                              <Badge variant="outline" className="w-fit text-xs">
+                                                Weekly
+                                              </Badge>
+                                            )}
+                                            {plan.daily_backups_enabled && (
+                                              <Badge variant="outline" className="w-fit text-xs">
+                                                Daily
+                                              </Badge>
+                                            )}
+                                            {!plan.weekly_backups_enabled && !plan.daily_backups_enabled && (
+                                              <span className="text-xs text-muted-foreground">None</span>
                                             )}
                                           </div>
                                         )}
@@ -3426,11 +3293,7 @@ const Admin: React.FC = () => {
                         // Fetch plans for this provider
                         const provider = providers.find((p) => p.id === value);
                         if (provider) {
-                          if (provider.type === "digitalocean") {
-                            fetchDigitalOceanSizes();
-                          } else if (provider.type === "linode") {
-                            fetchLinodeTypes();
-                          }
+                          fetchLinodeTypes();
                         }
                       }}
                     >
@@ -3460,74 +3323,15 @@ const Admin: React.FC = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Types</SelectItem>
-                        {(() => {
-                          const selectedProvider = providers.find(
-                            (p) => p.id === newVPSPlan.selectedProviderId
-                          );
-
-                          if (selectedProvider?.type === "linode") {
-                            // Linode-specific filters based on their type_class values
-                            return (
-                              <>
-                                <SelectItem value="standard">
-                                  Shared CPU (Standard/Nanode)
-                                </SelectItem>
-                                <SelectItem value="cpu">
-                                  Dedicated CPU
-                                </SelectItem>
-                                <SelectItem value="memory">
-                                  High Memory
-                                </SelectItem>
-                                <SelectItem value="premium">
-                                  Premium CPU
-                                </SelectItem>
-                                <SelectItem value="gpu">GPU</SelectItem>
-                              </>
-                            );
-                          } else if (
-                            selectedProvider?.type === "digitalocean"
-                          ) {
-                            // DigitalOcean-specific filters
-                            return (
-                              <>
-                                <SelectItem value="standard">
-                                  Basic / Standard
-                                </SelectItem>
-                                <SelectItem value="cpu">
-                                  CPU-Optimized
-                                </SelectItem>
-                                <SelectItem value="memory">
-                                  Memory-Optimized
-                                </SelectItem>
-                                <SelectItem value="storage">
-                                  Storage-Optimized
-                                </SelectItem>
-                                <SelectItem value="premium">
-                                  Premium (Intel/AMD)
-                                </SelectItem>
-                              </>
-                            );
-                          } else {
-                            // Generic fallback
-                            return (
-                              <>
-                                <SelectItem value="standard">
-                                  Standard / Basic
-                                </SelectItem>
-                                <SelectItem value="cpu">
-                                  CPU-Optimized
-                                </SelectItem>
-                                <SelectItem value="memory">
-                                  Memory-Optimized
-                                </SelectItem>
-                                <SelectItem value="storage">
-                                  Storage-Optimized
-                                </SelectItem>
-                                <SelectItem value="premium">Premium</SelectItem>
-                              </>
-                            );
-                          }
-                        })()}
+                        <>
+                          <SelectItem value="standard">
+                            Shared CPU (Standard/Nanode)
+                          </SelectItem>
+                          <SelectItem value="cpu">Dedicated CPU</SelectItem>
+                          <SelectItem value="memory">High Memory</SelectItem>
+                          <SelectItem value="premium">Premium CPU</SelectItem>
+                          <SelectItem value="gpu">GPU</SelectItem>
+                        </>
                       </SelectContent>
                     </Select>
                     {filteredPlanTypes.length === 0 &&
@@ -3622,13 +3426,8 @@ const Admin: React.FC = () => {
                     <p className="text-xs text-muted-foreground">
                       {(() => {
                         const selectedType = linodeTypes.find(t => t.id === newVPSPlan.selectedType);
-                        const selectedProvider = providers.find(p => p.id === newVPSPlan.selectedProviderId);
-                        
                         if (selectedType?.backup_price_monthly && Number(selectedType.backup_price_monthly) > 0) {
-                          if (selectedProvider?.type === 'digitalocean') {
-                            return `Auto-filled: $${(Number(selectedType.backup_price_monthly) || 0).toFixed(2)}/mo (Weekly backups - 20%). For daily backups (30%), multiply by 1.5`;
-                          }
-                          return `Auto-filled from provider: $${(Number(selectedType.backup_price_monthly) || 0).toFixed(2)}/mo (Weekly backups)`;
+                          return `Auto-filled from provider: $${(Number(selectedType.backup_price_monthly) || 0).toFixed(2)}/mo`;
                         }
                         return "Monthly cost for backup service (auto-filled from provider)";
                       })()}
@@ -3695,68 +3494,6 @@ const Admin: React.FC = () => {
                       Additional markup you charge for backups (hourly: ${((parseFloat(String(newVPSPlan.backupUpchargeMonthly)) || 0) / 730).toFixed(6)}/hr)
                     </p>
                   </div>
-                  {(() => {
-                    const selectedProvider = providers.find(p => p.id === newVPSPlan.selectedProviderId);
-                    const selectedType = linodeTypes.find(t => t.id === newVPSPlan.selectedType);
-                    const baseBackupPrice = parseFloat(String(newVPSPlan.backupPriceMonthly)) || 0;
-                    const upcharge = parseFloat(String(newVPSPlan.backupUpchargeMonthly)) || 0;
-                    const totalWeekly = baseBackupPrice + upcharge;
-                    const totalDaily = totalWeekly * 1.5;
-
-                    if (selectedProvider?.type === 'digitalocean' && selectedType) {
-                      return (
-                        <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
-                          <Label className="text-sm font-medium">Available Backup Frequencies</Label>
-                          <div className="space-y-2">
-                            <div className="flex items-start space-x-2">
-                              <Checkbox
-                                id="weekly-backups"
-                                checked={newVPSPlan.weeklyBackupsEnabled}
-                                onCheckedChange={(checked) =>
-                                  setNewVPSPlan((prev) => ({
-                                    ...prev,
-                                    weeklyBackupsEnabled: !!checked,
-                                  }))
-                                }
-                              />
-                              <div className="grid gap-1">
-                                <Label htmlFor="weekly-backups" className="font-normal cursor-pointer">
-                                  Weekly backups
-                                </Label>
-                                <p className="text-xs text-muted-foreground">
-                                  Base price: ${totalWeekly.toFixed(2)}/mo
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-start space-x-2">
-                              <Checkbox
-                                id="daily-backups"
-                                checked={newVPSPlan.dailyBackupsEnabled}
-                                onCheckedChange={(checked) =>
-                                  setNewVPSPlan((prev) => ({
-                                    ...prev,
-                                    dailyBackupsEnabled: !!checked,
-                                  }))
-                                }
-                              />
-                              <div className="grid gap-1">
-                                <Label htmlFor="daily-backups" className="font-normal cursor-pointer">
-                                  Daily backups (+50% of weekly price)
-                                </Label>
-                                <p className="text-xs text-muted-foreground">
-                                  Total price: ${totalDaily.toFixed(2)}/mo
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Select which backup frequencies users can choose from. At least one must be selected.
-                          </p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
                   <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2">
                     <div>
                       <p className="text-sm font-medium text-foreground">
@@ -4333,7 +4070,11 @@ const Admin: React.FC = () => {
                   )}
                 </div>
               </CardContent>
-            </Card>
+      </Card>
+    </SectionPanel>
+
+    <SectionPanel section="marketplace" activeSection={activeTab}>
+      <MarketplaceManager token={token || ""} />
     </SectionPanel>
 
     <SectionPanel section="servers" activeSection={activeTab}>
@@ -5008,27 +4749,15 @@ const Admin: React.FC = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="linode">Linode / Akamai</SelectItem>
-                        <SelectItem value="digitalocean">
-                          DigitalOcean
-                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="provider-key">
-                      API{" "}
-                      {newProvider.type === "digitalocean" ? "Token" : "Key"}
-                    </Label>
+                    <Label htmlFor="provider-key">API Token</Label>
                     <Input
                       id="provider-key"
                       type="password"
-                      placeholder={
-                        newProvider.type === "digitalocean"
-                          ? "dop_v1_..."
-                          : newProvider.type === "linode"
-                            ? "Enter Linode API token"
-                            : "Enter API credentials"
-                      }
+                      placeholder="Enter Linode API token"
                       value={newProvider.apiKey}
                       onChange={(e) =>
                         setNewProvider((prev) => ({
@@ -5037,18 +4766,10 @@ const Admin: React.FC = () => {
                         }))
                       }
                     />
-                    {newProvider.type === "digitalocean" && (
-                      <p className="text-xs text-muted-foreground">
-                        Generate a Personal Access Token from your DigitalOcean
-                        account with read/write permissions
-                      </p>
-                    )}
-                    {newProvider.type === "linode" && (
-                      <p className="text-xs text-muted-foreground">
-                        Create an API token from your Linode Cloud Manager with
-                        full access permissions
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Create an API token from your Linode Cloud Manager with
+                      full access permissions
+                    </p>
                   </div>
                   <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2">
                     <div>
@@ -5076,7 +4797,7 @@ const Admin: React.FC = () => {
                       setShowAddProvider(false);
                       setNewProvider({
                         name: "",
-                        type: "",
+                        type: "linode",
                         apiKey: "",
                         active: true,
                       });
@@ -5097,9 +4818,6 @@ const Admin: React.FC = () => {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-        </SectionPanel>
-        <SectionPanel section="marketplace" activeSection={activeTab}>
-          <MarketplaceManager token={token || ""} />
         </SectionPanel>
         <SectionPanel section="regions" activeSection={activeTab}>
           <RegionAccessManager token={token || ""} />

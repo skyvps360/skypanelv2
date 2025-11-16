@@ -7,18 +7,14 @@
  * @class ProviderFactory
  * 
  * @example
- * // Create a DigitalOcean provider
- * const provider = ProviderFactory.createProvider('digitalocean', apiToken, providerId);
- * 
  * // Check if provider is supported
- * if (ProviderFactory.isProviderSupported('aws')) {
- *   // Create AWS provider
+ * if (ProviderFactory.isProviderSupported('linode')) {
+ *   const provider = ProviderFactory.createProvider('linode', apiToken, providerId);
  * }
  */
 
 import { IProviderService, ProviderType } from './IProviderService.js';
 import { LinodeProviderService } from './LinodeProviderService.js';
-import { DigitalOceanProviderService } from './DigitalOceanProviderService.js';
 
 export class ProviderFactory {
   /**
@@ -28,7 +24,7 @@ export class ProviderFactory {
    * The returned instance implements the IProviderService interface.
    * 
    * @static
-   * @param {ProviderType} providerType - The type of provider (linode, digitalocean, etc.)
+   * @param {ProviderType} providerType - The type of provider (linode)
    * @param {string} apiToken - The API token for authenticating with the provider
    * @param {string} [providerId] - Optional provider ID for cache keying and identification
    * @returns {IProviderService} Provider service instance
@@ -38,9 +34,6 @@ export class ProviderFactory {
    * // Create a Linode provider
    * const linode = ProviderFactory.createProvider('linode', 'my-api-token', 'provider-uuid');
    * 
-   * // Create a DigitalOcean provider
-   * const digitalocean = ProviderFactory.createProvider('digitalocean', 'my-api-token', 'provider-uuid');
-   * 
    * // Use the provider
    * const instances = await linode.listInstances();
    */
@@ -48,14 +41,6 @@ export class ProviderFactory {
     switch (providerType) {
       case 'linode':
         return new LinodeProviderService(apiToken, providerId);
-      
-      case 'digitalocean':
-        return new DigitalOceanProviderService(apiToken, providerId);
-      
-      case 'aws':
-      case 'gcp':
-        throw new Error(`Provider type '${providerType}' is not yet implemented`);
-      
       default:
         throw new Error(`Unknown provider type: ${providerType}`);
     }
@@ -72,10 +57,10 @@ export class ProviderFactory {
    * 
    * @example
    * const supported = ProviderFactory.getSupportedProviders();
-   * console.log('Supported providers:', supported); // ['linode', 'digitalocean']
+   * console.log('Supported providers:', supported); // ['linode']
    */
   static getSupportedProviders(): ProviderType[] {
-    return ['linode', 'digitalocean'];
+    return ['linode'];
   }
 
   /**
@@ -89,8 +74,8 @@ export class ProviderFactory {
    * @returns {boolean} True if provider is supported, false otherwise
    * 
    * @example
-   * if (ProviderFactory.isProviderSupported('digitalocean')) {
-   *   const provider = ProviderFactory.createProvider('digitalocean', token);
+   * if (ProviderFactory.isProviderSupported('linode')) {
+   *   const provider = ProviderFactory.createProvider('linode', token);
    * } else {
    *   console.error('Provider not supported');
    * }

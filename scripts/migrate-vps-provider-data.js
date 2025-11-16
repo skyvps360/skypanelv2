@@ -104,25 +104,7 @@ async function migrateProviderData() {
       }
     }
 
-    // Step 4: Migrate instances with provider_type='digitalocean'
-    if (providerMap.digitalocean) {
-      console.log('\n🔄 Migrating DigitalOcean instances...');
-      const doResult = await client.query(`
-        UPDATE vps_instances
-        SET provider_id = $1
-        WHERE provider_type = 'digitalocean' AND provider_id IS NULL
-        RETURNING id, label
-      `, [providerMap.digitalocean]);
-
-      console.log(`✅ Updated ${doResult.rowCount} DigitalOcean instances with provider_id`);
-      if (doResult.rowCount > 0 && doResult.rowCount <= 5) {
-        doResult.rows.forEach(row => {
-          console.log(`   - ${row.label} (${row.id})`);
-        });
-      }
-    }
-
-    // Step 5: Handle legacy instances (NULL provider_type)
+    // Step 4: Handle legacy instances (NULL provider_type)
     if (providerMap.linode) {
       console.log('\n🔄 Migrating legacy instances (assuming Linode)...');
       const legacyResult = await client.query(`
@@ -142,7 +124,7 @@ async function migrateProviderData() {
       }
     }
 
-    // Step 6: Verify data integrity
+    // Step 5: Verify data integrity
     console.log('\n🔍 Verifying data integrity...');
     
     // Check for orphaned instances (provider_type set but provider doesn't exist)
@@ -174,7 +156,7 @@ async function migrateProviderData() {
       });
     }
 
-    // Step 7: Final statistics
+    // Step 6: Final statistics
     console.log('\n📊 Final statistics:');
     const finalStatsResult = await client.query(`
       SELECT 

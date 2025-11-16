@@ -2,12 +2,8 @@ import express, { Request, Response } from "express";
 import { authenticateToken, requireOrganization } from "../middleware/auth.js";
 import { query } from "../lib/database.js";
 import { linodeService } from "../services/linodeService.js";
-import { handleProviderError, logError, ErrorCodes } from "../lib/errorHandling.js";
-import { getProviderService, getProviderServiceByType } from "../services/providerService.js";
-import type {
-  IProviderService,
-  ProviderType,
-} from "../services/providers/IProviderService.js";
+import { handleProviderError, logError } from "../lib/errorHandling.js";
+import type { ProviderType } from "../services/providers/IProviderService.js";
 import type {
   CreateLinodeRequest,
   LinodeInstance,
@@ -23,88 +19,24 @@ import { normalizeProviderToken, getProviderTokenByType } from "../lib/providerT
 import { BillingService } from "../services/billingService.js";
 import { AuthService } from "../services/authService.js";
 import {
-  DIGITALOCEAN_REGION_COUNTRY_MAP,
   normalizeRegionList,
   parseStoredAllowedRegions,
   shouldFilterByAllowedRegions,
 } from "../lib/providerRegions.js";
-import {
-  normalizeMarketplaceSlugs,
-  parseStoredAllowedMarketplaceApps,
-  shouldFilterByAllowedMarketplaceApps,
-} from "../lib/providerMarketplace.js";
-import { fetchMarketplaceDisplayNames } from "../lib/providerMarketplaceLabels.js";
-
 const router = express.Router();
 
 router.use(authenticateToken, requireOrganization);
 
-const normalizeMarketplaceSlug = (value: unknown): string =>
-  typeof value === "string" ? value.trim().toLowerCase() : "";
-
-const isMarketplaceOverridesTableMissing = (err: unknown): boolean => {
-  const message = String((err as any)?.message || "").toLowerCase();
-  return (
-    message.includes("provider_marketplace_overrides") &&
-    (message.includes("does not exist") ||
-      message.includes("not exist") ||
-      message.includes("not find") ||
-      message.includes("could not find"))
-  );
-};
-
-async function loadAllowedMarketplaceSlugs(
-  providerId: string | null
-): Promise<string[]> {
-  if (!providerId) {
-    return [];
-  }
-
-  try {
-    const overridesResult = await query(
-      "SELECT app_slug FROM provider_marketplace_overrides WHERE provider_id = $1",
-      [providerId]
-    );
-
-    if (overridesResult.rows.length > 0) {
-      return normalizeMarketplaceSlugs(
-        overridesResult.rows
-          .map((row) => row.app_slug)
-          .filter((value): value is string => typeof value === "string")
-      );
-    }
-  } catch (err) {
-    if (!isMarketplaceOverridesTableMissing(err)) {
-      throw err;
-    }
-  }
-
-  const fallbackResult = await query(
-    "SELECT allowed_marketplace_apps FROM service_providers WHERE id = $1",
-    [providerId]
-  );
-
-  if (fallbackResult.rows.length > 0) {
-    return parseStoredAllowedMarketplaceApps(
-      fallbackResult.rows[0]?.allowed_marketplace_apps ?? null
-    );
-  }
-
-  return [];
-}
-
 const DEFAULT_RDNS_BASE_DOMAIN = "ip.rev.skyvps360.xyz";
 
-async function loadActiveProviderToken(
-  providerType: "linode" | "digitalocean"
-): Promise<string | null> {
+async function loadActiveProviderToken(providerType: "linode"): Promise<string | null> {
   const providerInfo = await getProviderTokenByType(providerType);
   return providerInfo?.token ?? null;
 }
 
 async function loadProviderTokenById(
   providerId: string,
-  providerType: "linode" | "digitalocean"
+  providerType: "linode"
 ): Promise<string | null> {
   const providerResult = await query(
     "SELECT id, api_key_encrypted FROM service_providers WHERE id = $1 AND type = $2 AND active = true LIMIT 1",
@@ -124,7 +56,7 @@ async function loadProviderTokenById(
 
 async function resolveProviderTokenOrRespond(
   res: Response,
-  providerType: "linode" | "digitalocean",
+  providerType: "linode",
   providerId?: string
 ): Promise<string | null> {
   try {
@@ -138,12 +70,8 @@ async function resolveProviderTokenOrRespond(
         error: {
           code: isSpecificProvider ? "PROVIDER_INACTIVE" : "MISSING_CREDENTIALS",
           message: isSpecificProvider
-            ? `Selected ${
-                providerType === "linode" ? "Linode" : "DigitalOcean"
-              } provider is not configured or inactive.`
-            : `${
-                providerType === "linode" ? "Linode" : "DigitalOcean"
-              } provider is not configured or inactive.`,
+            ? `Selected Linode provider is not configured or inactive.`
+            : `Linode provider is not configured or inactive.`,
           provider: providerType,
         },
       });
@@ -156,9 +84,7 @@ async function resolveProviderTokenOrRespond(
     res.status(500).json({
       error: {
         code: "TOKEN_DECRYPT_FAILED",
-        message: `Failed to load ${
-          providerType === "linode" ? "Linode" : "DigitalOcean"
-        } provider credentials.`,
+        message: "Failed to load Linode provider credentials.",
         provider: providerType,
       },
     });
@@ -1050,7 +976,7 @@ router.get("/providers/:providerId/regions", async (req: Request, res: Response)
     }
 
     const provider = providerResult.rows[0];
-    const providerType = provider.type as "linode" | "digitalocean";
+    const providerType = provider.type as "linode";
 
     let allowedRegions: string[] = [];
 
@@ -1081,40 +1007,13 @@ router.get("/providers/:providerId/regions", async (req: Request, res: Response)
     }
 
     const normalizedAllowedRegions = allowedRegions.length > 0 ? allowedRegions : [];
-    const shouldApplyAllowedRegionFilter = shouldFilterByAllowedRegions(
-      providerType,
-      normalizedAllowedRegions
-    );
+    const shouldApplyAllowedRegionFilter = shouldFilterByAllowedRegions(normalizedAllowedRegions);
 
-    // Get provider token
-    const token = await normalizeProviderToken(provider.id, provider.api_key_encrypted);
-
-    if (!token) {
-      return res.status(503).json({ error: "Provider credentials not available" });
-    }
-
-    // Fetch regions from provider API
-    let allRegions: any[] = [];
-
-    if (providerType === "linode") {
-      allRegions = await linodeService.getLinodeRegions();
-    } else if (providerType === "digitalocean") {
-      const { digitalOceanService } = await import("../services/DigitalOceanService.js");
-      const digitalOceanRegions = await digitalOceanService.getDigitalOceanRegions(token);
-      // Normalize DigitalOcean regions to match front-end expectations
-      allRegions = digitalOceanRegions.map((region) => ({
-        id: region.slug,
-        label: region.name,
-        country:
-          typeof region.slug === "string"
-            ? DIGITALOCEAN_REGION_COUNTRY_MAP[region.slug.toLowerCase()] ?? ""
-            : "",
-        capabilities: region.features,
-        status: region.available ? "ok" : "unavailable",
-      }));
-    } else {
+    if (providerType !== "linode") {
       return res.status(400).json({ error: "Unsupported provider type" });
     }
+
+    const allRegions = await linodeService.getLinodeRegions();
 
     // Filter regions based on allowed_regions configuration
     let regions = allRegions;
@@ -1308,391 +1207,6 @@ router.get("/linode/ssh-keys", async (req: Request, res: Response) => {
   }
 });
 
-// DigitalOcean-specific endpoints
-
-// Get DigitalOcean marketplace apps (1-Click applications)
-router.get(
-  "/digitalocean/marketplace",
-  async (req: Request, res: Response) => {
-    try {
-      const providerIdParam =
-        typeof req.query.providerId === "string" && req.query.providerId.trim().length > 0
-          ? req.query.providerId.trim()
-          : undefined;
-
-      const apiToken = await resolveProviderTokenOrRespond(
-        res,
-        "digitalocean",
-        providerIdParam
-      );
-      if (!apiToken) {
-        return;
-      }
-
-      const { digitalOceanService } = await import(
-        "../services/DigitalOceanService.js"
-      );
-
-      const apps = await digitalOceanService.get1ClickApps(apiToken);
-
-      let providerId: string | null = providerIdParam ?? null;
-      if (!providerId) {
-        const providerInfo = await getProviderTokenByType("digitalocean");
-        providerId = providerInfo?.providerId ?? null;
-      }
-
-      const allowedSlugs = await loadAllowedMarketplaceSlugs(providerId);
-      const filterByAllowed = shouldFilterByAllowedMarketplaceApps(allowedSlugs);
-      const allowedSet = new Set(allowedSlugs);
-      const displayNameOverrides = await fetchMarketplaceDisplayNames(providerId);
-
-      const filteredApps = filterByAllowed
-        ? apps.filter((app: any) => {
-            const slugMatch = allowedSet.has(normalizeMarketplaceSlug(app?.slug));
-            const imageMatch = allowedSet.has(
-              normalizeMarketplaceSlug((app as any)?.image_slug)
-            );
-            return slugMatch || imageMatch;
-          })
-        : apps;
-
-      const appsWithDisplayNames = filteredApps.map((app: any) => {
-        const slugNormalized = normalizeMarketplaceSlug(app?.slug);
-        const imageSlugNormalized = normalizeMarketplaceSlug((app as any)?.image_slug);
-        const overrideName =
-          (slugNormalized && displayNameOverrides.get(slugNormalized)) ||
-          (imageSlugNormalized && displayNameOverrides.get(imageSlugNormalized));
-
-        return {
-          ...app,
-          provider_name: app?.name,
-          display_name:
-            typeof overrideName === "string" && overrideName.length > 0
-              ? overrideName
-              : app?.name,
-        };
-      });
-
-      const categorizedApps: Record<string, any[]> = {};
-      appsWithDisplayNames.forEach((app: any) => {
-        const category =
-          typeof app?.category === "string" && app.category.trim().length > 0
-            ? app.category
-            : "Other";
-        if (!categorizedApps[category]) {
-          categorizedApps[category] = [];
-        }
-        categorizedApps[category].push(app);
-      });
-
-      res.json({
-        apps: appsWithDisplayNames,
-        categorized: categorizedApps,
-        total: appsWithDisplayNames.length,
-      });
-    } catch (err: any) {
-      console.error("DigitalOcean marketplace fetch error:", err);
-
-      // Determine appropriate status code
-      const statusCode = err.status || err.statusCode || 500;
-
-      res.status(statusCode).json({
-        error: {
-          code: err.code || "API_ERROR",
-          message:
-            err.message || "Failed to fetch DigitalOcean marketplace apps",
-          provider: "digitalocean",
-        },
-      });
-    }
-  }
-);
-
-// Get DigitalOcean OS images
-router.get("/digitalocean/images", async (req: Request, res: Response) => {
-  try {
-    const apiToken = await resolveProviderTokenOrRespond(res, "digitalocean");
-    if (!apiToken) {
-      return;
-    }
-
-    const { digitalOceanService } = await import(
-      "../services/DigitalOceanService.js"
-    );
-
-    const requestedType =
-      typeof req.query.type === "string" ? req.query.type.toLowerCase() : undefined;
-
-    const serviceType: "distribution" | "application" | undefined =
-      requestedType === "distribution" || requestedType === "application"
-        ? (requestedType as "distribution" | "application")
-        : undefined;
-
-    let images = await digitalOceanService.getDigitalOceanImages(
-      apiToken,
-      serviceType
-    );
-
-    if (requestedType) {
-      images = images.filter((img: any) => {
-        const imageType = typeof img.type === "string" ? img.type.toLowerCase() : "";
-        const status = typeof img.status === "string" ? img.status.toLowerCase() : "";
-        const hasUsableSlug = typeof img.slug === "string" && img.slug.trim().length > 0;
-        const slugLower = typeof img.slug === "string" ? img.slug.toLowerCase() : "";
-        const nameLower = typeof img.name === "string" ? img.name.toLowerCase() : "";
-        const descriptionLower = typeof img.description === "string" ? img.description.toLowerCase() : "";
-
-        if (requestedType === "distribution") {
-          // Treat DigitalOcean "distribution" results as droplet OS images; the API
-          // reports them as snapshot/base assets rather than a dedicated type.
-          const isDropletBaseImage =
-            imageType === "base" ||
-            imageType === "distribution" ||
-            imageType === "snapshot";
-
-          // Filter out vendor-tuned AI/GPU images so only vanilla OS options surface.
-          const containsGpuOrAiVariant = (() => {
-            const gpuIndicators = [
-              slugLower.includes("-gpu"),
-              slugLower.includes("gpu-"),
-              slugLower.endsWith("gpu"),
-              slugLower.includes("nvidia"),
-              slugLower.includes("amd"),
-              slugLower.includes("ai-ml"),
-              slugLower.includes("ml-ready"),
-              slugLower.includes("ai-ready"),
-              slugLower.includes("ml-") && !slugLower.includes("almalinux"),
-              nameLower.includes("gpu "),
-              nameLower.includes("gpu-ready"),
-              nameLower.includes("ai/ml"),
-              nameLower.includes("ai ml"),
-              nameLower.includes("ai-ready"),
-              nameLower.includes("ml ready"),
-              nameLower.includes("ml-ready"),
-              descriptionLower.includes("gpu"),
-              descriptionLower.includes("ai/ml"),
-              descriptionLower.includes("ai ml"),
-            ];
-            return gpuIndicators.some(Boolean);
-          })();
-
-          return (
-            isDropletBaseImage &&
-            img.public &&
-            hasUsableSlug &&
-            status !== "retired" &&
-            !containsGpuOrAiVariant
-          );
-        }
-
-        if (requestedType === "application") {
-          const isLegacyApplicationSnapshot = imageType === "snapshot" && !img.public;
-          return imageType === "application" || isLegacyApplicationSnapshot;
-        }
-
-        if (requestedType === "custom") {
-          return imageType === "custom";
-        }
-
-        return true;
-      });
-    }
-
-    const groupedImages: Record<string, any[]> = {};
-    images.forEach((image: any) => {
-      const distribution = image.distribution || "Other";
-      if (!groupedImages[distribution]) {
-        groupedImages[distribution] = [];
-      }
-      groupedImages[distribution].push(image);
-    });
-
-    res.json({
-      images,
-      grouped: groupedImages,
-      total: images.length,
-    });
-  } catch (err: any) {
-    console.error("DigitalOcean images fetch error:", err);
-
-    // Determine appropriate status code
-    const statusCode = err.status || err.statusCode || 500;
-
-    res.status(statusCode).json({
-      error: {
-        code: err.code || "API_ERROR",
-        message: err.message || "Failed to fetch DigitalOcean images",
-        provider: "digitalocean",
-      },
-    });
-  }
-});
-
-// Get DigitalOcean Droplet sizes (plans)
-router.get("/digitalocean/sizes", async (_req: Request, res: Response) => {
-  try {
-    const apiToken = await resolveProviderTokenOrRespond(res, "digitalocean");
-    if (!apiToken) {
-      return;
-    }
-
-    // Import DigitalOcean service
-    const { digitalOceanService } = await import(
-      "../services/DigitalOceanService.js"
-    );
-
-    // Fetch sizes
-    const sizes = await digitalOceanService.getDigitalOceanSizes(apiToken);
-
-    // Filter to only available sizes
-    const availableSizes = sizes.filter((size: any) => size.available);
-
-    // Group sizes by type/category for better organization
-    const groupedSizes: Record<string, any[]> = {};
-    availableSizes.forEach((size: any) => {
-      // Extract category from slug (e.g., 's-1vcpu-1gb' -> 's', 'c-2' -> 'c')
-      const category = size.slug.split("-")[0] || "other";
-      const categoryName =
-        {
-          s: "Basic",
-          c: "CPU-Optimized",
-          g: "General Purpose",
-          m: "Memory-Optimized",
-          so: "Storage-Optimized",
-        }[category] || "Other";
-
-      if (!groupedSizes[categoryName]) {
-        groupedSizes[categoryName] = [];
-      }
-      groupedSizes[categoryName].push(size);
-    });
-
-    res.json({
-      sizes: availableSizes,
-      grouped: groupedSizes,
-      total: availableSizes.length,
-    });
-  } catch (err: any) {
-    console.error("DigitalOcean sizes fetch error:", err);
-
-    // Determine appropriate status code
-    const statusCode = err.status || err.statusCode || 500;
-
-    res.status(statusCode).json({
-      error: {
-        code: err.code || "API_ERROR",
-        message: err.message || "Failed to fetch DigitalOcean sizes",
-        provider: "digitalocean",
-      },
-    });
-  }
-});
-
-// Get DigitalOcean SSH keys (filtered by user)
-router.get("/digitalocean/ssh-keys", async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user?.id;
-    
-    if (!userId) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
-    }
-
-    const apiToken = await resolveProviderTokenOrRespond(res, "digitalocean");
-    if (!apiToken) {
-      return;
-    }
-
-    // Import DigitalOcean service
-    const { digitalOceanService } = await import(
-      "../services/DigitalOceanService.js"
-    );
-
-    // Fetch all SSH keys from DigitalOcean API
-    const allDigitalOceanKeys = await digitalOceanService.getSSHKeys(apiToken);
-
-    // Get user's SSH keys from database to filter
-    const userKeysResult = await query(
-      `SELECT digitalocean_key_id 
-       FROM user_ssh_keys 
-       WHERE user_id = $1 AND digitalocean_key_id IS NOT NULL`,
-      [userId]
-    );
-
-    // Create a set of user's DigitalOcean key IDs for efficient filtering
-    const userDigitalOceanKeyIds = new Set(
-      userKeysResult.rows.map((row: any) => Number(row.digitalocean_key_id))
-    );
-
-    // Filter DigitalOcean keys to only include user's keys
-    const filteredKeys = allDigitalOceanKeys.filter((key: any) => 
-      userDigitalOceanKeyIds.has(Number(key.id))
-    );
-
-    res.json({
-      ssh_keys: filteredKeys,
-      total: filteredKeys.length,
-    });
-  } catch (err: any) {
-    console.error("DigitalOcean SSH keys fetch error:", err);
-
-    // Determine appropriate status code
-    const statusCode = err.status || err.statusCode || 500;
-
-    res.status(statusCode).json({
-      error: {
-        code: err.code || "API_ERROR",
-        message: err.message || "Failed to fetch SSH keys",
-        provider: "digitalocean",
-      },
-    });
-  }
-});
-
-// Get DigitalOcean VPCs
-router.get("/digitalocean/vpcs", async (req: Request, res: Response) => {
-  try {
-    const apiToken = await resolveProviderTokenOrRespond(res, "digitalocean");
-    if (!apiToken) {
-      return;
-    }
-
-    // Import DigitalOcean service
-    const { digitalOceanService } = await import(
-      "../services/DigitalOceanService.js"
-    );
-
-    // Get optional region filter from query params
-    const regionFilter = req.query.region as string | undefined;
-
-    // Fetch VPCs
-    let vpcs = await digitalOceanService.getVPCs(apiToken);
-
-    // Apply region filter if provided
-    if (regionFilter) {
-      vpcs = vpcs.filter((vpc: any) => vpc.region === regionFilter);
-    }
-
-    res.json({
-      vpcs,
-      total: vpcs.length,
-    });
-  } catch (err: any) {
-    console.error("DigitalOcean VPCs fetch error:", err);
-
-    // Determine appropriate status code
-    const statusCode = err.status || err.statusCode || 500;
-
-    res.status(statusCode).json({
-      error: {
-        code: err.code || "API_ERROR",
-        message: err.message || "Failed to fetch VPCs",
-        provider: "digitalocean",
-      },
-    });
-  }
-});
-
 // List VPS instances for the user's organization
 router.get("/", async (req: Request, res: Response) => {
   try {
@@ -1749,51 +1263,6 @@ router.get("/", async (req: Request, res: Response) => {
       }
     }
 
-    const providerServiceCache = new Map<string, IProviderService>();
-    const digitalOceanRegionCache = new Map<string, Record<string, string>>();
-
-    const getCachedProviderService = async (
-      providerId: string | null,
-      providerType: ProviderType
-    ): Promise<IProviderService | null> => {
-      const cacheKey = providerId ?? `__${providerType}__default__`;
-      if (providerServiceCache.has(cacheKey)) {
-        return providerServiceCache.get(cacheKey)!;
-      }
-      try {
-        const service = providerId
-          ? await getProviderService(providerId)
-          : await getProviderServiceByType(providerType);
-        providerServiceCache.set(cacheKey, service);
-        return service;
-      } catch (serviceErr) {
-        console.warn(`Failed to initialize ${providerType} provider service:`, serviceErr);
-        return null;
-      }
-    };
-
-    const getDigitalOceanRegionLabel = async (
-      providerId: string | null,
-      providerService: IProviderService | null,
-      region: string | null | undefined
-    ): Promise<string | null> => {
-      if (!region || !providerService) {
-        return null;
-      }
-      const cacheKey = providerId ?? "__digitalocean_default__";
-      let regionMap = digitalOceanRegionCache.get(cacheKey);
-      if (!regionMap) {
-        try {
-          const regions = await providerService.getRegions();
-          regionMap = Object.fromEntries(regions.map((r) => [r.id, r.label || r.id]));
-        } catch (regionErr) {
-          console.warn("Failed to fetch DigitalOcean regions:", regionErr);
-          regionMap = {};
-        }
-        digitalOceanRegionCache.set(cacheKey, regionMap);
-      }
-      return regionMap[region] ?? null;
-    };
 
     const enriched = await Promise.all(
       rows.map(async (row) => {
@@ -1956,143 +1425,6 @@ router.get("/", async (req: Request, res: Response) => {
           } catch (err) {
             console.warn("Failed to enrich instance with Linode details:", err);
           }
-        } else if (providerType === "digitalocean" && Number.isFinite(providerInstanceId)) {
-          try {
-            const providerService = await getCachedProviderService(
-              row.provider_id ?? null,
-              providerType
-            );
-            if (providerService) {
-              const normalizedInstance = await providerService.getInstance(
-                String(row.provider_instance_id)
-              );
-
-              const ipv4List = Array.isArray(normalizedInstance.ipv4)
-                ? normalizedInstance.ipv4
-                : [];
-              const currentIp =
-                ipv4List.length > 0 && typeof ipv4List[0] === "string"
-                  ? ipv4List[0]
-                  : null;
-              const normalizedStatus = normalizeProviderStatus(
-                normalizedInstance.status
-              );
-
-              if (row.status !== normalizedStatus || row.ip_address !== currentIp) {
-                await query(
-                  "UPDATE vps_instances SET status = $1, ip_address = $2, updated_at = NOW() WHERE id = $3",
-                  [normalizedStatus, currentIp, row.id]
-                );
-                row.status = normalizedStatus;
-                row.ip_address = currentIp;
-              } else {
-                row.status = normalizedStatus;
-                row.ip_address = currentIp;
-              }
-
-              const newConf = {
-                ...configuration,
-                image: normalizedInstance.image || configuration.image || null,
-                region: normalizedInstance.region || configuration.region || null,
-              };
-              if (!newConf.type && configuration.type) {
-                newConf.type = configuration.type;
-              }
-              configuration = newConf;
-              row.configuration = newConf;
-
-              const regionLabel = await getDigitalOceanRegionLabel(
-                row.provider_id ?? null,
-                providerService,
-                typeof newConf.region === "string" ? newConf.region : null
-              );
-              (row as any).region_label = regionLabel;
-
-              let planSpecs = { vcpus: 0, memory: 0, disk: 0, transfer: 0 };
-              let planPricing = { hourly: 0, monthly: 0 };
-              try {
-                let planRow: any = null;
-                if (row.plan_id) {
-                  const byId = await query(
-                    "SELECT * FROM vps_plans WHERE id = $1 LIMIT 1",
-                    [row.plan_id]
-                  );
-                  planRow = byId.rows[0] || null;
-                }
-                if (!planRow && newConf.type) {
-                  const byProviderId = await query(
-                    "SELECT * FROM vps_plans WHERE provider_plan_id = $1 LIMIT 1",
-                    [newConf.type]
-                  );
-                  planRow = byProviderId.rows[0] || null;
-                }
-
-                if (planRow) {
-                  const specs = planRow.specifications || {};
-                  const disk =
-                    (typeof specs.disk === "number" ? specs.disk : undefined) ??
-                    (typeof specs.storage_gb === "number"
-                      ? specs.storage_gb
-                      : undefined) ??
-                    0;
-                  const memoryMb =
-                    (typeof specs.memory === "number" ? specs.memory : undefined) ??
-                    (typeof specs.memory_gb === "number"
-                      ? specs.memory_gb * 1024
-                      : undefined) ??
-                    0;
-                  const vcpus =
-                    (typeof specs.vcpus === "number" ? specs.vcpus : undefined) ??
-                    (typeof specs.cpu_cores === "number"
-                      ? specs.cpu_cores
-                      : undefined) ??
-                    0;
-                  const transferGb =
-                    (typeof specs.transfer === "number"
-                      ? specs.transfer
-                      : undefined) ??
-                    (typeof specs.transfer_gb === "number"
-                      ? specs.transfer_gb
-                      : undefined) ??
-                    (typeof specs.bandwidth_gb === "number"
-                      ? specs.bandwidth_gb
-                      : undefined) ??
-                    0;
-
-                  const basePrice = Number(planRow.base_price || 0);
-                  const markupPrice = Number(planRow.markup_price || 0);
-                  const monthly = basePrice + markupPrice;
-
-                  planSpecs = {
-                    vcpus,
-                    memory: memoryMb,
-                    disk,
-                    transfer: transferGb,
-                  };
-                  planPricing = {
-                    hourly: monthly > 0 ? monthly / 730 : 0,
-                    monthly,
-                  };
-                } else if (normalizedInstance?.specs) {
-                  planSpecs = {
-                    vcpus: Number(normalizedInstance.specs.vcpus || 0),
-                    memory: Number(normalizedInstance.specs.memory || 0),
-                    disk: Number(normalizedInstance.specs.disk || 0),
-                    transfer: Number(normalizedInstance.specs.transfer || 0),
-                  };
-                }
-              } catch (planErr) {
-                console.warn("Failed to attach DigitalOcean plan specs/pricing:", planErr);
-              }
-
-              (row as any).plan_specs = planSpecs;
-              (row as any).plan_pricing = planPricing;
-              (row as any).provider_progress = null;
-              (row as any).progress_percent = null;
-            }
-          } catch (err) {
-            console.warn("Failed to enrich instance with DigitalOcean details:", err);
-          }
         } else {
           if (row.status === "offline") {
             (row as any).status = "stopped";
@@ -2237,7 +1569,6 @@ router.get("/:id", async (req: Request, res: Response) => {
 
     // Fetch provider metadata if provider_id exists
     let providerName: string | null = null;
-    let providerApiToken: string | null = null;
     if (instanceRow.provider_id) {
       try {
         const providerResult = await query(
@@ -2247,20 +1578,9 @@ router.get("/:id", async (req: Request, res: Response) => {
         if (providerResult.rows.length > 0) {
           const providerRow = providerResult.rows[0];
           providerName = typeof providerRow.name === "string" ? providerRow.name : null;
-          providerApiToken = await normalizeProviderToken(
-            instanceRow.provider_id,
-            providerRow.api_key_encrypted
-          );
         }
       } catch (err) {
         console.warn("Failed to fetch provider metadata:", err);
-      }
-    }
-    if (!providerApiToken && providerType === "digitalocean") {
-      try {
-        providerApiToken = await loadActiveProviderToken("digitalocean");
-      } catch (tokenErr) {
-        console.warn("Failed to resolve DigitalOcean provider token:", tokenErr);
       }
     }
 
@@ -2275,40 +1595,6 @@ router.get("/:id", async (req: Request, res: Response) => {
       } catch (err) {
         console.warn(
           `Failed to fetch Linode provider detail for instance ${instanceRow.provider_instance_id}:`,
-          err
-        );
-      }
-    } else if (providerType === "digitalocean" && instanceRow.provider_id) {
-      // For DigitalOcean, fetch instance details through provider service
-      try {
-        const { getProviderService } = await import(
-          "../services/providerService.js"
-        );
-        const providerService = await getProviderService(
-          instanceRow.provider_id
-        );
-        const normalizedInstance = await providerService.getInstance(
-          String(instanceRow.provider_instance_id)
-        );
-
-        // Convert normalized instance to LinodeInstance-like format for compatibility
-        providerDetail = {
-          id: parseInt(normalizedInstance.id),
-          label: normalizedInstance.label,
-          status: normalizedInstance.status,
-          ipv4: normalizedInstance.ipv4,
-          ipv6: normalizedInstance.ipv6 || "",
-          region: normalizedInstance.region,
-          image: normalizedInstance.image || "",
-          type: configuration?.type || "",
-          specs: normalizedInstance.specs,
-          created: normalizedInstance.created,
-          updated: new Date().toISOString(),
-          backups: { enabled: false, available: false },
-        } as LinodeInstance;
-      } catch (err) {
-        console.warn(
-          `Failed to fetch DigitalOcean provider detail for instance ${instanceRow.provider_instance_id}:`,
           err
         );
       }
@@ -2357,8 +1643,6 @@ router.get("/:id", async (req: Request, res: Response) => {
     );
 
     const planMeta = await resolvePlanMeta(instanceRow, providerDetail);
-    const isLinodeProvider = providerType === "linode";
-    const isDigitalOceanProvider = providerType === "digitalocean";
 
     let metrics: {
       timeframe: { start: number | null; end: number | null };
@@ -2375,11 +1659,7 @@ router.get("/:id", async (req: Request, res: Response) => {
       };
     } | null = null;
 
-    if (
-      providerDetail &&
-      Number.isFinite(providerInstanceId) &&
-      isLinodeProvider
-    ) {
+    if (providerDetail && Number.isFinite(providerInstanceId)) {
       try {
         const stats: LinodeInstanceStatsResponse =
           await linodeService.getLinodeInstanceStats(providerInstanceId);
@@ -2457,110 +1737,6 @@ router.get("/:id", async (req: Request, res: Response) => {
         }
       } catch (err) {
         console.warn("Failed to fetch instance metrics:", err);
-      }
-    } else if (
-      isDigitalOceanProvider &&
-      Number.isFinite(providerInstanceId) &&
-      providerApiToken
-    ) {
-      try {
-        const { digitalOceanService } = await import(
-          "../services/DigitalOceanService.js"
-        );
-
-        const sanitizeSeries = (
-          points: Array<{ timestamp: number; value: number }> | null | undefined,
-          transform: (value: number) => number = (value) => value
-        ): MetricPoint[] => {
-          if (!Array.isArray(points)) {
-            return [];
-          }
-          return points
-            .map((point) => ({
-              timestamp: Number(point.timestamp),
-              value: transform(Number(point.value)),
-            }))
-            .filter(
-              (point) =>
-                Number.isFinite(point.timestamp) && Number.isFinite(point.value)
-            );
-        };
-
-        const [cpuRaw, networkInRaw, networkOutRaw] = await Promise.all([
-          digitalOceanService.getDropletMetricSeries(
-            providerApiToken,
-            providerInstanceId,
-            "cpu"
-          ),
-          digitalOceanService.getDropletMetricSeries(
-            providerApiToken,
-            providerInstanceId,
-            "network_in"
-          ),
-          digitalOceanService.getDropletMetricSeries(
-            providerApiToken,
-            providerInstanceId,
-            "network_out"
-          ),
-        ]);
-
-        const cpuSeries = sanitizeSeries(cpuRaw);
-        const networkInSeries = sanitizeSeries(networkInRaw, (value) => value * 8);
-        const networkOutSeries = sanitizeSeries(networkOutRaw, (value) => value * 8);
-
-        const timeframe = deriveTimeframe([
-          cpuSeries,
-          networkInSeries,
-          networkOutSeries,
-        ]);
-
-        const digitalOceanMetrics: typeof metrics = {
-          timeframe,
-        };
-
-        if (cpuSeries.length > 0) {
-          digitalOceanMetrics.cpu = {
-            series: cpuSeries,
-            summary: summarizeSeries(cpuSeries),
-            unit: "percent",
-          };
-        }
-
-        const networkPayload: {
-          inbound?: MetricSeriesPayload;
-          outbound?: MetricSeriesPayload;
-          privateIn?: MetricSeriesPayload;
-          privateOut?: MetricSeriesPayload;
-        } = {};
-
-        if (networkInSeries.length > 0) {
-          networkPayload.inbound = {
-            series: networkInSeries,
-            summary: summarizeSeries(networkInSeries),
-            unit: "bitsPerSecond",
-          };
-        }
-
-        if (networkOutSeries.length > 0) {
-          networkPayload.outbound = {
-            series: networkOutSeries,
-            summary: summarizeSeries(networkOutSeries),
-            unit: "bitsPerSecond",
-          };
-        }
-
-        if (
-          networkPayload.inbound !== undefined ||
-          networkPayload.outbound !== undefined
-        ) {
-          digitalOceanMetrics.network = networkPayload;
-        }
-
-        if (digitalOceanMetrics.cpu || digitalOceanMetrics.network) {
-          metrics = digitalOceanMetrics;
-        }
-      } catch (err) {
-        console.warn("Failed to fetch DigitalOcean instance metrics:", err);
       }
     }
 
@@ -2945,10 +2121,6 @@ router.post("/", async (req: Request, res: Response) => {
       appData,
       stackscriptId,
       stackscriptData,
-      // DigitalOcean-specific options
-      monitoring,
-      ipv6,
-      vpc_uuid,
     } = req.body || {};
 
     // Validate required fields
@@ -2964,17 +2136,6 @@ router.post("/", async (req: Request, res: Response) => {
       res
         .status(400)
         .json({ error: "provider_id and provider_type are required" });
-      return;
-    }
-
-    // Validate that appSlug is not provided for DigitalOcean (should use image field instead)
-    if (provider_type === 'digitalocean' && appSlug) {
-      res
-        .status(400)
-        .json({ 
-          error: "For DigitalOcean marketplace apps, use the 'image' field instead of 'appSlug'",
-          code: "INVALID_MARKETPLACE_PARAMETER"
-        });
       return;
     }
 
@@ -3206,90 +2367,11 @@ router.post("/", async (req: Request, res: Response) => {
       return;
     }
 
-    // Validate marketplace app for DigitalOcean
-    if (provider_type === "digitalocean" && image) {
-      try {
-        // Check if the image is a marketplace app by fetching marketplace apps
-        const { digitalOceanService } = await import(
-          "../services/DigitalOceanService.js"
-        );
-        
-        // Get DigitalOcean API token
-        if (!providerApiToken) {
-          res.status(503).json({
-            error: {
-              code: "PROVIDER_INACTIVE",
-              message:
-                "Selected DigitalOcean provider is not configured or inactive.",
-              provider: "digitalocean",
-            },
-          });
-          return;
-        }
-        
-        const allowedMarketplaceSlugs = await loadAllowedMarketplaceSlugs(provider_id);
-        const enforceMarketplaceAllowlist = shouldFilterByAllowedMarketplaceApps(
-          allowedMarketplaceSlugs
-        );
-        const allowedSlugsSet = new Set(allowedMarketplaceSlugs);
-
-        const marketplaceApps = await digitalOceanService.get1ClickApps(providerApiToken);
-        const marketplaceMap = new Map<string, any>();
-
-        marketplaceApps.forEach((app: any) => {
-          const slugKey = normalizeMarketplaceSlug(app?.slug);
-          if (slugKey) {
-            marketplaceMap.set(slugKey, app);
-          }
-
-          const imageSlugKey = normalizeMarketplaceSlug((app as any)?.image_slug);
-          if (imageSlugKey) {
-            marketplaceMap.set(imageSlugKey, app);
-          }
-        });
-
-        const normalizedSelection = normalizeMarketplaceSlug(image);
-        const selectedMarketplaceApp = normalizedSelection
-          ? marketplaceMap.get(normalizedSelection)
-          : undefined;
-
-        if (selectedMarketplaceApp) {
-          if (enforceMarketplaceAllowlist && normalizedSelection && !allowedSlugsSet.has(normalizedSelection)) {
-            res.status(400).json({
-              error: `Marketplace app "${image}" is not enabled for provisioning`,
-              code: ErrorCodes.MARKETPLACE_APP_INVALID,
-            });
-            return;
-          }
-
-          console.log(
-            `Creating DigitalOcean VPS with marketplace app: ${
-              selectedMarketplaceApp.name || image
-            } in region ${regionToUse}`
-          );
-        }
-      } catch (validationErr: any) {
-        // Log validation error but don't fail the request
-        // The provider API will validate and return an error if needed
-        logError('Marketplace app validation', validationErr, {
-          provider_type,
-          image,
-          region: regionToUse
-        });
-      }
-    }
-
     // Create VPS instance through provider service
     let created: any;
     let providerInstanceId: string;
 
     try {
-      // Import provider service
-      const { getProviderService } = await import(
-        "../services/providerService.js"
-      );
-      const providerService = await getProviderService(provider_id);
-
       // Handle provider-specific creation logic
       if (provider_type === "linode") {
         let resolvedAuthorizedKeys: string[] | undefined;
@@ -3435,29 +2517,6 @@ router.post("/", async (req: Request, res: Response) => {
           );
         }
         providerInstanceId = String(created.id);
-      } else if (provider_type === "digitalocean") {
-        // DigitalOcean: The image field contains either OS image or marketplace app slug
-        // No separate handling needed - the image field is used directly
-        const createParams: any = {
-          label: label,
-          type: providerPlanId,
-          region: regionToUse,
-          image, // This will be either an OS image or marketplace app slug
-          rootPassword,
-          sshKeys: sshKeys || [],
-          backups: backups || false,
-          ipv6: ipv6 || false,
-          monitoring: monitoring || false,
-          tags: ["skypanelv2"],
-        };
-
-        // Add VPC if provided
-        if (vpc_uuid) {
-          createParams.vpc_uuid = vpc_uuid;
-        }
-
-        created = await providerService.createInstance(createParams);
-        providerInstanceId = String(created.id);
       } else {
         res.status(400).json({
           error: `Unsupported provider type: ${provider_type}`,
@@ -3475,11 +2534,7 @@ router.post("/", async (req: Request, res: Response) => {
       });
       
       // Handle provider-specific errors
-      const structuredError = handleProviderError(
-        createErr,
-        provider_type as 'linode' | 'digitalocean',
-        'create VPS instance'
-      );
+      const structuredError = handleProviderError(createErr, 'linode', 'create VPS instance');
       
       res.status(structuredError.statusCode).json({
         error: structuredError.message,
@@ -3493,7 +2548,7 @@ router.post("/", async (req: Request, res: Response) => {
     const configuration = {
       type: providerPlanId,
       region: regionToUse,
-      image, // For DigitalOcean, this contains either OS image or marketplace app slug
+      image,
       backups,
       backup_frequency: validatedBackupFrequency,
       privateIP,
@@ -3502,10 +2557,6 @@ router.post("/", async (req: Request, res: Response) => {
       stackscriptData: provider_type === 'linode' ? stackscriptData : undefined,
       appSlug: provider_type === 'linode' ? appSlug : undefined,
       appData: provider_type === 'linode' ? appData : undefined,
-      // DigitalOcean-specific options
-      monitoring: provider_type === 'digitalocean' ? monitoring : undefined,
-      ipv6: provider_type === 'digitalocean' ? ipv6 : undefined,
-      vpc_uuid: provider_type === 'digitalocean' ? vpc_uuid : undefined,
       auth: {
         method: "password",
         user: "root",
@@ -3520,14 +2571,6 @@ router.post("/", async (req: Request, res: Response) => {
         Array.isArray(created.ipv4) && created.ipv4.length > 0
           ? created.ipv4[0]
           : null;
-    } else if (provider_type === "digitalocean") {
-      // DigitalOcean returns networks object
-      if (created.networks?.v4 && created.networks.v4.length > 0) {
-        const publicIp = created.networks.v4.find(
-          (net: any) => net.type === "public"
-        );
-        ip = publicIp?.ip_address || null;
-      }
     }
 
     const status = created.status || "provisioning";
@@ -3683,41 +2726,13 @@ router.post("/:id/boot", async (req: Request, res: Response) => {
     const providerType = row.provider_type || "linode";
     const providerInstanceId = Number(row.provider_instance_id);
 
-    let status: string;
-    let ip: string | null = null;
-
-    if (providerType === "digitalocean" && row.provider_id) {
-      // Boot DigitalOcean Droplet
-      const apiToken = await resolveProviderTokenOrRespond(
-        res,
-        "digitalocean",
-        String(row.provider_id)
-      );
-      if (!apiToken) {
-        return;
-      }
-      const { digitalOceanService } = await import(
-        "../services/DigitalOceanService.js"
-      );
-
-      await digitalOceanService.powerOnDroplet(apiToken, providerInstanceId);
-      const droplet = await digitalOceanService.getDigitalOceanDroplet(
-        apiToken,
-        providerInstanceId
-      );
-
-      status = droplet.status;
-      ip = droplet.networks?.v4?.[0]?.ip_address || null;
-    } else {
-      // Boot Linode instance (default)
-      await linodeService.bootLinodeInstance(providerInstanceId);
-      const detail = await linodeService.getLinodeInstance(providerInstanceId);
-      status = detail.status;
-      ip =
-        Array.isArray(detail.ipv4) && detail.ipv4.length > 0
-          ? detail.ipv4[0]
-          : null;
-    }
+    await linodeService.bootLinodeInstance(providerInstanceId);
+    const detail = await linodeService.getLinodeInstance(providerInstanceId);
+    const status = detail.status;
+    const ip =
+      Array.isArray(detail.ipv4) && detail.ipv4.length > 0
+        ? detail.ipv4[0]
+        : null;
 
     await query(
       "UPDATE vps_instances SET status = $1, ip_address = $2, updated_at = NOW() WHERE id = $3",
@@ -3767,41 +2782,13 @@ router.post("/:id/shutdown", async (req: Request, res: Response) => {
     const providerType = row.provider_type || "linode";
     const providerInstanceId = Number(row.provider_instance_id);
 
-    let status: string;
-    let ip: string | null = null;
-
-    if (providerType === "digitalocean" && row.provider_id) {
-      // Shutdown DigitalOcean Droplet
-      const apiToken = await resolveProviderTokenOrRespond(
-        res,
-        "digitalocean",
-        String(row.provider_id)
-      );
-      if (!apiToken) {
-        return;
-      }
-      const { digitalOceanService } = await import(
-        "../services/DigitalOceanService.js"
-      );
-
-      await digitalOceanService.shutdownDroplet(apiToken, providerInstanceId);
-      const droplet = await digitalOceanService.getDigitalOceanDroplet(
-        apiToken,
-        providerInstanceId
-      );
-
-      status = droplet.status;
-      ip = droplet.networks?.v4?.[0]?.ip_address || null;
-    } else {
-      // Shutdown Linode instance (default)
-      await linodeService.shutdownLinodeInstance(providerInstanceId);
-      const detail = await linodeService.getLinodeInstance(providerInstanceId);
-      status = detail.status;
-      ip =
-        Array.isArray(detail.ipv4) && detail.ipv4.length > 0
-          ? detail.ipv4[0]
-          : null;
-    }
+    await linodeService.shutdownLinodeInstance(providerInstanceId);
+    const detail = await linodeService.getLinodeInstance(providerInstanceId);
+    const status = detail.status;
+    const ip =
+      Array.isArray(detail.ipv4) && detail.ipv4.length > 0
+        ? detail.ipv4[0]
+        : null;
 
     await query(
       "UPDATE vps_instances SET status = $1, ip_address = $2, updated_at = NOW() WHERE id = $3",
@@ -3851,41 +2838,13 @@ router.post("/:id/reboot", async (req: Request, res: Response) => {
     const providerType = row.provider_type || "linode";
     const providerInstanceId = Number(row.provider_instance_id);
 
-    let status: string;
-    let ip: string | null = null;
-
-    if (providerType === "digitalocean" && row.provider_id) {
-      // Reboot DigitalOcean Droplet
-      const apiToken = await resolveProviderTokenOrRespond(
-        res,
-        "digitalocean",
-        String(row.provider_id)
-      );
-      if (!apiToken) {
-        return;
-      }
-      const { digitalOceanService } = await import(
-        "../services/DigitalOceanService.js"
-      );
-
-      await digitalOceanService.rebootDroplet(apiToken, providerInstanceId);
-      const droplet = await digitalOceanService.getDigitalOceanDroplet(
-        apiToken,
-        providerInstanceId
-      );
-
-      status = droplet.status;
-      ip = droplet.networks?.v4?.[0]?.ip_address || null;
-    } else {
-      // Reboot Linode instance (default)
-      await linodeService.rebootLinodeInstance(providerInstanceId);
-      const detail = await linodeService.getLinodeInstance(providerInstanceId);
-      status = detail.status;
-      ip =
-        Array.isArray(detail.ipv4) && detail.ipv4.length > 0
-          ? detail.ipv4[0]
-          : null;
-    }
+    await linodeService.rebootLinodeInstance(providerInstanceId);
+    const detail = await linodeService.getLinodeInstance(providerInstanceId);
+    const status = detail.status;
+    const ip =
+      Array.isArray(detail.ipv4) && detail.ipv4.length > 0
+        ? detail.ipv4[0]
+        : null;
 
     await query(
       "UPDATE vps_instances SET status = $1, ip_address = $2, updated_at = NOW() WHERE id = $3",
@@ -4585,37 +3544,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
     const providerType = row.provider_type || "linode";
     const providerInstanceId = Number(row.provider_instance_id);
 
-    // Delete from provider based on provider_type
-    if (providerType === "digitalocean" && row.provider_id) {
-      // Delete DigitalOcean Droplet
-      try {
-        const apiToken = await resolveProviderTokenOrRespond(
-          res,
-          "digitalocean",
-          String(row.provider_id)
-        );
-
-        if (!apiToken) {
-          return;
-        }
-        const { digitalOceanService } = await import(
-          "../services/DigitalOceanService.js"
-        );
-
-        await digitalOceanService.deleteDigitalOceanDroplet(
-          apiToken,
-          providerInstanceId
-        );
-      } catch (providerErr: any) {
-        console.error("Failed to delete DigitalOcean droplet:", providerErr);
-        throw new Error(
-          `Failed to delete from DigitalOcean: ${providerErr.message}`
-        );
-      }
-    } else {
-      // Delete Linode instance (default)
-      await linodeService.deleteLinodeInstance(providerInstanceId);
-    }
+    await linodeService.deleteLinodeInstance(providerInstanceId);
 
     // Delete from database
     await query("DELETE FROM vps_instances WHERE id = $1", [id]);

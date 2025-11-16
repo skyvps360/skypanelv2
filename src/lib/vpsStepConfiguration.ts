@@ -32,8 +32,6 @@ export interface StepConfiguration {
 export interface StepConfigurationOptions {
   /** The selected provider type */
   providerType: ProviderType;
-  /** Whether a marketplace app has been selected (DigitalOcean) */
-  hasMarketplaceApp: boolean;
   /** Current form data for additional context */
   formData: Partial<CreateVPSForm>;
 }
@@ -51,8 +49,8 @@ const ALL_STEPS = [
   {
     originalStepNumber: 2,
     id: "deployments",
-    title: "Marketplace/StackScript",
-    description: "Optionally provision with a pre-configured application.",
+    title: "1-Click Deployments",
+    description: "Optionally provision with a StackScript or continue without one.",
   },
   {
     originalStepNumber: 3,
@@ -72,9 +70,7 @@ const ALL_STEPS = [
  * Determines which steps should be active based on provider type and user selections
  * 
  * Rules:
- * - For DigitalOcean with a marketplace app selected: Skip OS selection (step 3)
- * - For DigitalOcean without marketplace app: Show all steps
- * - For Linode: Always show all steps
+ * - Linode: Always show all steps
  * - Steps are renumbered sequentially for display (e.g., 1, 2, 4 becomes 1, 2, 3)
  * 
  * @param options - Configuration options including provider type and marketplace app selection
@@ -83,20 +79,9 @@ const ALL_STEPS = [
 export function getActiveSteps(
   options: StepConfigurationOptions
 ): StepConfiguration[] {
-  const { providerType, hasMarketplaceApp } = options;
+  const { providerType } = options;
 
-  // Determine which steps are active based on provider and selections
-  const activeSteps = ALL_STEPS.filter((step) => {
-    // Skip OS selection (step 3) for DigitalOcean with marketplace app
-    if (
-      step.originalStepNumber === 3 &&
-      providerType === "digitalocean" &&
-      hasMarketplaceApp
-    ) {
-      return false;
-    }
-    return true;
-  });
+  const activeSteps = ALL_STEPS;
 
   // Calculate total active steps for display
   const totalSteps = activeSteps.length;
@@ -108,7 +93,7 @@ export function getActiveSteps(
     isActive: true,
     id: step.id,
     title: getDynamicStepTitle(step, providerType),
-    description: getDynamicStepDescription(step, providerType, hasMarketplaceApp),
+    description: getDynamicStepDescription(step, providerType),
     totalSteps,
   }));
 }
@@ -124,13 +109,6 @@ function getDynamicStepTitle(
   step: typeof ALL_STEPS[number],
   providerType: ProviderType
 ): string {
-  // Customize step 2 title based on provider
-  if (step.originalStepNumber === 2) {
-    return providerType === "digitalocean"
-      ? "Marketplace Apps"
-      : "1-Click Deployments";
-  }
-
   return step.title;
 }
 
@@ -144,21 +122,8 @@ function getDynamicStepTitle(
  */
 function getDynamicStepDescription(
   step: typeof ALL_STEPS[number],
-  providerType: ProviderType,
-  hasMarketplaceApp: boolean
+  providerType: ProviderType
 ): string {
-  // Customize step 2 description based on provider
-  if (step.originalStepNumber === 2) {
-    return providerType === "digitalocean"
-      ? "Optionally deploy a pre-configured application."
-      : "Optionally provision with a StackScript or continue without one.";
-  }
-
-  // Customize step 4 description based on marketplace app selection
-  if (step.originalStepNumber === 4 && hasMarketplaceApp) {
-    return "Review your configuration and deploy (using marketplace app OS).";
-  }
-
   return step.description;
 }
 

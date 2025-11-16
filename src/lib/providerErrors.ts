@@ -99,9 +99,6 @@ function getProviderDisplayName(provider?: string): string {
   
   const displayNames: Record<string, string> = {
     'linode': 'Linode',
-    'digitalocean': 'DigitalOcean',
-    'aws': 'AWS',
-    'gcp': 'Google Cloud',
   };
   
   return displayNames[provider.toLowerCase()] || provider;

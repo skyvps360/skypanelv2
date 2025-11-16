@@ -45,16 +45,16 @@
 
 
 ## Provider Architecture
-- **Factory Pattern:** `ProviderFactory.createProvider(type, token)` returns `IProviderService` implementation (Linode or DigitalOcean).
+- **Factory Pattern:** `ProviderFactory.createProvider(type, token)` currently returns the Linode `IProviderService` implementation.
 - **Interface Contract:** `IProviderService` defines `createInstance`, `listInstances`, `performAction`, `getPlans`, `getImages`, `getRegions`, `validateCredentials`.
 - **Error Normalization:** `errorNormalizer.ts` standardizes API errors; `getUserFriendlyMessage()` converts codes to readable messages.
 - **Caching:** `ProviderResourceCache` (`api/services/providerResourceCache.ts`) caches plans/images/regions with TTL; invalidate on provider changes.
-- **Documentation:** Provider-specific docs in `api/services/providers/` (ARCHITECTURE.md, API_DOCUMENTATION.md, DIGITALOCEAN_CONFIGURATION.md, CACHING.md).
+- **Documentation:** Provider-specific docs live in `api/services/providers/` (`ARCHITECTURE.md`, `API_DOCUMENTATION.md`, `CACHING.md`).
 
 ## White-Label & Branding
 - **Environment Variables:** `COMPANY_NAME`, `COMPANY_BRAND_NAME`, `VITE_COMPANY_NAME`, `COMPANY_LOGO_URL` control branding; `src/lib/brand.ts` exports resolved values.
 - **Theme System:** Admin can configure themes via `/admin#theme-manager`; stored in `theme_presets` table; `themeService.ts` manages CRUD; CSS variables applied via `ThemeContext`.
-- **Provider Hiding:** Mentions of "Linode", "DigitalOcean" not exposed to clients; admins define labels via `/admin#providers`.
+- **Provider Hiding:** Provider vendor names stay admin-facing only; user-visible labels come from `/admin#providers`.
 
 ## Common Pitfalls
 - **Missing .js Extensions:** ESM requires explicit `.js` in imports; TypeScript will compile without them but runtime will fail.

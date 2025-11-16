@@ -60,10 +60,6 @@ export interface CreateVPSForm {
   backups: boolean;
   backup_frequency?: 'daily' | 'weekly' | 'none';
   privateIP: boolean;
-  // DigitalOcean-specific
-  monitoring?: boolean;
-  ipv6?: boolean;
-  vpc_uuid?: string;
   // Marketplace/StackScript
   appSlug?: string;
   appData?: Record<string, any>;

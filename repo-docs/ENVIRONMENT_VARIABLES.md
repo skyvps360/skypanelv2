@@ -111,15 +111,8 @@ DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
 | `LINODE_API_TOKEN` | **Yes** | - | Linode API personal access token |
 | `LINODE_API_URL` | No | `https://api.linode.com/v4` | Linode API base URL |
 
-### DigitalOcean (Optional)
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DIGITALOCEAN_API_TOKEN` | No | - | DigitalOcean API personal access token |
-
 **Setup Instructions:**
 1. **Linode**: Create token at https://cloud.linode.com/profile/tokens
-2. **DigitalOcean**: Create token at https://cloud.digitalocean.com/account/api/tokens
 
 
 

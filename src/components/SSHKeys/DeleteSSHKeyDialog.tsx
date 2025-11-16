@@ -14,7 +14,7 @@ import {
 interface DeleteSSHKeyDialogProps {
   isOpen: boolean;
   keyName: string;
-  providers: Array<'linode' | 'digitalocean'>;
+  providers: Array<'linode'>;
   onConfirm: () => Promise<void>;
   onCancel: () => void;
   isLoading: boolean;

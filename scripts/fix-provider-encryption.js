@@ -44,11 +44,14 @@ async function fixProviderEncryption() {
 
     for (const provider of result.rows) {
       console.log(`📦 ${provider.name} (${provider.type})`);
-      console.log(`   Please enter the API token for ${provider.name}:`);
-      
-      // In a real scenario, you'd prompt for input or read from env
-      // For now, we'll show instructions
-      const envVar = provider.type === 'linode' ? 'LINODE_API_TOKEN' : 'DIGITALOCEAN_API_TOKEN';
+
+      if (provider.type !== 'linode') {
+        console.log('   ⚠️  Unsupported provider type for this script - skipping');
+        continue;
+      }
+
+      console.log(`   Using LINODE_API_TOKEN from environment...`);
+      const envVar = 'LINODE_API_TOKEN';
       const token = process.env[envVar];
 
       if (!token) {

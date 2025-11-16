@@ -7,5 +7,4 @@ export * from './IProviderService.js';
 export * from './BaseProviderService.js';
 export * from './ProviderFactory.js';
 export * from './LinodeProviderService.js';
-export * from './DigitalOceanProviderService.js';
 export * from './errorNormalizer.js';

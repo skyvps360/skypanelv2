@@ -621,7 +621,7 @@ export default function ApiDocs() {
         {
           method: "POST",
           path: "/",
-          description: "Provision a new VPS instance across supported providers (Linode or DigitalOcean).",
+          description: "Provision a new VPS instance with the configured Linode provider.",
           auth: true,
           body: {
             label: "production-web-1",
@@ -806,12 +806,11 @@ export default function ApiDocs() {
         {
           method: "GET",
           path: "/providers",
-          description: "List configured cloud providers available to the tenant (e.g. Linode, DigitalOcean).",
+          description: "List configured cloud providers available to the tenant (e.g. Linode).",
           auth: true,
           response: {
             providers: [
               { id: "linode", name: "Linode", type: "linode" },
-              { id: "digitalocean", name: "DigitalOcean", type: "digitalocean" },
             ],
           },
         },
@@ -872,52 +871,6 @@ export default function ApiDocs() {
                 user_defined_fields: [{ name: "db_password", label: "Database Password" }],
                 isMarketplace: true,
               },
-            ],
-          },
-        },
-        {
-          method: "GET",
-          path: "/digitalocean/ssh-keys",
-          description: "Retrieve DigitalOcean account SSH keys for injection during droplet creation.",
-          auth: true,
-          response: {
-            ssh_keys: [
-              { id: 101, name: "workstation", fingerprint: "3a:5b:..." },
-            ],
-          },
-        },
-        {
-          method: "GET",
-          path: "/digitalocean/vpcs",
-          description: "List DigitalOcean VPCs filtered by region to support private networking selection.",
-          auth: true,
-          params: { region: "nyc3" },
-          response: {
-            vpcs: [
-              { id: "vpc-1", name: "production-vpc", region: "nyc3", ip_range: "10.0.0.0/16" },
-            ],
-          },
-        },
-        {
-          method: "GET",
-          path: "/digitalocean/images",
-          description: "DigitalOcean image catalog filtered by type (distribution, application, etc.).",
-          auth: true,
-          params: { type: "distribution" },
-          response: {
-            images: [
-              { slug: "ubuntu-24-04-x64", name: "Ubuntu 24.04 (LTS)" },
-            ],
-          },
-        },
-        {
-          method: "GET",
-          path: "/digitalocean/marketplace",
-          description: "Marketplace app catalog for DigitalOcean used when the admin enables templates.",
-          auth: true,
-          response: {
-            apps: [
-              { slug: "wordpress", name: "WordPress", summary: "Managed WordPress on Ubuntu" },
             ],
           },
         },
@@ -1462,7 +1415,7 @@ export default function ApiDocs() {
               {
                 id: "update_001",
                 title: "October platform update",
-                content: "Added DigitalOcean support",
+                content: "Enhanced Linode support",
                 display_order: 1,
               },
             ],
@@ -1473,7 +1426,7 @@ export default function ApiDocs() {
           path: "/faq/updates",
           description: "Create a changelog update.",
           auth: true,
-          body: { title: "October platform update", content: "Added DigitalOcean support" },
+          body: { title: "October platform update", content: "Enhanced Linode support" },
           response: {
             update: { id: "update_001", title: "October platform update" },
           },
